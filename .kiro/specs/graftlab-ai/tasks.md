@@ -15,10 +15,10 @@ Conventions:
 ## Tasks
 
 - [ ] 1. Spike milestone: verify blocking TO VERIFY items (target 2026-11-21 to 2026-11-22)
-  - [ ] 1.1 Check Node >=22.19 on the PC (TO VERIFY 12, Open item 47)
+  - [x] 1.1 Check Node >=22.19 on the PC (TO VERIFY 12, Open item 47)
     - Run `node --version` on the PC and rerun `spike/pi/smoke.mjs` against `deepseek-flash` (streaming, tool call, abort)
     - Pass: version >=22.19.0 and the smoke test completes. Fail: stop; there is no fallback (required)
-    - Note: the user upgrades Node on the PC; the task only checks it
+    - Done 2026-11-21: Node v24.22.3 (portable, checksum verified against nodejs.org) installed under the project tools directory on the PC; the system Node and PATH were not changed; pi packages 1.5.2 ran streaming, an in-process tool call and abort against deepseek-flash (first delta 730 ms, abort stopped the run at 4.0 s). The backend start script must call this Node explicitly.
     - Record the result in `spike/results/S-node.md`
     - Design: TO VERIFY list, Deployment and hosting
     - _Requirements: 32.6, 30.9_
