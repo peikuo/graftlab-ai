@@ -37,6 +37,7 @@ Success is decided only by the Verifier, plain TypeScript with no LLM, that runs
 | Runtime_Rules (layer B) | `runtime-rules/` with a `VERSION` file | R35, Open item 13 |
 | Output_Docs (layer C) | `data/tasks/<taskId>/docs/` | R20, Open item 13 |
 | Reasoning text | Persisted with `message_completed` | R3.12, Open item 42 |
+| API-operation stories | Tech_Manager designs a Demo_Case with read-only tools; Studio code executes its writes against the Sandbox; the Verifier checks the Demo_Case expected outcome | R18.7-R18.13, R40.18, Open item 50 |
 
 ### Initial values (adjustable by environment variable)
 
@@ -49,6 +50,7 @@ Success is decided only by the Verifier, plain TypeScript with no LLM, that runs
 | Unanswered Code_Agent question wait | 300 s, then the story is marked Unconfirmed-blocked and the flow continues to the next story or a terminal | `GL_QUESTION_WAIT_S` | R40.11, R40.17, Open item 39 |
 | Code_Agent time budget per story | 10 minutes of Code_Agent run time, summed over attempts | `GL_STORY_BUDGET_MIN` | R38.3, R40.1, Open items 25, 33 |
 | Retry limit per story | 3 attempts | `GL_STORY_ATTEMPTS` | R40.11, R40.12, Open item 35 |
+| Item_Count_Cap per Demo_Case | 10 items | `GL_DEMO_CASE_MAX_ITEMS` | R18.11, Open item 50 |
 | Task timeout | 90 minutes | `GL_TASK_TIMEOUT_MIN` | R36.6, Open item 28 |
 | Read-volume limit | 300 files or 2 MB of text, whichever comes first | `GL_READ_MAX_FILES`, `GL_READ_MAX_BYTES` | R34.3, Open item 16 |
 | max_tokens for role turns | 16384, finish reason checked | `GL_MAX_TOKENS` | R30.12, R30.13 |
@@ -245,17 +247,20 @@ stateDiagram-v2
     docs_only --> [*]
 ```
 
-API-operation sub-path, used for stories whose confirmed approach executes the workflow by operating linkding through its API (R18.2, R18.3, R18.4, R15.7, R22.1). It is part of the same Flow_Graph data. Writes in `api_try_one` and `api_write_batch` are executed by Studio code from the validated plan; no LLM-facing write tool exists, so write capability exists only in the two write stages:
+API-operation sub-path, used for stories whose confirmed approach executes the workflow by operating linkding through its API (R18.2-R18.4, R18.7-R18.13, R15.7, R22.1, R40.18; decided by the user, Open item 50). It is part of the same Flow_Graph data. The read and plan stages of R18.2 are the Tech_Manager designing the Demo_Case: in `api_read` the Tech_Manager reads the relevant linkding code and the Sandbox test data with read-only tools and submits a Demo_Case with `submit_demo_case`; in `api_plan` Studio code validates it (schema, Item_Count_Cap, Adapter endpoint allow-list, Sandbox target) and derives the Verifier's `api_readback` Acceptance_Check from its expected outcome. Writes in `api_try_one` and `api_write_batch` are executed by Studio code from the validated Demo_Case; no LLM-facing write tool exists, so write capability exists only in the two write stages. Purpose B still needs a schema-valid suggestion with evidence (`api_suggest`) and Judge confirmation (`api_confirm`) before any write. The Verification role does not design a second case; the non-LLM Verifier runs the derived checks:
 
 ```mermaid
 stateDiagram-v2
     [*] --> api_read
-    api_read --> api_plan: read summary valid
-    api_plan --> api_try_one: purpose A, plan valid
-    api_plan --> api_suggest: purpose B, plan valid
+    api_read --> api_plan: Demo_Case submitted
+    api_read --> failed: no Demo_Case submitted after one visible retry
+    api_plan --> api_read: Demo_Case rejected, one visible retry left
+    api_plan --> failed: Demo_Case rejected, no retry left
+    api_plan --> api_try_one: purpose A, Demo_Case valid
+    api_plan --> api_suggest: purpose B, Demo_Case valid
     api_suggest --> api_confirm: suggestion valid with evidence
     api_confirm --> api_try_one: Judge confirmed
-    api_confirm --> api_plan: Judge rejected with feedback
+    api_confirm --> api_read: Judge rejected with feedback, Demo_Case redesigned
     api_confirm --> story_blocked: no response, write not allowed
     api_try_one --> api_write_batch: one item written and read back
     api_try_one --> failed: write failed or read-back mismatch
@@ -291,13 +296,13 @@ Node table:
 | story_run | auto | none (Studio starts the Run_Environment) | 240 s | R39.9-R39.11 |
 | story_checkpoint | wait_user | none | 120 s (demo 30 s) | R21 |
 | verifying | auto | none (Verifier) | 10 min | R22 |
-| api_read | agent_loop | `linkding_read` | 5 min | R18.2 |
-| api_plan | agent_loop | `linkding_read`, `submit_plan` | 5 min | R18.2 |
-| api_suggest | agent_loop | `linkding_read`, `read_file`, `submit_suggestion` | 5 min | R18.3 |
-| api_confirm | wait_user | none | 120 s | R18.4, R15.7 |
-| api_try_one | auto | none (Studio writes plan item 1 and reads it back) | 2 min | R18.2 |
-| api_write_batch | auto | none (Studio writes the remaining items) | 5 min | R18.2 |
-| api_read_back | auto | none (Studio reads back all items) | 3 min | R18.2 |
+| api_read | agent_loop | Tech_Manager designs the Demo_Case: `linkding_read`, `read_file`, `search_repo` (read-only), `submit_demo_case` | 8 min | R18.2, R18.7, R40.18 |
+| api_plan | auto | none (Studio validates the Demo_Case and derives its `api_readback` check) | 5 s | R18.2, R18.8, R18.10-R18.12 |
+| api_suggest | agent_loop | Tech_Manager: `linkding_read`, `read_file`, `submit_suggestion` (values only for Demo_Case items marked as suggested) | 5 min | R18.3 |
+| api_confirm | wait_user | none (Judge card shows the Demo_Case and the suggestion in feature words) | 120 s | R18.4, R15.7 |
+| api_try_one | auto | none (Studio code writes Demo_Case item 1 and reads it back) | 2 min | R18.2, R18.9, R18.10 |
+| api_write_batch | auto | none (Studio code writes the remaining Demo_Case items) | 5 min | R18.2, R18.9, R18.10 |
+| api_read_back | auto | none (Studio code reads back all Demo_Case items) | 3 min | R18.2 |
 | success, failed, aborted, analysis_only, docs_only | terminal | none | none | R36.5 |
 
 Rules that keep the graph honest:
@@ -314,7 +319,7 @@ Rules that keep the graph honest:
 - `events.ts`: the event envelope and every payload as a zod discriminated union; `parseEvent`, `serializeEvent` (R27.4, R27.9).
 - `flow/graph.ts`, `flow/guards.ts`, `flow/transition.ts`: the Flow_Graph data, guards and `transition` (R36).
 - `reducer.ts`: `reduce(state, event)`, `foldEvents(events)`, and `roleStatus(state, roleId, now)` (R2, R26.7, R27.14).
-- `schemas/`: stage output schemas (statements, findings, evidence references, Decision_Doc, Product_Backlog with Feature_Contracts, Sprint_Plan, Task_Board, Definition_of_Done, Review_Verdict, API plan, suggestion, Acceptance_Check specs). A script exports them as JSON into `runtime-rules/schemas/` (R35.6).
+- `schemas/`: stage output schemas (statements, findings, evidence references, Decision_Doc, Product_Backlog with Feature_Contracts, Sprint_Plan, Task_Board, Definition_of_Done, Review_Verdict, Demo_Case, suggestion, Acceptance_Check specs). A script exports them as JSON into `runtime-rules/schemas/` (R35.6).
 - `url.ts`: GitHub URL parsing and normalization (R9.2, R9.3).
 - `redact.ts`: the secret redactor (R30.15).
 
@@ -338,6 +343,7 @@ Rules that keep the graph honest:
 | `containers/` | Docker Engine API wrapper for Sandbox, Development_Sandbox, Run_Environment, test container, LLM_Proxy, networks | R13, R38, R39 |
 | `worktree/` | Mirror, per-Task clone, snapshots, diff, Patch_Artifact | R38 |
 | `dev/` | Development stage per story: context building, Code_Agent run, review, ask, run, checkpoint | R21, R38, R39, R40 |
+| `apiops/` | API-operation stories: Demo_Case validation, check derivation, and the Demo_Case writer (the only code path that writes to linkding) | R18.7-R18.13, R40.18 |
 | `verifier/` | Acceptance_Check execution, no LLM | R22, R29.4 |
 | `replay/` | Replay_File export with secret scan, static upload hook | R26, R27.11-R27.13 |
 | `proxy/` | LLM_Proxy entry point (separate container) | R30.16 |
@@ -548,6 +554,17 @@ Per source-change story:
 
 The Patch_Artifact is `git diff <pinned commit>` saved to `data/tasks/<id>/docs/patches/<storyId>.patch` after each approved attempt and at Task end (R38.6).
 
+Per API-operation story (Feature_Contract `executionKind: "api_operation"`; decided by the user, Open item 50):
+
+1. Context: the same context builder writes the story bundle (R19.7). The story goes to the Tech_Manager, not to the Code_Agent; no Development_Sandbox is started (R40.18).
+2. Design (`api_read`): the Tech_Manager (pi agent) reads the relevant linkding code from the downloaded repository with `read_file` and `search_repo` and the current Sandbox data with `linkding_read` (GET only, through the Studio, the token stays in the backend). It submits a Demo_Case with `submit_demo_case`: endpoints, test-data items, expected outcome, harmlessness reason, reversal statement and evidence. Choosing a meaningful, understandable case and the harmlessness reasoning are best effort (R18.7); the Demo_Case is labeled "designed by Tech_Manager (LLM judgment)" wherever it is shown.
+3. Validate (`api_plan`, Studio code): zod validates the Demo_Case (required fields non-empty, R18.8); `apiops/validate.ts` then checks by code that the item count is at most the Item_Count_Cap (R18.11), that every endpoint is in the Adapter's `api.writeEndpoints` or `api.readEndpoints` allow-list, and that the target is the Sandbox (R18.10). A rejected Demo_Case records `failure` (schema problems as `llm_output_format_invalid`, cap, endpoint or target problems as `rejected_by_safety_rule`), executes no write, and allows one visible retry (R23.5). An accepted Demo_Case is stored as an artifact with its hash, and `deriveChecks(demoCase)` turns its expected outcome into one `api_readback` Acceptance_Check with target `sandbox` (R18.12). The Verification role is not asked to design a second case.
+4. Purpose B (`api_suggest`, `api_confirm`): the Tech_Manager fills the fields that the Demo_Case marks as suggested (for example tags) with `submit_suggestion`, each value with evidence (R18.3). The Studio accepts a suggestion only for items of the validated Demo_Case and only for the marked fields, then shows the Demo_Case and the suggestion in feature words on a confirm card. Without a Judge confirmation no write happens (R18.4, R15.7). The derived check is recomputed with the confirmed suggested values.
+5. Write (`api_try_one`, `api_write_batch`): `apiops/writer.ts` is the only module that sends writes to linkding. It accepts only a validated Demo_Case id, builds requests only from its items, uses the Sandbox origin from the container manager (never a URL from model output), checks each method and path against the Adapter allow-list again, and stops after the Item_Count_Cap. Each write appends `api_write` with the Demo_Case id and item id (R18.9, R18.10). The Verifier takes its pre-state snapshot before item 1.
+6. Read back and checkpoint: `api_read_back` reads every item back; the checkpoint card shows the read-back table in feature words (R21.2).
+7. Verify: the Verifier runs the derived `api_readback` check (R22.2, R22.4, R22.5).
+8. Reversal: the Sandbox reset to the fixed test data set at Task start and the restore operation reverse every executed Demo_Case (R18.13, R29.1, R29.2). The reversal statement is shown to the Judge as an explanation only.
+
 ### Worktree manager (R38.1, R38.9, R25.6)
 
 - A linked `git worktree` stores host-absolute metadata paths that do not resolve inside a container, so the Worktree is a local clone instead.
@@ -567,6 +584,7 @@ Plain TypeScript, no LLM (R22.9). Each Acceptance_Check produces a per-item resu
 | `browser_check` | Scripted Playwright steps from a schema: `goto(path)`, `expectRole(role, name)`, `expectText(text)`, `click(role, name)`, `fill(role, name, value)`; each step is an item | R22.2, R14.11 |
 
 - The pre-state snapshot for `api_readback` is taken by the Verifier before the first write of the story.
+- For API-operation stories the `api_readback` expectations are derived by code from the expected outcome of the validated Demo_Case (`deriveChecks`), one expectation per expected-outcome entry; no LLM and no second designed case is involved (R18.12).
 - Success of the Task is computed only from Verifier results (R22.3). If a role statement claims success and the Verifier disagrees, both are shown with the Verifier result as the outcome (R22.6).
 - Source and UI changes are verified against the Run_Environment (R22.8); API-operation stories against the Sandbox (R22.1).
 - The test command and browser check steps come from LLM-produced, schema-validated documents, but they are executed only inside containers without internet access and their pass or fail is decided by code.
@@ -628,7 +646,7 @@ Event types and payloads:
 | `tool_started` / `tool_finished` | callId, tool, input summary, ok, output summary | R4.7 |
 | `judge_message` | clientMsgId, to (all or roleId), text, deliveredTo | R5.2, R12.3 |
 | `card_opened` / `card_answered` | cardId, kind (question, confirm, checkpoint, reminder, new_version), feature-level content, options; answer | R5, R21 |
-| `artifact_updated` | artifactKind (file, diagram, decision_doc, doc, task_board, worktree_handoff, patch, screenshot), ref, title | R4.3, R39.7 |
+| `artifact_updated` | artifactKind (file, diagram, decision_doc, doc, task_board, worktree_handoff, patch, screenshot, demo_case), ref, title | R4.3, R39.7 |
 | `decision_doc_version` | version, content, hash | R15.2, R16.1 |
 | `decision_doc_frozen` | version, hash, confirmedBy (session id), confirmedAt | R15.3 |
 | `browser_action` | action, target, ok | R14.2 |
@@ -636,12 +654,14 @@ Event types and payloads:
 | `code_change` | storyId, attempt, changedFiles[], diffRef | R38.5, R40.5 |
 | `review_verdict` | storyId, attempt, verdict, reasons[], label | R40.6, R40.9 |
 | `question_opened` / `question_answered` | questionId, from (code_agent or role), askedParty (tech_manager or judge), kind, text in feature words; answer | R2.10, R40.13 |
+| `demo_case_validated` | storyId, demoCaseId, hash, itemCount, derivedCheckId, label | R18.8, R18.12 |
+| `api_write` | storyId, demoCaseId, itemId, method, endpoint (path template), status | R18.9, R18.10 |
 | `verifier_result` | storyId, checkId, items[{ item, pass, expected, actual }], pass | R22.7 |
 | `failure` | failureClass, detail, relatedRef | R23.1, R23.2 |
 | `reminder` | pending items (feature name, plain status) | R21.8, R21.9 |
 | `terminal_reached` | terminal, summary (Verifier totals, Failure_Class counts, Unconfirmed marks, label) | R26.5, R36.5 |
 
-`message_progress` is the one type added to the list decided with the user; it carries no text (see Gaps found). No stream chunk is persisted (R3.11, R27.7).
+`message_progress` is the one type added to the list decided with the user; it carries no text (see Gaps found). `demo_case_validated` and `api_write` were added with the Demo_Case decision (Open item 50). No stream chunk is persisted (R3.11, R27.7).
 
 Failure_Class values: `interface_call_failure`, `readback_mismatch`, `llm_output_format_invalid`, `rejected_by_safety_rule`, plus `budget_exceeded` and `blocked_unanswered_question` (allowed by "at least four" in R23.2; see Gaps found). A failed Verifier check of any kind uses `readback_mismatch`, because the Verifier compares the read-back result with the plan. Each failure also carries a `source` (llm, docker, github, verifier, browser, code_agent, persistence, tunnel) for the Error Handling table.
 
@@ -769,7 +789,7 @@ interface FeatureContract {                // zod .strict(): no other fields all
 ```ts
 type AcceptanceCheckSpec =
   | { id: string; kind: "api_readback"; target: "sandbox" | "run_environment";
-      expect: { url: string; titleContains?: string; tagsInclude?: string[]; mustExist: boolean }[] }
+      expect: { url: string; titleContains?: string; tagsInclude?: string[]; archived?: boolean; mustExist: boolean }[] }
   | { id: string; kind: "test_suite"; command: string[]; workdir?: string; timeoutS: number }
   | { id: string; kind: "browser_check"; target: "run_environment" | "sandbox";
       steps: ({ op: "goto"; path: string } | { op: "expectRole"; role: string; name: string }
@@ -781,9 +801,38 @@ type AcceptanceCheckSpec =
 
 `{ storyId, attempt, verdict: "approve" | "request_changes" | "escalate", reasons: string[] (at least one), questionForJudge?: string, label: "reviewed by Tech_Manager (LLM judgment)" }`.
 
-### API plan and suggestion (R18)
+### Demo_Case and suggestion (R18.7-R18.13, Open item 50)
 
-`ApiPlan = { storyId, items: { op: "create" | "update_tags" | "archive"; url: string; title?: string; tags?: string[] }[] }` (at least one item; item 1 is the "try one item"). `ApiSuggestion = { storyId, items: (ApiPlan item & { evidence: EvidenceRef[] | { bookmarkId: number; field: string; value: string }[] })[] }`.
+The Demo_Case replaces the earlier "API plan". It is the only input from which Studio code writes to linkding, and its expected outcome is the source of the story's `api_readback` check.
+
+```ts
+interface DemoCase {                       // zod .strict()
+  id: string;                              // assigned by the Studio on acceptance
+  storyId: string;
+  label: "designed by Tech_Manager (LLM judgment)";
+  summary: string;                         // feature words, shown on the cards
+  endpoints: { method: "GET" | "POST" | "PATCH"; path: string }[];   // at least one; each in the Adapter allow-list
+  items: {                                 // 1..Item_Count_Cap (initial 10); item 1 is the "try one item"
+    id: string;
+    testDataRef: string | null;            // id in test-data.json, or null for a new test bookmark
+    op: "create" | "update_tags" | "archive";
+    url: string; title?: string; tags?: string[];
+    suggestedFields?: ("tags" | "title")[]; // purpose B only: filled by the confirmed suggestion
+  }[];
+  expectedOutcome: {                       // at least one entry; becomes the api_readback expectations
+    itemId: string; url: string; mustExist: boolean;
+    titleContains?: string; tagsInclude?: string[]; archived?: boolean;
+  }[];
+  harmlessReason: string;                  // non-empty, best effort reasoning
+  reversal: string;                        // non-empty; the mechanism is the Sandbox reset and restore (R18.13)
+  evidence: EvidenceRef[];                 // code read by the Tech_Manager, checked as in R24
+}
+```
+
+- Schema rules (zod): `endpoints`, `items`, `expectedOutcome` non-empty; `harmlessReason` and `reversal` non-empty after trimming; every `expectedOutcome.itemId` names an item; item ids unique (R18.8).
+- Code rules (`apiops/validate.ts`, outside the schema because they depend on configuration): `items.length <= GL_DEMO_CASE_MAX_ITEMS`; every write endpoint matches `adapter.api.writeEndpoints`; every read endpoint matches `adapter.api.readEndpoints`; every item `op` maps to an allowed write endpoint (R18.10, R18.11).
+- `ApiSuggestion = { storyId, demoCaseId, values: { itemId: string; field: "tags" | "title"; value: string | string[]; evidence: EvidenceRef[] | { bookmarkId: number; field: string; value: string }[] }[] }`. Accepted only for items and fields that the Demo_Case marks as suggested (R18.3).
+- `deriveChecks(demoCase, confirmedSuggestion?) -> AcceptanceCheckSpec` returns one `api_readback` check with target `sandbox` and one expectation per expected-outcome entry, with suggested fields filled from the confirmed suggestion (R18.12).
 
 ### Adapter (R13.3, R39.10, Open item 41)
 
@@ -799,12 +848,16 @@ type AcceptanceCheckSpec =
     "env": { "LD_DISABLE_BACKGROUND_TASKS": "True" },
     "superuserEnv": ["LD_SUPERUSER_NAME", "LD_SUPERUSER_PASSWORD"]
   },
+  "api": {
+    "readEndpoints": [{ "method": "GET", "path": "/api/bookmarks/" }, { "method": "GET", "path": "/api/bookmarks/{id}/" }, { "method": "GET", "path": "/api/tags/" }],
+    "writeEndpoints": [{ "method": "POST", "path": "/api/bookmarks/" }, { "method": "PATCH", "path": "/api/bookmarks/{id}/" }, { "method": "POST", "path": "/api/bookmarks/{id}/archive/" }]
+  },
   "testData": "test-data.json",
   "checks": "checks/"
 }
 ```
 
-No start procedure for the modified target is part of the Adapter (R39.10).
+No start procedure for the modified target is part of the Adapter (R39.10). The `api` allow-list is the only set of endpoints a Demo_Case may use (R18.10); its paths follow the linkding REST API documentation and are confirmed on the pinned image by spike C (TO VERIFY item 6).
 
 ### Replay_File (R27.11-R27.13)
 
@@ -897,7 +950,7 @@ Each property below is implemented by exactly one fast-check property test. Prop
 
 ### Property 11: Verifier tag inclusion and same-URL update
 
-*For any* pre-state of bookmarks and *any* API plan, applying the plan to an in-memory linkding model (upsert by URL, tags merged by generated auto-tag rules) and running the `api_readback` check passes; the check fails if and only if some planned tag is missing from the read-back tags or a planned bookmark is missing; and a planned create whose URL existed in the pre-state is compared as an update (bookmark count for that URL stays 1).
+*For any* pre-state of bookmarks and *any* validated Demo_Case (the plan), applying its items to an in-memory linkding model (upsert by URL, tags merged by generated auto-tag rules) and running the `api_readback` check passes; the check fails if and only if some planned tag is missing from the read-back tags or a planned bookmark is missing; and a planned create whose URL existed in the pre-state is compared as an update (bookmark count for that URL stays 1).
 
 **Validates: Requirements 22.4, 22.5**
 
@@ -943,6 +996,12 @@ Each property below is implemented by exactly one fast-check property test. Prop
 
 **Validates: Requirements 40.5, 38.5**
 
+### Property 19: Demo_Case write constraints
+
+*For any* generated Demo_Case (valid or mutated: missing harmlessness reason, reversal or expected outcome, too many items, a disallowed endpoint, a URL pointing at another origin), *any* Adapter allow-list and *any* Item_Count_Cap, running `api_plan`, `api_try_one` and `api_write_batch` against a recording fake HTTP client gives: the Demo_Case is accepted if and only if it is schema-valid, has at most Item_Count_Cap items and uses only allowed endpoints; for a rejected Demo_Case zero writes are sent; for an accepted Demo_Case every sent write goes to the Sandbox origin with an allowed method and path, belongs to exactly one item of that validated Demo_Case (by item id), no item is written twice, and the number of writes is at most Item_Count_Cap; and the derived `api_readback` check has exactly one expectation per expected-outcome entry.
+
+**Validates: Requirements 18.8, 18.9, 18.10, 18.11, 18.12**
+
 ## Error Handling
 
 Every failure appends a `failure` event with a Failure_Class and a source before anything else happens, stays visible in later retries, and is counted per class (R23.1-R23.3). No failure is hidden by an automatic retry; the one allowed visible retry for invalid LLM output is shown as its own attempt (R23.5).
@@ -956,6 +1015,10 @@ Every failure appends a `failure` event with a Failure_Class and a source before
 | Stream break mid-message | stream error | interface_call_failure | `message_incomplete` with partial text, then as an LLM error | R3.9 |
 | Streaming unavailable | provider response | none (not a failure) | Non-streaming fallback with a visible note | R30.10 |
 | Tool outside the node whitelist | `beforeToolCall` | rejected_by_safety_rule | Tool skipped, error returned to the agent, rule shown | R23.7, R18 |
+| Demo_Case schema-invalid (missing endpoints, items, expected outcome, harmlessness reason or reversal) | zod | llm_output_format_invalid | No write; one visible retry in `api_read`; then `failed` | R18.8, R23.6 |
+| Demo_Case over the Item_Count_Cap, with a disallowed endpoint or a non-Sandbox target | `apiops/validate.ts` | rejected_by_safety_rule | No write; rule shown; one visible retry in `api_read`; then `failed` | R18.10, R18.11, R23.7 |
+| Write request not built from the validated Demo_Case (defensive check in the writer) | `apiops/writer.ts` | rejected_by_safety_rule | Write not sent; `failed` | R18.9 |
+| linkding write or read-back error in `api_try_one` or `api_write_batch` | HTTP status, read-back comparison | interface_call_failure or readback_mismatch | `failed`; reversal by restore | R18.2, R18.13 |
 | Repository missing or private | GitHub 404 at creation | none (no Task) | Error on the home page, no Task | R9.4 |
 | GitHub rate limit | 403 or 429 with rate limit headers | interface_call_failure | Limit state shown, `failed` | R34.4, R10.5 |
 | Docker engine unavailable | engine ping at `sandbox_start` and at server start | interface_call_failure | `failed`, marked not executed; the home page shows that live execution is unavailable | R13.4 |
@@ -992,7 +1055,7 @@ The final view shows the Verifier results, the counts per Failure_Class, the Unc
 
 - One fast-check test per Correctness Property, at least 100 runs each (`numRuns: 100` minimum; Property 1 is exhaustive over the graph plus 100 random walks).
 - Each test carries a tag comment in the format `// Feature: graftlab-ai, Property <n>: <property text>`.
-- The properties live next to the code they test, mostly in `packages/shared` (graph, reducer, schemas, URL, redactor, hash, evidence) and `apps/server` (Verifier model test, change recording, SSRF validator).
+- The properties live next to the code they test, mostly in `packages/shared` (graph, reducer, schemas, URL, redactor, hash, evidence) and `apps/server` (Verifier model test, change recording, SSRF validator, Demo_Case validator and writer).
 
 ### Unit tests (examples, edge cases, errors)
 
@@ -1010,7 +1073,7 @@ The final view shows the Verifier results, the counts per Failure_Class, the Unc
 
 | Container | Test | Requirements |
 |---|---|---|
-| Sandbox | Start from the pinned digest, create token, load test data, Verifier equality, restore | R13, R29 |
+| Sandbox | Start from the pinned digest, create token, load test data, Verifier equality, restore; one fixed Demo_Case executed end to end and reversed by restore | R13, R29, R18.13 |
 | Development_Sandbox | Write to `/work` reaches the host Worktree; write to `/etc` fails with a read-only error; no host path outside the Worktree changes; internet request fails; LLM_Proxy reachable | R38.2, R38.4, R38.8 |
 | Run_Environment | Start modified linkding from a snapshot with given start commands; health wait; failure path ends `failed` | R39.3-R39.5, R39.11 |
 | Verifier test container | Run a test command on a snapshot, exit code and summary parsed | R22.2 |
@@ -1083,7 +1146,9 @@ Live execution (F4-F10) needs Docker on the PC. When the PC or its tunnel is dow
 - A database server and SQLite; one JSON state file plus JSONL files.
 - Accounts and login for Judges beyond an anonymous session cookie.
 - General internet access from the Development_Sandbox and Run_Environment, and installing new dependencies during development.
-- An LLM-facing write tool for linkding; writes are executed by Studio code from validated plans.
+- An LLM-facing write tool for linkding; writes are executed by Studio code from validated Demo_Cases (Open item 50).
+- A second, Verification-designed case for API-operation stories; the Verifier checks the Demo_Case expected outcome (to save model calls).
+- Delete operations on linkding in a Demo_Case; the Adapter allow-list has no delete endpoint in the first version.
 - Automatic repair loops for LLM output beyond one visible retry.
 - Building the alternate Code_Agent runtimes unless the harness fails its TO VERIFY items.
 - Narration, Remotion presentation, Case_Cards and Prototype (Stretch, sections above).
@@ -1093,13 +1158,13 @@ Live execution (F4-F10) needs Docker on the PC. When the PC or its tunnel is dow
 
 ## Gaps found
 
-These are capabilities or clarifications the design needed that the requirements did not state. Status after the follow-up review: gaps 1-4 and 6-14 are applied to requirements.md; gap 5 awaits user confirmation (requirements Open item 50).
+These are capabilities or clarifications the design needed that the requirements did not state. Status after the follow-up review: gaps 1-4 and 6-14 are applied to requirements.md; gap 5 is decided by the user and applied (requirements Open item 50, R18.7-R18.13, R40.18).
 
 1. Long streams versus the Recency_Window (R2.4, R2.8): R2.8 requires a `message_started` event inside the Recency_Window for speaking or thinking, but a response can stream for longer than 15 s without new events, because chunks are not persisted. The design adds a text-free `message_progress` lifecycle event every 5 s. Suggested change: R2.8 should accept "a message-started or message-progress event" inside the window. Status: applied to requirements.md.
 2. Sandbox start failure terminal (R13.4, R29.5): "mark the Task as not executed" and "SHALL NOT start the Task" do not name a Terminal_State, and the Task already exists. The design ends the Task in `failed` with the "not executed" mark. Status: applied to requirements.md.
 3. Unanswered Code_Agent question (Open item 39): the requirements chart has no edge for an unanswered question and no terminal for a story blocked this way. The design adds `story_ask` edges to the next story, or to `failed` when no story is left. Status: applied to requirements.md.
 4. Failure_Class for budget and unanswered question (R23.2, R38.7): none of the four named classes fits "budget exceeded" or "blocked by an unanswered question". The design adds `budget_exceeded` and `blocked_unanswered_question`, which "at least four" allows. Status: applied to requirements.md.
-5. Flow_Graph nodes for the A/B stages (R18.2, R18.3): the decided node list has no nodes for the read, plan, try one, write in batch and read back stages, which R18.2 says are entered only through the Flow_Graph. The design adds the `api_*` nodes; this needs confirmation. Status: awaiting user confirmation (requirements Open item 50).
+5. Flow_Graph nodes for the A/B stages (R18.2, R18.3): the decided node list has no nodes for the read, plan, try one, write in batch and read back stages, which R18.2 says are entered only through the Flow_Graph. The design adds the `api_*` nodes. Status: DECIDED by the user (requirements Open item 50): the Tech_Manager designs a Demo_Case with read-only tools in `api_read`, Studio code validates it in `api_plan` and executes its writes in `api_try_one` and `api_write_batch` against the Sandbox only, and the Verifier checks the Demo_Case expected outcome; applied to requirements.md as R18.7-R18.13 and R40.18.
 6. Worktree creation timing (R38.9 versus R39.4): R38.9 creates a Worktree at every Task start, but an Other_Repo Task needs none. The design creates it only for Adapted_Repo. Suggested change: scope R38.9 with "WHERE the Task is Adapted_Repo". Status: applied to requirements.md.
 7. Who proposes the Run_Environment start commands and when (R39.9): the requirements say the Agent_Roles analyze them but not in which stage. The design puts a `runEnvironment` section into the design Output_Doc in `documenting`. Status: applied to requirements.md.
 8. Browser checks "through Browser_Use" (R14.11) versus a Verifier without LLM (R22.9): the design uses scripted Playwright with no LLM. Suggested wording: "through the Browser_Use automation, scripted, without an LLM". Status: applied to requirements.md.
@@ -1112,7 +1177,7 @@ These are capabilities or clarifications the design needed that the requirements
 
 ## TO VERIFY list
 
-Each item is verified by an early spike task (the tasks will be listed in `tasks.md`, which is not created yet). Until verified, the design keeps the stated fallback.
+Each item is verified by an early spike task in `tasks.md` (task group 1; item 14 in task 17.1). Until verified, the design keeps the stated fallback.
 
 | # | Item | First task that verifies it | Fallback |
 |---|---|---|---|
@@ -1121,7 +1186,7 @@ Each item is verified by an early spike task (the tasks will be listed in `tasks
 | 3 | The Linux x86_64 harness build runs on Ubuntu 24.04 (glibc 2.39) with a read-only root filesystem, tmpfs `HOME` and `DSH_HOME`, and emits the same event types as the macOS spike | Spike A | Writable root filesystem with confinement by mounts only; then outside writes are not detected, only kept off the host |
 | 4 | Docker Desktop for Windows: a container on an internal network can publish a port to `127.0.0.1` | Spike B: create the internal network, start a test container, curl from the host | LLM_Proxy container relays the app port |
 | 5 | Bind mounting the Windows host Worktree into Linux containers: performance, permissions, line endings with `core.autocrlf=false` | Spike B | Keep the Worktree in a named volume and compute diffs with a helper container |
-| 6 | linkding API token creation by a Django management shell command inside the container | Spike C: start the pinned image, create the token, call the API | Create the token through the settings page with Playwright |
+| 6 | linkding API token creation by a Django management shell command inside the container, and the Adapter `api` allow-list paths (create, PATCH, archive, list) on the pinned image | Spike C: start the pinned image, create the token, call each allow-listed endpoint | Create the token through the settings page with Playwright; correct the allow-list paths to the observed ones |
 | 7 | Running linkding from source in the dev-sandbox image: Python 3.12 compatibility, management commands, frontend build step, test command, health path | Spike C | Pin the image to a Python version linkding supports |
 | 8 | The pinned image version and the pinned upstream commit are the same release | Spike C | Choose a tag that exists for both |
 | 9 | ARIA snapshot quality on linkding pages, and screenshot reading quality on real pages (Open item 45) | Spike D: snapshot the linkding pages and run one operator turn | Screenshots as the main input where snapshots are poor |
