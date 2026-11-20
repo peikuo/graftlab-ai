@@ -1,0 +1,26 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+
+# Local runtime data
+data/
+*.log
+.DS_Store
+
+# Spike leftovers
+.dsh-home/
+.sessions/
+.pi/
+spike/**/runtime/
+
+# benchmark logs
+spike/bench/results/
+
+# Throwaway experiments (not part of the product yet)
+spike/
