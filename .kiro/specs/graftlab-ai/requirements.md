@@ -39,7 +39,8 @@ A fifth principle fixes what the Studio can promise:
    - write confinement of the Code_Agent to its Worktree by the container boundary of the Development_Sandbox (Requirement 38);
    - budgets and timeouts (Requirements 36 and 38);
    - the checks of the non-LLM Verifier (Requirement 22);
-   - honest display of failures (Requirement 23).
+   - honest display of failures (Requirement 23);
+   - secret redaction: every known secret value is removed from every event before it is persisted, broadcast or written to a Replay_File (Requirement 30).
 
    What the Agent_Roles do well is a goal, not a guarantee: quality of analysis, adherence to an A/B path, quality of Assessments and reviews, and quality of generated code. These goals are measured by benchmarks and mitigated by checks. Requirements worded "THE Agent_Roles SHOULD ... (best effort, measured, not guaranteed)" are goals of this kind. Every Agent output shown to the Judge as an assessment or review is labeled as an LLM judgment.
 
@@ -108,20 +109,20 @@ Verified from the official linkding documentation and GitHub repository metadata
 - **Review_Verdict**: The Tech_Manager's result for one story attempt: approve, request changes, or escalate. Labeled "reviewed by Tech_Manager (LLM judgment)".
 - **Engineering_Details**: The collapsed, on-demand view of diffs, review verdicts, rejected changes and tool calls. Never the main Judge view.
 - **Best_Effort_Goal**: A requirement worded "THE Agent_Roles SHOULD ... (best effort, measured, not guaranteed)"; its quality is measured by benchmarks and mitigated by checks.
-- **Adapter**: An adaptation package for one specific software. The first version has only the linkding Adapter. It carries only what the Studio itself needs: the target identity and reference, the fixed test data set, and the assessment checks. It does not define how to build or start the target (Requirement 39). Its exact contents are UNDECIDED (design).
+- **Adapter**: An adaptation package for one specific software. The first version has only the linkding Adapter. It carries only what the Studio itself needs: the target identity and reference (the upstream repository and pinned commit for the source copy, and the unmodified baseline, identified as the official linkding container image pinned by digest plus its documented configuration), the fixed test data set, and the assessment checks. The Sandbox runs that unmodified baseline. The Adapter does not define how to build or start the modified target (Requirement 39). Its exact contents are set in design.md.
 - **Adapted_Repo**: A repository that has an Adapter; in the first version only linkding.
 - **Other_Repo**: Any other public GitHub repository; analysis and documents only.
 - **Repo_Reader**: The Studio component that downloads and reads a repository read-only.
-- **Sandbox**: The isolated environment that runs unmodified linkding for the baseline experience (flow steps F4 and F5).
+- **Sandbox**: The isolated environment that runs unmodified linkding for the baseline experience (flow steps F4 and F5): the official linkding container image pinned by digest, with its documented configuration, as identified by the Adapter.
 - **Browser_Use**: An Agent operating the sandboxed linkding web page through a browser like a human. Does not include controlling the whole desktop (computer use).
 - **Decision_Doc**: The decision document produced in flow step F6; once confirmed by the user it is frozen and is the stable baseline for everything after.
 - **Approach_Option**: One proposed way to make linkding AI-powered (independent agent, source change, UI change or a mix), proposed by the Agent_Roles and carried in the Decision_Doc together with its assessment.
 - **Assessment**: The Agent_Roles' evaluation of one Approach_Option: feasibility, effort, risk, needed environments, and executable Acceptance_Checks. It is an LLM judgment, labeled as such, not a guarantee.
-- **Acceptance_Check**: An executable check that proves a feature works: an API read-back compared item by item, a run of the target's own test suite in the Development_Sandbox, or a Browser_Use check in the Run_Environment.
+- **Acceptance_Check**: An executable check that proves a feature works: an API read-back compared item by item, a run of the target's own test suite in a fresh container from the Development_Sandbox image, or a scripted Playwright browser check (no LLM) in the Run_Environment (Requirement 22.2).
 - **Flow_Graph**: The explicit graph of Task stages (nodes and guarded edges stored as data) that governs every state transition of a Task.
 - **Terminal_State**: One of success, failed, aborted, Analysis only, Docs only.
 - **Code_Agent**: The in-product Agent that edits a copy of the target source and runs tests inside the Development_Sandbox. It has no decision power and stops and asks when it cannot resolve a problem.
-- **Worktree**: A dedicated git worktree, one per Task, holding the only modified copy of the target source.
+- **Worktree**: An isolated per-Task working copy of the target source under git (implemented as a local clone from a mirror, not a linked worktree; see design), one per Task, holding the only modified copy of the target source.
 - **Feature_Contract**: The per-story, feature-level contract derived from the Frozen Decision_Doc and carried by every Product_Backlog story. It states the feature in plain language, what it should do, what it should NOT do (in feature terms), executable Acceptance_Checks where possible, and budgets. It contains no file or path lists (Requirement 40).
 - **Prototype**: A throwaway artifact the Agent_Roles may build in flow steps F3-F6 to help the approach decision. It is labeled "Prototype", is never an execution result and never counts as success (Requirement 41).
 - **Patch_Artifact**: The stored diff of the changes produced in a Worktree, kept as an Output_Docs artifact per Task.
@@ -138,7 +139,7 @@ Verified from the official linkding documentation and GitHub repository metadata
 - **Checkpoint_Demo**: The demo and confirmation point of one feature during development.
 - **Unconfirmed**: The mark on a result when the user did not respond at a confirmation point; it MUST NOT be treated as confirmed.
 - **Unverified**: The mark on a conclusion that has no supporting evidence, or whose cited evidence fails the Studio's existence check (cited file missing or quoted snippet absent); displayed as "Unverified".
-- **Failure_Class**: Failure classification, at least four classes: interface call failure, read-back mismatch, LLM output format invalid, rejected by a safety rule (for example a blocked worktree-escape attempt).
+- **Failure_Class**: Failure classification, at least four classes: interface call failure, read-back mismatch, LLM output format invalid, rejected by a safety rule (for example a blocked worktree-escape attempt); additionally budget exceeded and blocked by an unanswered question (Requirement 23.2).
 - **Analysis_Only**: The on-screen label "Analysis only - not executed".
 - **Docs_Only**: The on-screen label "Docs only - not developed".
 - **Case_Card**: A "similar approaches" card collected by the team itself, with a source link and an evidence boundary.
@@ -162,6 +163,7 @@ Verified from the official linkding documentation and GitHub repository metadata
 - **Retrospective**: The end-of-Task review of what worked, what failed and what to change.
 - **TTS_Service**: The in-cluster text-to-speech service (details in Requirement 31).
 - **LLM_Config**: The LLM base address, model name and key supplied by the Judge or the server.
+- **LLM_Proxy**: The Studio's own LLM proxy that holds the real LLM key and forwards requests from the Development_Sandbox, authenticating callers by a per-Task proxy credential (Requirement 30).
 
 ## UI Principles
 
@@ -237,6 +239,8 @@ flowchart TD
     ASK -- "Technical question" --> TM
     ASK -- "Feature or requirement question" --> MOD["Moderator asks the Judge in feature words;<br/>Task shows waiting for answer (R2, R40)"]
     MOD -- "Answer received" --> F10
+    ASK -. "Unanswered beyond the wait time:<br/>story marked Unconfirmed-blocked,<br/>next story if one is left (R40)" .-> F10
+    ASK -. "Unanswered, no story left (R40)" .-> FL
     TM -- "Technical answer" --> F10
     F10 -- "Change recorded in Event_Stream (R38)" --> TM{"Tech_Manager review of the changed files<br/>(LLM judgment, not success) (R40)"}
     TM -- "Approve" --> CP{"Confirmation point (R21):<br/>user feedback?"}
@@ -317,8 +321,8 @@ Flow chart notes:
 | Layer | Name | Content | Reader | Delivery | Location |
 |---|---|---|---|---|---|
 | A | Dev docs | AGENTS.md, .kiro/steering, .kiro/specs, hooks | Developers and Kiro | Committed with the repository | Repository root and `.kiro/` |
-| B | Runtime rules | Role duties, behavior rules, stage output schemas, linkding Adapter checklist, case library rules | In-product Agent_Roles | Shipped with the product, versioned, loaded at run time | Directory name UNDECIDED (design) |
-| C | Output docs | Decision_Doc, Product_Backlog, Sprint_Plan, Task_Board, Definition_of_Done, Demo_Review_Notes, Retrospective, plus requirements, design, tasks for the analyzed repository | Judge | Generated at run time, one set per Task | Location UNDECIDED (design) |
+| B | Runtime rules | Role duties, behavior rules, stage output schemas, linkding Adapter checklist, case library rules | In-product Agent_Roles | Shipped with the product, versioned, loaded at run time | `runtime-rules/` (decided in design.md) |
+| C | Output docs | Decision_Doc, Product_Backlog, Sprint_Plan, Task_Board, Definition_of_Done, Demo_Review_Notes, Retrospective, plus requirements, design, tasks for the analyzed repository | Judge | Generated at run time, one set per Task | `data/tasks/<taskId>/docs/` (decided in design.md; generated, gitignored) |
 
 Traceability: key requirements in A map to rules in B and to test checks. Example: A says "failures MUST be shown honestly", B has a matching Agent rule, and a test has a matching check. See the traceability table at the end.
 
@@ -378,7 +382,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 5. THE Recency_Window value SHALL be UNDECIDED and decided in the design stage.
 6. WHEN an Agent_Role is blocked by a failure or a safety rule, THE Workspace SHALL show the status "blocked" with the reason.
 7. WHILE nothing is happening in a Task, THE Workspace SHALL NOT display any animation that implies activity.
-8. THE Studio SHALL show a role as "speaking" or "thinking" because of streaming only when a message-started event for that role exists inside the Recency_Window and no event that ends that message (complete or incomplete) follows it.
+8. THE Studio SHALL show a role as "speaking" or "thinking" because of streaming only when a message-started event or a message-progress event for that role's message exists inside the Recency_Window and no event that ends that message (complete or incomplete) follows it. A message-progress event is a text-free lifecycle event that the Studio emits at a fixed interval while the message streams; it stores no text (Requirement 27.10).
 9. WHERE Halloween-style avatar effects are used, THE Studio SHALL bind each effect to the Role_Status derived from events, and SHALL show no activity effect on an avatar while no event backs it.
 10. WHILE the Code_Agent waits for an answer to a question (Requirement 40), THE Workspace SHALL show an honest "waiting for answer" status with the asked party (Tech_Manager or Judge) and the elapsed seconds.
 
@@ -538,7 +542,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 1. WHILE a Task is running, THE Studio SHALL accept a Judge message at any step.
 2. WHEN a Judge message arrives, THE Studio SHALL display it in the Workspace and deliver it to the Agent_Roles before their next statement or action.
 3. THE Studio SHALL record each Judge message into the Event_Stream.
-4. WHEN a Judge message conflicts with a Frozen Decision_Doc, THE Studio SHALL tell the Judge that the change requires a new Decision_Doc version (Requirement 16).
+4. WHEN a Judge message conflicts with a Frozen Decision_Doc, THE Studio SHALL tell the Judge that the change requires a new Decision_Doc version (Requirement 16). Detecting the conflict is an LLM judgment and is best effort (measured, not guaranteed); the Studio enforces only that a changed baseline needs a new Decision_Doc version (Requirement 16).
 
 ### Requirement 13: Sandbox run (linkding only)
 
@@ -551,7 +555,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 1. WHERE the Task is Adapted_Repo, THE Studio SHALL start linkding in the Sandbox before the Browser_Use step.
 2. WHEN a Task starts a Sandbox, THE Studio SHALL reset linkding to the fixed test data set.
 3. THE Studio SHALL run only the linkding version identified by the Adapter's target reference and SHALL NOT run any other code taken from a submitted repository.
-4. IF the Sandbox fails to start, THEN THE Studio SHALL display the failure, record it in the Event_Stream, and mark the Task as not executed.
+4. IF the Sandbox fails to start, THEN THE Studio SHALL display the failure, record it in the Event_Stream, and end the Task in the Terminal_State `failed` with the label "not executed".
 5. THE Studio SHALL keep Sandbox access limited to the Studio backend and SHALL NOT expose the linkding token to any Viewer or Judge view.
 6. THE Studio SHALL run the unmodified linkding version identified by the Adapter in the Sandbox for flow steps F4 and F5; the modified target software runs only in the Run_Environment (Requirement 39).
 
@@ -573,7 +577,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 8. WHERE Browser_Use uses screenshots, THE Studio SHALL use a model that accepts image input; screenshots are allowed because image input by the default model deepseek-flash was verified by a live test on 2026-11-20 (a solid red image was identified as red). How well the model reads real page screenshots is not yet verified.
 9. WHERE the configured model does not accept image input, THE Studio SHALL use page-structure operation only.
 10. THE Studio SHALL keep desktop control (computer use) out of scope.
-11. WHERE an Acceptance_Check is a browser check, THE Studio SHALL run it through Browser_Use against the Run_Environment and SHALL record its events in the Event_Stream.
+11. WHERE an Acceptance_Check is a browser check, THE Verifier SHALL run it as a scripted Playwright check without an LLM (Requirement 22.9) against the Run_Environment and SHALL record its events in the Event_Stream; the LLM-driven Browser_Use operator is used only for the experience in flow step F5.
 
 ### Requirement 15: Decision_Doc production, confirmation and freeze
 
@@ -589,7 +593,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 4. WHILE no Decision_Doc version is confirmed, THE Studio SHALL block the planning, document-first and execution steps from starting.
 5. WHILE no Decision_Doc version is confirmed, THE Studio SHALL prevent every Agent_Role from planning or executing based on that version.
 6. WHEN a Decision_Doc is Frozen, THE Studio SHALL reject any in-place modification of its content.
-7. WHERE the purpose of a workflow is B, THE Studio SHALL require explicit Judge confirmation before any write operation derived from an AI suggestion.
+7. WHERE the purpose of a workflow is B and the confirmed approach executes the workflow by operating linkding through its API, THE Studio SHALL require explicit Judge confirmation before any write operation derived from an AI suggestion. Where the confirmed approach is a source or UI change, this confirmation step applies to how the built feature behaves and is checked by the Acceptance_Checks (Requirement 22).
 8. THE Studio SHALL display statements in the Decision_Doc whose evidence is missing or fails validation (Requirement 24) as Unverified.
 9. THE "UI impact" section of the Decision_Doc SHALL describe how the user interface would change after the feature becomes AI-powered, SHALL be proposed by the Agent_Roles (best effort) and decided with the Judge, and SHALL NOT be pre-decided by these requirements.
 10. THE "executable acceptance checks" section of the Decision_Doc SHALL list each check in a form the Verifier can execute (Requirement 22).
@@ -632,9 +636,9 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 #### Acceptance Criteria
 
 1. THE Studio SHALL label every analyzed workflow as A (replace a human decision or work step with AI) or B (AI-powered: a function becomes stronger or new) in the Decision_Doc.
-2. WHERE a workflow is labeled A, THE Studio SHALL run its execution as the stages read, plan, try one item, write in batch, read back, with the write tools available only in the "try one item" and "write in batch" stages and the read tools available in the read and read-back stages, and with each stage entered only through the Flow_Graph.
-3. WHERE a workflow is labeled B, THE Studio SHALL add to the A stages a stage "retrieve or infer, then suggest with evidence" before any write stage, and SHALL require a schema-valid suggestion with an evidence reference to enter the write stage.
-4. WHERE a workflow is labeled B, THE Studio SHALL require Judge confirmation before writing any result.
+2. WHERE a workflow is labeled A and the confirmed approach executes the workflow by operating linkding through its API, THE Studio SHALL run its execution as the stages read, plan, try one item, write in batch, read back, with the write tools available only in the "try one item" and "write in batch" stages and the read tools available in the read and read-back stages, and with each stage entered only through the Flow_Graph. Where the confirmed approach is a source or UI change, these stages apply to how the built feature behaves and are checked by the Acceptance_Checks (Requirement 22).
+3. WHERE a workflow is labeled B and the confirmed approach executes the workflow by operating linkding through its API, THE Studio SHALL add to the A stages a stage "retrieve or infer, then suggest with evidence" before any write stage, and SHALL require a schema-valid suggestion with an evidence reference to enter the write stage.
+4. WHERE a workflow is labeled B and the confirmed approach executes the workflow by operating linkding through its API, THE Studio SHALL require Judge confirmation before writing any result (consistent with Requirement 15.7).
 5. THE Agent_Roles SHOULD make good use of each stage, for example plan from what was read and choose a representative item to try first (best effort, measured, not guaranteed); the Verifier and the read-back stage check the outcome (Requirement 22).
 6. IF a workflow cannot be labeled A or B, THEN THE Studio SHALL list it as an open question in the Decision_Doc.
 
@@ -704,7 +708,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 #### Acceptance Criteria
 
 1. WHERE the Task is Adapted_Repo, THE Studio SHALL execute the approved plan against linkding: through the linkding API in the Sandbox for approaches that do not change the source, and in the Run_Environment for approaches that change the source or the UI (Requirements 38 and 39).
-2. WHEN execution finishes, THE Verifier SHALL run the executable Acceptance_Checks of the Frozen Decision_Doc and compare the results item by item with the plan; an Acceptance_Check is one of: an API read-back through the linkding REST API, a run of the target's own test suite in the Development_Sandbox, or a Browser_Use check that a new or changed UI element works.
+2. WHEN execution finishes, THE Verifier SHALL run the executable Acceptance_Checks of the Frozen Decision_Doc and compare the results item by item with the plan; an Acceptance_Check is one of: an API read-back through the linkding REST API, a run of the target's own test suite in a fresh container from the Development_Sandbox image (not necessarily the same container instance), or a scripted Playwright browser check, executed by the Verifier without an LLM (criterion 9), that a new or changed UI element works; the LLM-driven Browser_Use operator is used only for the experience in flow step F5.
 3. THE Studio SHALL determine success from the Verifier result of the Acceptance_Checks only.
 4. WHEN the Verifier compares tags, THE Verifier SHALL use an inclusion comparison (planned tags are a subset of read-back tags), because linkding auto-tagging rules merge tags.
 5. WHEN the plan creates a bookmark whose URL already exists, THE Verifier SHALL treat the result as an update of the existing bookmark and SHALL compare accordingly.
@@ -722,7 +726,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 #### Acceptance Criteria
 
 1. IF any step fails, THEN THE Studio SHALL display the failure, record it in the Event_Stream, and keep the original failure visible in any later retry.
-2. THE Studio SHALL classify each failure into at least four Failure_Classes: interface call failure, read-back mismatch, LLM output format invalid, and rejected by a safety rule.
+2. THE Studio SHALL classify each failure into at least four Failure_Classes: interface call failure, read-back mismatch, LLM output format invalid, and rejected by a safety rule; the Studio additionally uses the Failure_Classes budget exceeded and blocked by an unanswered question.
 3. THE Studio SHALL display a separate count for each Failure_Class.
 4. THE Studio SHALL label every simulated result as simulated.
 5. WHERE a retry occurs, THE Studio SHALL display each attempt and its outcome as separate events.
@@ -759,6 +763,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 5. IF the Judge asks for execution on an Other_Repo, THEN THE Studio SHALL decline and explain that execution is not supported in the first version.
 6. THE Studio repository SHALL contain linkding only as an unmodified external dependency and SHALL NOT contain modified target code; modified copies SHALL exist only in per-Task Worktrees (Requirement 38).
 7. THE Studio SHALL confine the file writes of the Code_Agent to the Task Worktree (Requirement 38); the guarantee comes from the container boundary of the Development_Sandbox, and network access is limited only as far as the container's network policy sets it (Requirement 38).
+8. IF the backend that serves a Task has no Docker engine, THEN THE Studio SHALL end a linkding Task in the Terminal_State `failed` with the label "not executed" after analysis, and THE home page SHALL state that live execution is unavailable.
 
 ### Requirement 26: Final demo and Replay
 
@@ -795,7 +800,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 7. THE Studio SHALL persist model text in the Event_Stream only as Complete_Messages, and an interrupted stream only as the partial text marked "incomplete" with the reason (Requirement 3.8, 3.9, 3.11).
 8. WHEN a Replay shows message text, THE Studio SHALL label it "Replay".
 9. THE Studio SHALL give every event a sequence number and a timestamp.
-10. THE Studio SHALL record for each model message a message-started event and an event that ends it (complete or incomplete), without text chunks, so that presence can be derived from events (Requirement 2.8).
+10. THE Studio SHALL record for each model message a message-started event, `message_progress` lifecycle events without text at a fixed interval while the message streams, and an event that ends it (complete or incomplete), without text chunks, so that presence can be derived from events (Requirement 2.8).
 11. THE Replay_File SHALL carry a schema version.
 12. THE Replay_File SHALL contain no key and no token.
 13. THE Replay_File SHALL be servable as a static file by the front-end host, so that a Replay can be viewed while the backend is offline, and THE Studio SHALL label it "Replay".
@@ -825,10 +830,10 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 #### Acceptance Criteria
 
 1. WHEN a Task starts on Adapted_Repo, THE Studio SHALL reset linkding to the fixed test data set before any Agent action.
-2. THE Studio SHALL provide an operation that restores linkding to the fixed test data set.
+2. THE Studio SHALL provide an operation that restores linkding to the fixed test data set, and SHALL accept the restore operation only from the current operator (the queue lease holder, Requirement 28) or the admin.
 3. THE Studio SHALL keep only test data in linkding and SHALL keep real personal data out of it.
 4. WHEN a reset or restore finishes, THE Verifier SHALL confirm that the linkding data equals the fixed test data set.
-5. IF a reset or restore fails, THEN THE Studio SHALL display the failure and SHALL NOT start the Task.
+5. IF a reset or restore fails, THEN THE Studio SHALL display the failure, SHALL NOT start any Agent action on linkding, and SHALL end the Task in the Terminal_State `failed` with the label "not executed".
 
 ### Requirement 30: LLM configuration and data egress
 
@@ -839,7 +844,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 #### Acceptance Criteria
 
 1. THE Studio SHALL use an OpenAI-compatible request format to call the LLM.
-2. THE Studio SHALL let the Judge fill in the base address, model name and key.
+2. WHERE Judge-supplied LLM configuration is enabled (a feature flag, off until Open items 6 and 20 are settled), THE Studio SHALL let the Judge fill in the base address, model name and key.
 3. THE Studio SHALL use the default model name deepseek-flash and the default base address https://api.deepseek.com; both were verified by a live test on 2026-11-20, in which the models endpoint listed deepseek-flash and deepseek-v4-pro.
 4. THE Studio SHALL obtain structured output by requiring the LLM to output JSON or by using function calling, and SHALL validate all structured output locally regardless of the method.
 5. THE Studio SHALL keep the LLM key and the GitHub read-only token in server-side environment variables or server-side memory only, and SHALL keep them out of the repository, logs and the Event_Stream.
@@ -852,6 +857,9 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 12. THE model streams its thinking text separately: reasoning content arrives before the answer text. Thinking is on by default and consumes the token budget. THE Studio SHALL therefore set max_tokens so that it leaves room for thinking, and SHALL check the finish reason of every response for truncation.
 13. IF the finish reason shows that a response was truncated, THEN THE Studio SHALL treat the response as a failure with the Failure_Class "LLM output format invalid" and SHALL NOT use the truncated output as a valid structured result.
 14. Whether thinking can be turned off is TO BE CONFIRMED (not verified); THE Studio SHALL NOT rely on turning thinking off.
+15. THE Studio SHALL redact every known secret value (LLM key, GitHub token, linkding token, per-Task proxy credential) from every event before the event is persisted, broadcast or written to a Replay_File.
+16. THE Studio SHALL NOT pass the real LLM key into the Development_Sandbox; THE Studio SHALL give the Code_Agent a per-Task credential for the LLM_Proxy, which holds the real key. Whether the chosen Code_Agent runtime accepts a custom base address is TO BE CONFIRMED by the first spike task (in the 2026-11-20 test, setting a custom base address on the harness runtime returned HTTP 404; the cause is not known).
+17. WHERE a Judge-supplied base address is enabled, THE Studio SHALL accept only https addresses that resolve to public IP addresses and SHALL reject loopback, private, link-local and cluster addresses (server-side request forgery protection).
 
 ### Requirement 31: Narration (text to speech)
 
@@ -887,6 +895,8 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 6. THE Studio SHALL first run on the user's Windows PC; hosting (k3s, Cloudflare domain) is done last and is UNDECIDED.
 7. WHEN the backend is migrated, THE Studio SHALL keep the Judge-facing link unchanged by changing only the backend.
 
+Note (hosting consequence, Open item 46): live execution (flow steps F4-F10) needs the Docker engine on the developer's Windows PC. After the front end moves to the cluster, live execution is available only while the PC and its tunnel are up; otherwise Judges can use analysis (if the backend is hosted) and labeled Replays.
+
 ### Requirement 33: Open source and submission compliance
 
 **User Story:** As a developer, I want the repository to meet submission rules, so that the entry is valid.
@@ -896,11 +906,11 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 #### Acceptance Criteria
 
 1. THE repository SHALL contain the complete source code, assets and run instructions.
-2. THE repository SHALL contain a LICENSE file with an identifiable open-source license; the choice is UNDECIDED (leaning Apache-2.0).
+2. THE repository SHALL contain a LICENSE file with the Apache-2.0 license (DECIDED; the LICENSE file is committed).
 3. THE repository SHALL commit the `.kiro/` directory and SHALL keep it out of `.gitignore`.
 4. THE repository SHALL contain `.env.example` and SHALL keep every key, token and `.env` file out of the repository.
 5. THE README SHALL state that the project is a new work with new history, written entirely by the team, and that no code or assets are copied from other projects.
-6. THE README SHALL list third-party dependencies with their licenses.
+6. THE README SHALL list third-party dependencies with their licenses, including the DeepSeek Harness runtime executable as MIT with its third-party notices (Open item 29).
 7. THE README SHALL explain how Kiro was used, and all Devpost submission materials SHALL be in English.
 8. THE README SHALL describe how a Judge tries the product; where login is needed, review account details SHALL be provided outside the repository.
 9. THE Studio SHALL remain free for Judges to use until 2027-01-30 05:00 Beijing time (TO BE CONFIRMED).
@@ -987,12 +997,12 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 1. WHERE the Task is Adapted_Repo and the confirmed approach changes source, THE Code_Agent SHALL modify a copy of the target source inside a dedicated git Worktree, inside the Development_Sandbox.
 2. THE Studio SHALL run the whole code-Agent runtime together with its tools and the needed toolchains (Node and Python) inside one container per Task (the Development_Sandbox), and SHALL confine the Code_Agent's file writes to the Worktree through the container boundary, with the Worktree as the only host path shared with the container for writing. The guarantee is confinement by the container boundary, not per-file permission. Which files inside the Worktree the Code_Agent changes is not restricted in advance, because it cannot be predicted in an unfamiliar codebase.
 3. THE Studio SHALL apply resource and time budgets per Task to the Code_Agent; the budget values are UNDECIDED (design).
-4. THE Studio SHALL limit network access from the Development_Sandbox as far as the container's network policy can enforce it; the policy is UNDECIDED (design). Without such a policy, the container boundary alone does not limit network access.
+4. THE Studio SHALL limit network access from the Development_Sandbox, the Run_Environment and the Verifier test container with the same network policy, as far as the container's network policy can enforce it; the initial policy is set in design.md (Open item 26). Without such a policy, the container boundary alone does not limit network access.
 5. WHEN the Code_Agent changes a file, THE Studio SHALL record the change and its diff in the Event_Stream and SHALL make the diff available in the Engineering details view on demand; the Studio SHALL NOT push the diff to the Judge as the main view.
 6. THE Studio SHALL store the produced changes as a Patch_Artifact among the Output_Docs of the Task and SHALL NOT commit them into the Studio's own repository.
 7. IF the Code_Agent fails or exceeds a budget, THEN THE Studio SHALL display the failure honestly with its Failure_Class and record it in the Event_Stream.
 8. IF the Code_Agent attempts to write outside the Worktree, THEN THE container boundary SHALL keep the write from reaching any host path outside the Worktree, and where the Studio detects the attempt, THE Studio SHALL record it with the Failure_Class "rejected by a safety rule" in the Event_Stream and show it only in the Engineering details view.
-9. THE Studio SHALL create each Worktree at Task start and keep one Worktree per Task.
+9. WHERE the Task is Adapted_Repo, THE Studio SHALL create the Worktree when the flow first needs it (consistent with Requirement 39.4) and keep one Worktree per Task.
 10. WHERE the DeepSeek Harness is chosen and a process sandbox is used on Windows, THE Studio SHALL treat that process sandbox's write confinement as possibly only partial and SHALL record in the Event_Stream the enforcement level it reports. This criterion is not part of the first-version path.
 11. WHERE a process sandbox is used, THE Studio SHALL NOT claim that confinement is complete when that sandbox reports partial or no enforcement. This criterion is not part of the first-version path.
 
@@ -1007,13 +1017,13 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 1. THE Studio project SHALL keep four environments separate: the Dev_Environment, the Studio_Runtime, the Development_Sandbox and the Run_Environment.
 2. THE Development_Sandbox SHALL be one container per Task that holds the whole code-Agent runtime, its tools, and both the Node and Python toolchains, because the target linkding is a Python/Django application; because only one Task runs at a time (Requirement 28), one container is enough. The exact image is UNDECIDED (design).
 3. THE Run_Environment SHALL start from the Task's Worktree result and SHALL be separate from the Development_Sandbox.
-4. WHEN a Task starts, THE Studio SHALL start the Development_Sandbox and the Run_Environment from a clean state.
+4. WHERE the Task is Adapted_Repo, THE Studio SHALL start each of the Development_Sandbox and the Run_Environment from a clean state when the flow first needs it: the Development_Sandbox before the first development story or Prototype, and the Run_Environment after a story attempt, to run the modified target.
 5. THE Studio SHALL reset the Run_Environment by discarding and recreating it.
 6. THE Development_Sandbox and the Run_Environment SHALL share no writable state except the explicit Worktree handoff.
 7. WHEN the Worktree handoff happens, THE Studio SHALL record it in the Event_Stream.
 8. WHERE the DeepSeek Harness is chosen and a process sandbox is used, THE Studio SHALL NOT assume that the process sandbox supplies the Python or Node environments or runs the target app; that process sandbox confines file writes of a spawned process only (modes read-only, workspace-write, danger-full-access), so the toolchains and the Run_Environment must be provided separately. This criterion is not part of the first-version path.
-9. THE Studio SHALL have the Agent_Roles (DeepSeek) analyze, from the target's own files and documentation, how to build and start the modified target software in the Run_Environment, and the Studio SHALL only assess the result of that start. The quality of the analysis is best effort (Process Principle 5).
-10. THE Studio SHALL provide no fallback start recipe and no start optimization in the first version, and the Adapter SHALL NOT define the start procedure.
+9. THE Studio SHALL have the Agent_Roles (DeepSeek) analyze, from the target's own files and documentation, how to build and start the modified target software in the Run_Environment; the Agent_Roles propose the start commands during document-first (flow step F8), THE Studio SHALL record them in a `runEnvironment` section of the Output_Docs and SHALL execute them only inside the Run_Environment container, and the Studio SHALL only assess the result of that start. The quality of the analysis is best effort (Process Principle 5).
+10. THE Studio SHALL provide no fallback start recipe and no start optimization for the modified target software in the Run_Environment in the first version, and the Adapter SHALL NOT define the start procedure of the modified target; the Adapter only identifies the unmodified baseline (the official linkding container image pinned by digest plus its documented configuration), which the Sandbox runs (Requirement 13).
 11. IF the modified target software fails to start in the Run_Environment, THEN THE Studio SHALL display the failure honestly (Requirement 23), record it in the Event_Stream, and end the Task in the Terminal_State failed (Requirement 36).
 
 ### Requirement 40: Feature_Contract per story, Tech_Manager review, stop and ask
@@ -1040,6 +1050,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 14. WHILE a question awaits an answer, THE Workspace SHALL show an honest "waiting for answer" status (Requirement 2).
 15. IF a need to change the approach itself arises, THEN THE Studio SHALL return the Task to flow step F6 and require a new Decision_Doc version (Requirement 37.9).
 16. THE Code_Agent and the Tech_Manager SHOULD follow the Feature_Contract and ask when unsure (best effort, measured, not guaranteed); the Studio measures in the benchmark how often changes needed review corrections or escalation, and records the result of each Verifier check for the story.
+17. IF a Code_Agent question stays unanswered beyond its wait time (initial value 300 s, set in design.md, Open item 39), THEN THE Studio SHALL mark the story Unconfirmed-blocked and continue the flow with the next story, or end the Task in the Terminal_State `failed` if no story is left.
 
 ### Requirement 41: Prototype during the requirement meeting
 
@@ -1076,7 +1087,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 Nothing here may be assumed:
 
 1. TO BE CONFIRMED: Official Kiroween rule details (category name changes, format for disclosing new code, whether hosting may change after submission). The official page returned HTTP 403.
-2. UNDECIDED: License choice (leaning Apache-2.0).
+2. DECIDED: The license is Apache-2.0; the LICENSE file is committed (Requirement 33.2).
 3. CLOSED (verified by a live test on 2026-11-20): DeepSeek function calling works.
 4. CLOSED (verified by a live test on 2026-11-20): deepseek-flash accepts image input (a solid red image was identified as red). Screenshot reading quality on real pages is tracked in item 45; page-structure operation stays the primary Browser_Use method (Requirement 14).
 5. CLOSED (verified by a live test on 2026-11-20): the DeepSeek base address https://api.deepseek.com and the model name deepseek-flash are valid; the models endpoint lists deepseek-flash and deepseek-v4-pro.
@@ -1084,13 +1095,13 @@ Nothing here may be assumed:
 7. UNDECIDED: Hosting domain and public entry.
 8. UNDECIDED: Network path from the PC to the TTS_Service; TO BE CONFIRMED: the TTS_Service facts in Requirement 31.
 9. UNDECIDED: Decision-step UI form (decided by experimenting during implementation).
-10. UNDECIDED: Confirmation wait time at confirmation points (design).
+10. Initial value set in design.md (adjustable): Confirmation wait time at confirmation points (Requirement 21).
 11. TO BE CONFIRMED: Number of meeting roles.
 12. TO BE CONFIRMED: GitHub anonymous rate limit value.
-13. UNDECIDED: Directory names and locations of Runtime_Rules (B) and Output_Docs (C).
-14. UNDECIDED: Recency_Window value for "working" indicators (Requirement 2, design).
-15. UNDECIDED: Acknowledgement time bound for user actions (Requirement 6, design).
-16. UNDECIDED: Per-Task read-volume limit value (Requirement 34, design).
+13. Initial value set in design.md (adjustable): Directory names and locations of Runtime_Rules (B) and Output_Docs (C).
+14. Initial value set in design.md (adjustable): Recency_Window value for "working" indicators (Requirement 2).
+15. Initial value set in design.md (adjustable): Acknowledgement time bound for user actions (Requirement 6).
+16. Initial value set in design.md (adjustable): Per-Task read-volume limit value (Requirement 34).
 17. TO BE CONFIRMED: Remotion free-license conditions for an individual developer.
 18. UNDECIDED: Final-week scope decision. If the project cannot be finished, the user wants the UI (Requirements 1-8) and the requirement-analysis stage (flow steps F1-F6, ending with the frozen Decision_Doc) protected first. The decision is made in the last week before the deadline; until then work proceeds at the normal pace. No priority tiers are defined now.
 19. TO BE CONFIRMED: Whether the Kiroween 2026 judging criteria match the 2025 edition (potential value, implementation of Kiro, creativity), and whether 2026 has extra prize categories.
@@ -1099,41 +1110,46 @@ Nothing here may be assumed:
 22. CLOSED (verified by a live test on 2026-11-20): the default model and endpoint support streamed responses (Requirement 30). The model streams thinking text separately before the answer text.
 23. CLOSED (verified by a live test on 2026-11-20): function calling and image input of the default model (Requirements 14 and 30). Items 3 and 4 above record the same result.
 24. TO BE CONFIRMED: Whether one entry may be in more than one Kiroween category (Requirement 1).
-25. UNDECIDED: Resource and time budgets per Task for the Code_Agent (Requirement 38, design).
-26. UNDECIDED: Network access policy of the Development_Sandbox (Requirement 38, design).
-27. UNDECIDED: Exact image and contents of the Development_Sandbox (Node plus Python) (Requirement 39, design).
-28. UNDECIDED: Wait and timeout values that move a Task to a Terminal_State (Requirement 36, design).
-29. TO BE CONFIRMED: Licensing of the DeepSeek Harness packages: the harness README says MIT, but the npm sub-packages show BSD-3-Clause; this must be reconciled and listed in the README.
-30. TO BE CONFIRMED: pi-agent-core facts relayed by the user (npm @earendil-works/pi-agent-core, MIT, TypeScript, version 1.5.2 on npm) and the statement that the harness SDK has no mid-turn cancel; both unverified here.
+25. Initial value set in design.md (adjustable): Resource and time budgets per Task for the Code_Agent (Requirement 38).
+26. Initial value set in design.md (adjustable): Network access policy of the Development_Sandbox (Requirement 38).
+27. Initial value set in design.md (adjustable): Exact image and contents of the Development_Sandbox (Node plus Python) (Requirement 39).
+28. Initial value set in design.md (adjustable): Wait and timeout values that move a Task to a Terminal_State (Requirement 36).
+29. RECORDED: Licensing of the DeepSeek Harness. The artifact the Studio uses is the official bundled runtime executable from the PyPI wheel `deepseek-harness-runtime-bin` 0.2.2rc2; its wheel metadata states Author DeepSeek, License-Expression MIT, source github.com/deepseek-ai/deepseek-harness, and the wheel ships THIRD_PARTY_NOTICES. The npm TypeScript SDK client `@deepseek-ai/dsh-sdk-client` shows BSD-3-Clause and is not used in the first version. The README MUST list the runtime as MIT together with its third-party notices (Requirement 33.6).
+30. VERIFIED on 2026-11-20 from npm: @earendil-works/pi-ai and @earendil-works/pi-agent-core version 1.5.2, MIT, engines node >=22.19.0. A smoke test against deepseek-flash ran streaming (text, thinking and tool-call deltas), tool use, abort, and a tool blocked through beforeToolCall successfully. The statement that the harness SDK has no mid-turn cancel comes from the harness README and was not tested.
 31. UNDECIDED: Success rate of model-driven source changes to an unfamiliar Django app; it is unknown and must be measured, and failures are shown honestly.
 32. TO BE CONFIRMED: Priority of Requirement 41 (Prototype during the requirement meeting). It is marked Stretch for now; the user confirms.
-33. UNDECIDED: Feature_Contract budget values per story (Requirement 40, design), and the concrete Feature_Contract schema (design).
+33. Initial value set in design.md (adjustable): Feature_Contract budget values per story and the concrete Feature_Contract schema (Requirement 40).
 34. UNDECIDED: Whether and how the Development_Sandbox is available before the Decision_Doc freeze for a Prototype on an Adapted_Repo (Requirement 41, design).
-35. UNDECIDED: Retry limit of the Code_Agent and the "stop and ask" threshold (Requirement 40, design).
+35. Initial value set in design.md (adjustable): Retry limit of the Code_Agent and the "stop and ask" threshold (Requirement 40).
 36. DECIDED: The Development_Sandbox is one container per Task that holds the whole code-Agent runtime, its tools and the Node and Python toolchains (Requirements 38 and 39). The question "host process versus Docker" is closed in favor of a container. Remaining design details: image contents (item 27) and network policy (item 26).
 37. TO BE CONFIRMED, relevant only if the DeepSeek Harness is chosen and a process sandbox is used (not part of the first-version path): facts about the DeepSeek Harness process sandbox, read from the local harness documentation and not tested here: it confines file-write effects of a spawned process (modes read-only, workspace-write, danger-full-access); network and process visibility are not covered; backends are Linux bwrap/Landlock, macOS Seatbelt and a Windows ACL restricted-token runner that reports enforcement as "partial" (documented gaps: objects granting Everyone write access, NTFS hard links); containers and microVMs are separate sibling implementations; it provides no Python or Node environment and does not run the target app; the harness's own minimal composition uses danger-full-access, so confinement must be switched on explicitly. Must be confirmed by experiment on the target platform.
 38. UNDECIDED: How the Tech_Manager review is evaluated in the benchmark (for example agreement with the Verifier results and with human labels of correct and incorrect changes) (Requirement 40, design).
-39. UNDECIDED: Wait time and escalation path when a Code_Agent question stays unanswered by the Judge (Requirement 40, design).
+39. Initial value set in design.md (adjustable): Wait time and escalation path when a Code_Agent question stays unanswered by the Judge (Requirement 40).
 40. UNDECIDED: How Assessment accuracy and the other Best_Effort_Goals are measured and reported (Process Principle 5, Requirement 37.10, design).
-41. UNDECIDED: Exact contents of the Adapter beyond the target identity and reference, the fixed test data set, and the assessment checks (design).
-42. UNDECIDED: Whether the complete reasoning text is persisted together with a Complete_Message so that Replay can show it (Requirement 3.12, design).
+41. UNDECIDED: Exact contents of the Adapter beyond the target identity and reference (including the pinned baseline image and its documented configuration), the fixed test data set, and the assessment checks (design).
+42. Initial value set in design.md (adjustable): Whether the complete reasoning text is persisted together with a Complete_Message so that Replay can show it (Requirement 3.12).
 43. TO BE CONFIRMED: Whether thinking can be turned off on the default model; not verified, and the Studio does not rely on it (Requirement 30.14).
-44. UNDECIDED: The agent runtime choice itself. It is decided by the narrow plan in the design-stage items (half-day smoke test, then a comparison at the first development story), and the choice may differ between the meeting roles and the code Agent.
+44. DECIDED in design.md: the agent runtimes, behind a thin runtime interface. Meeting roles: pi-agent-core in the backend process. Code_Agent: the official DeepSeek Harness runtime executable in headless mode. Alternates: OpenCode and the OpenHands SDK. The comparison is repeated at the first development story with real documents.
 45. TO BE CONFIRMED: How well deepseek-flash reads real page screenshots; only a solid-color image was tested (Requirement 14.8).
+46. RECORDED (hosting consequence), linked to items 20 and 21: live execution (flow steps F4-F10) needs the Docker engine on the developer's Windows PC. After the front end moves to the cluster, live execution is available only while the PC and its tunnel are up; otherwise Judges can use analysis (if the backend is hosted) and labeled Replays (Requirement 32).
+47. TO BE DONE (not a requirement change): the developer's Windows PC currently has Node 22.14, and the pi packages require Node >=22.19.0, so Node must be upgraded on the PC.
+48. TO BE DONE (not a requirement change): Docker Hub is not reachable from the PC; images are pulled on another machine, pinned by digest and transferred with docker save and docker load (see design).
+49. TO BE CONFIRMED: whether the chosen Code_Agent runtime accepts a custom base address pointing at the LLM_Proxy; in the 2026-11-20 test a custom base address on the harness runtime returned HTTP 404 with an unknown cause (Requirement 30.16).
+50. TO BE CONFIRMED by the user: API-operation stories write through Studio code from a validated plan (no LLM-facing write tool) (design Gap 5).
 
 ## Design-Stage Discussion Items
 
-- Agent framework choice (not specified by requirements).
+- Agent framework choice: decided in design.md.
 - The in-progress message buffer: the server keeps the text of a message that is still streaming in memory only, so that a page reload mid-stream can show it (best effort); no chunk is stored, and the buffer is dropped when the message is persisted as complete or incomplete (Requirements 3 and 27).
-- The Adapter contents: target identity and reference, the fixed test data set, and the assessment checks; no start procedure (Requirement 39).
-- Browser automation library choice.
+- The Adapter contents: target identity and reference (including the pinned baseline image and its documented configuration, which the Sandbox runs), the fixed test data set, and the assessment checks; no start procedure for the modified target (Requirement 39).
+- Browser automation library choice: decided in design.md.
 - Single Agent for small projects versus multiple roles with multiple worktrees and merging for large projects.
 - Event schema and Remotion playback structure, including how presence status is derived from events.
 - TTS network path and audio compression format.
 - Honoring the "demo and verify" item for every feature in our own tasks.
 - Separating the human-readable narration text (streamed) from the machine-readable structured result (validated locally after the stream completes).
 - Handling of reasoning text: it is shown in a collapsible section labeled model-provided when the provider returns it (Requirement 3.12); design decides whether it is persisted (open item 42) and how max_tokens leaves room for thinking (Requirement 30.12).
-- Agent runtime selection, narrow plan: first a half-day smoke test of the candidates (pi-agent-core, npm @earendil-works/pi-agent-core, TO BE CONFIRMED; and the official DeepSeek Harness with its TypeScript SDK client, npm @deepseek-ai/dsh-sdk-client), then the real comparison at the first development story using the project's own real documents. Criteria: works out of the box; cheaper and faster; follows instructions better (including tool whitelists and stopping to ask). The harness licensing question (open item 29) MUST be reconciled and listed in the README if the harness is used. The design keeps a thin runtime interface so that the Agent runtime can be swapped cheaply. The choice may differ between the meeting roles and the code Agent.
+- Agent runtime selection: DECIDED in design.md (open item 44). Meeting roles: pi-agent-core in the backend process; Code_Agent: the official DeepSeek Harness runtime executable in headless mode; alternates: OpenCode and the OpenHands SDK; all behind a thin runtime interface so that the runtime can be swapped cheaply. The comparison is repeated at the first development story using the project's own real documents. Criteria: works out of the box; cheaper and faster; follows instructions better (including tool whitelists and stopping to ask). The harness licensing is recorded in open item 29 and listed in the README.
 - Building or running the modified target without docker-in-docker.
 - Image contents, size and network policy of the per-Task Development_Sandbox container (Python plus Node).
 - The unknown success rate of model-driven source changes to an unfamiliar Django app: it must be measured, and failures are shown honestly.
@@ -1163,24 +1179,24 @@ Nothing here may be assumed:
 | 10 Download and read | A, B | Read-only and no-execution check; example test for events |
 | 11 Meeting analysis | A, B, C | Schema validation of role statements and evidence marks; example test that a role turn without a valid statement is recorded as failed; participation and question quality are Best_Effort_Goals measured in the benchmark, not tested as guarantees |
 | 12 Interjection | A, B | Example test that interjections enter the Event_Stream |
-| 13 Sandbox | A, B | Integration test for start and reset |
-| 14 Browser use | A, B | End-to-end example; failure classification check; browser check against the Run_Environment |
+| 13 Sandbox | A, B | Integration test for start and reset; example test that a start failure ends the Task in `failed` with the label "not executed" |
+| 14 Browser use | A, B | End-to-end example; failure classification check; scripted Playwright browser check (no LLM) by the Verifier against the Run_Environment |
 | 15 Decision_Doc freeze | A, B, C | State machine check: blocks later steps while unconfirmed; rejects edits when Frozen; schema validation that approach options, assessments, chosen approach, UI impact and executable acceptance checks are present |
 | 16 Version changes | A, B, C | Property test for hash recomputation; example test for version chain |
 | 17 Case inspiration | A, B | Schema validation: card has source link and evidence boundary |
-| 18 Purpose A/B | A, B, C | Schema validation: every workflow has an A or B mark; stage machine check that write tools exist only in the write stages and that a B write stage needs a valid suggestion and Judge confirmation; quality of path adherence is a Best_Effort_Goal measured in the benchmark |
+| 18 Purpose A/B | A, B, C | Schema validation: every workflow has an A or B mark; stage machine check, for workflows executed by operating linkding through its API, that write tools exist only in the write stages and that a B write stage needs a valid suggestion and Judge confirmation (for source or UI changes the stages are checked by the Acceptance_Checks); quality of path adherence is a Best_Effort_Goal measured in the benchmark |
 | 19 Agile planning, document-first | A, B, C | Check that development is blocked while documents are incomplete; check that each Agent_Role task context holds exactly one story plus its referenced documents (small scope per Agent, a Runtime_Rules rule); schema validation that the Feature_Contract is generated from the Frozen Decision_Doc, is part of the backlog documents and is referenced in the Sprint_Plan stories |
 | 20 Agile documents | A, B, C | Schema validation: each story has an acceptance criterion, a demo point and a Feature_Contract (a backlog without a Feature_Contract is rejected as invalid); each document references the Decision_Doc version |
 | 21 Demo and confirmation points | A, B, C | Example tests: no response gives Unconfirmed; the next Judge input triggers a reminder of the pending Unconfirmed items in feature terms and the reminder is recorded in the Event_Stream |
 | 22 Execution and verification | A, B | Property tests for Verifier comparison (tag inclusion, same-URL update); example tests for the three Acceptance_Check kinds (API read-back, target test suite, browser check); check that success depends on Verifier results only |
-| 23 Failure and honesty | A, B | Four-class count check; display of LLM and Verifier disagreement |
+| 23 Failure and honesty | A, B | Count check for the four named classes plus budget exceeded and blocked by an unanswered question; display of LLM and Verifier disagreement |
 | 24 Evidence and Unverified | A, B, C | Property test: for all conclusions, the cited file exists and the quoted snippet is present, otherwise the Unverified mark is set; example tests with a missing file and an absent snippet; frequency of invented claims is a Best_Effort_Goal measured in the benchmark |
-| 25 Scope tiers | A, B | Label and execution refusal checks for non-linkding repositories; check that the Studio repository holds no modified target code and no change outside the Worktree |
+| 25 Scope tiers | A, B | Label and execution refusal checks for non-linkding repositories; check that the Studio repository holds no modified target code and no change outside the Worktree; example test that a linkding Task on a backend without a Docker engine ends in `failed` "not executed" after analysis and the home page states that live execution is unavailable |
 | 26 Final demo and Replay | A, B | UI check of the "Replay" label; property test that live and Replay rendering give the same UI state; example test that Replay types messages from the stored Complete_Message and states that typing speed is simulated and does not reflect real latency |
 | 27 Event stream | A | Property test: Event_Stream serialization round trip; Replay_File checks (schema version, sequence numbers, timestamps, no key or token, static serving); check that the Event_Stream holds only Complete_Messages, incomplete messages and message lifecycle events, and no chunk events |
 | 28 Queue and watching | A | Integration test for queue and read-only watching; server-side rejection of operations from queued persons; key-absence check |
-| 29 Data isolation and recovery | A, B | Verifier comparison test after reset |
-| 30 LLM configuration | A, B | Property test for local validation of JSON and function-call output; secret scan; example test that a truncated finish reason is recorded as a failure and the output is not used; example test that max_tokens leaves room for thinking; capability facts verified by a live test on 2026-11-20 |
+| 29 Data isolation and recovery | A, B | Verifier comparison test after reset; example test that restore is rejected unless requested by the lease holder or the admin; example test that a reset failure ends the Task in `failed` "not executed" |
+| 30 LLM configuration | A, B | Example test that Judge-supplied LLM configuration is unavailable while its feature flag is off; property test for local validation of JSON and function-call output; secret scan; property test: for all events containing a secret value, the persisted and broadcast forms contain none; example test that the Development_Sandbox receives only the per-Task proxy credential and not the real LLM key; property test that the Judge base-address validation rejects loopback, private, link-local and cluster addresses; example test that a truncated finish reason is recorded as a failure and the output is not used; example test that max_tokens leaves room for thinking; capability facts verified by a live test on 2026-11-20 |
 | 31 Narration | A | Example tests for length and rate limits; degradation when unavailable |
 | 32 Portability | A | Smoke tests for environment configuration and container start |
 | 33 Open source and compliance | A | Repository checks: LICENSE, .kiro not ignored, no secrets, .env.example present |
@@ -1188,9 +1204,9 @@ Nothing here may be assumed:
 | 35 Three layers and traceability | A, B | Mapping completeness check; run record includes Runtime_Rules version; the "small scope per Agent" rule exists in Runtime_Rules (layer B) and has a test check; the Runtime_Rules rule "development agents have no decision power, stop and ask when a problem cannot be resolved within the Feature_Contract, and are reviewed by the Tech_Manager" exists in layer B and has a test check (for example a simulated unresolved problem ends in a question and not in a widened scope); the Studio guarantees only what code enforces and treats the rest as best effort |
 | 36 Flow graph and terminal states | A, B | Property test: every transition performed is an edge of the Flow_Graph; property test: a Terminal_State is reachable from every node; example tests for rejected transitions and timeouts |
 | 37 Approach selection and assessment | A, B, C | Schema validation: each Approach_Option has an Assessment labeled as LLM assessment and an executable Acceptance_Check (an option without one cannot be confirmed); check that exactly one approach is confirmed before freeze; Assessment accuracy is a Best_Effort_Goal measured against Verifier results in the benchmark; state machine check that the approach is decided only at F6 and that a development-stage need to change it returns the Task to F6 and requires a new Decision_Doc version |
-| 38 Worktree development | A, B | Example tests: the code-Agent runtime, tools and toolchains run inside one container per Task, a write outside the Worktree does not reach the host and a detected attempt is recorded as rejected by a safety rule, diff recorded and shown only in the Engineering details view, Patch_Artifact stored, nothing committed to the Studio repository, budget-exceeded failure shown |
-| 39 Environment separation | A, B | Integration test: clean start of the Development_Sandbox container and Run_Environment, no shared writable state except the Worktree handoff; example test that a failure to start the modified target is shown honestly and the Task ends in the Terminal_State failed; check that the Adapter holds no start procedure and the Studio holds no fallback start recipe |
-| 40 Feature_Contract, Tech_Manager review, stop and ask | A, B, C | Property test: for all Code_Agent changes, the change and its changed-file list are recorded in the Event_Stream and routed to the Tech_Manager review; schema validation that a Feature_Contract has the required parts and no path list, and that a backlog without one is invalid; example tests for the three Review_Verdict routes (request changes back to the Code_Agent, escalate to the Moderator and Judge in feature words, approve is not success), the "reviewed by Tech_Manager (LLM judgment)" label, stop-and-ask after the retry limit with a "waiting for answer" status, routing of technical versus feature questions, widening only through a new Decision_Doc version; Runtime_Rules rule with a test check (layer B); review quality is a Best_Effort_Goal measured in the benchmark |
+| 38 Worktree development | A, B | Example tests: the code-Agent runtime, tools and toolchains run inside one container per Task, a write outside the Worktree does not reach the host and a detected attempt is recorded as rejected by a safety rule, diff recorded and shown only in the Engineering details view, Patch_Artifact stored, nothing committed to the Studio repository, budget-exceeded failure shown, Worktree created only for Adapted_Repo; check that the Development_Sandbox, the Run_Environment and the Verifier test container share the same network policy |
+| 39 Environment separation | A, B | Integration test: clean start of the Development_Sandbox container and Run_Environment, no shared writable state except the Worktree handoff; example test that a failure to start the modified target is shown honestly and the Task ends in the Terminal_State failed; check that the Adapter holds no start procedure for the modified target (only the pinned baseline image and its documented configuration) and the Studio holds no fallback start recipe; check that each environment starts clean when the flow first needs it; check that the start commands come from the `runEnvironment` section of the Output_Docs and run only inside the Run_Environment container |
+| 40 Feature_Contract, Tech_Manager review, stop and ask | A, B, C | Property test: for all Code_Agent changes, the change and its changed-file list are recorded in the Event_Stream and routed to the Tech_Manager review; schema validation that a Feature_Contract has the required parts and no path list, and that a backlog without one is invalid; example tests for the three Review_Verdict routes (request changes back to the Code_Agent, escalate to the Moderator and Judge in feature words, approve is not success), the "reviewed by Tech_Manager (LLM judgment)" label, stop-and-ask after the retry limit with a "waiting for answer" status, an unanswered question past its wait time marks the story Unconfirmed-blocked and continues with the next story or ends in `failed`, routing of technical versus feature questions, widening only through a new Decision_Doc version; Runtime_Rules rule with a test check (layer B); review quality is a Best_Effort_Goal measured in the benchmark |
 | 41 Prototype in the requirement meeting | A, B, C | Example tests: "Prototype" label on every view, Prototype never counted as execution result or success, artifacts stored per Task, Decision_Doc freeze not bypassed, failure shown honestly; confinement check shared with Requirement 38 |
 
 Process note: each feature in our own tasks will include a "demo and verify" item (to be honored by the design and tasks phases).

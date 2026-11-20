@@ -29,10 +29,11 @@ This file holds constraints and an index only. Details live in `.kiro/specs/graf
 | Layer | Content | Location |
 |---|---|---|
 | A Dev docs | AGENTS.md, .kiro/steering, .kiro/specs, hooks | This file and `.kiro/` |
-| B Runtime rules | Role duties, behavior rules, stage output schemas, linkding Adapter checklist, case library rules | Directory name UNDECIDED (confirmed in design) |
-| C Output docs | Decision Doc, Product Backlog, Sprint Plan, Task Board, Definition of Done, Demo and Review Notes, Retrospective, plus requirements, design, tasks per analyzed repository | Generated at run time; location UNDECIDED (confirmed in design) |
+| B Runtime rules | Role duties, behavior rules, stage output schemas, linkding Adapter checklist, case library rules | `runtime-rules/` |
+| C Output docs | Decision Doc, Product Backlog, Sprint Plan, Task Board, Definition of Done, Demo and Review Notes, Retrospective, plus requirements, design, tasks per analyzed repository | `data/tasks/<taskId>/docs/` (generated at run time, gitignored) |
 
 ## Index
 
 - Requirements: `.kiro/specs/graftlab-ai/requirements.md` (R1-R41)
-- Design and tasks: not created yet (only the requirements phase is done).
+- Design: `.kiro/specs/graftlab-ai/design.md`
+- Tasks: not created yet.
