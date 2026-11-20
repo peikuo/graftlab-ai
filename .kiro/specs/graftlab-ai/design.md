@@ -14,7 +14,7 @@ The Studio is one TypeScript monorepo with three parts that matter at run time:
 2. A React single-page app (`apps/web`) whose Workspace is a pure function of the ordered events, computed by a reducer shared with the server tests (`packages/shared`). Live view and Replay use the same reducer (R26.7, R27.14).
 3. Containers on the developer's Windows PC, started by the backend through the Docker Engine API: the Sandbox (official, unmodified linkding image), the Development_Sandbox (Code_Agent plus toolchains, one per Task), the Run_Environment (the modified linkding, one per story attempt) and the LLM_Proxy (R13, R38, R39, R30.16).
 
-A Task moves through an explicit Flow_Graph stored as data (R36). Agent loops run inside nodes: the meeting roles, planning roles, the Browser_Use operator and the Tech_Manager are pi-agent-core agents inside the backend process; the Code_Agent is the official DeepSeek Harness runtime executable running headless inside the Development_Sandbox. Leaving a node is decided only by guards over validated, schema-checked outputs, never by free model text (R36.2, R35.6).
+A Task moves through an explicit Flow_Graph stored as data (R36). Agent loops run inside nodes: the meeting roles, planning roles, the Browser_Use operator and the Tech_Manager are pi-agent-core agents inside the backend process; the Code_Agent is `@earendil-works/pi-coding-agent` embedded by a small runner script (our code) that runs inside the Development_Sandbox. All agent roles therefore use one agent family (the pi packages). Leaving a node is decided only by guards over validated, schema-checked outputs, never by free model text (R36.2, R35.6).
 
 Every Studio event passes the secret redactor, is appended to `events.jsonl`, and is then broadcast over Server-Sent Events (SSE). Streamed text is shown live from ephemeral SSE frames and is never persisted; the complete message, including the model-provided reasoning text, is persisted when the stream ends (R3.8, R3.11, R27.7).
 
@@ -28,8 +28,8 @@ Success is decided only by the Verifier, plain TypeScript with no LLM, that runs
 | Backend | Fastify, REST for commands, SSE for live events, zod for every schema | R2, R27, R35.6 |
 | Front end | React + Vite SPA, UI state = reducer over ordered events | R1-R8, R26.7, R27.14 |
 | Meeting, planning, Browser_Use operator, Tech_Manager | `@earendil-works/pi-agent-core` with `@earendil-works/pi-ai` DeepSeek provider, in the backend process | R11, R14, R19, R40, R30 |
-| Code_Agent | Official DeepSeek Harness runtime executable (PyPI wheel `deepseek-harness-runtime-bin` 0.2.2rc2, Linux x86_64), headless, inside the Development_Sandbox | R38, R40 |
-| Runtime swap | Thin `AgentRuntime` interface; alternates OpenCode and OpenHands SDK | Open item 44 |
+| Code_Agent | `@earendil-works/pi-coding-agent` 1.5.2 (MIT), embedded by our runner script (`docker/dev-sandbox/runner/`, about 100 lines) inside the Development_Sandbox: allow-listed tools, in-memory session manager, thinking level low, custom `ask_question` tool, JSON-line commands on stdin and normalized JSON-line events on stdout, one long-lived runner process per story attempt | R38, R40 |
+| Runtime swap | Thin `AgentRuntime` interface; fallbacks for the Code_Agent only: DeepSeek Harness runtime, OpenCode, OpenHands SDK (not built in the first version) | Open item 44 |
 | Browser automation | Playwright (Apache-2.0) with headless Chromium in the backend process | R14, R22.2 |
 | Persistence | Files under one `data/` directory: JSONL event logs, JSON state file, Output_Docs, caches | R27.1, R32.3 |
 | Containers | Docker Engine API from the host backend; no Docker-in-Docker | R38.2, R39 |
@@ -85,7 +85,7 @@ flowchart LR
             RUNNER["Task runner<br/>Flow_Graph stage machine"]
             STORE["Event store<br/>redactor, JSONL, SSE hub"]
             PIRT["PiRuntime<br/>meeting, planning, operator,<br/>Tech_Manager"]
-            HRT["HarnessRuntime<br/>Code_Agent adapter"]
+            HRT["PiCodeRuntime<br/>Code_Agent adapter"]
             READER["Repo_Reader<br/>GitHub REST, cache"]
             EVID["Evidence checker"]
             BROWSER["Browser_Use<br/>Playwright Chromium"]
@@ -98,7 +98,7 @@ flowchart LR
         subgraph Docker["Docker Desktop (WSL2 VM, 2 GB cap)"]
             SBX["Sandbox<br/>official linkding image"]
             subgraph Internal["internal network"]
-                DEV["Development_Sandbox<br/>harness runtime, Python, Node"]
+                DEV["Development_Sandbox<br/>pi-coding-agent runner, Python, Node"]
                 RUN["Run_Environment<br/>modified linkding"]
                 PROXY["LLM_Proxy"]
             end
@@ -130,7 +130,7 @@ flowchart LR
     DOCKER --> DEV
     DOCKER --> RUN
     DOCKER --> PROXY
-    HRT -- "exec, JSONL stdout" --> DEV
+    HRT -- "exec, JSON lines on stdin and stdout" --> DEV
     DEV --> PROXY
     PROXY --> LLM
     BROWSER -- "localhost port" --> SBX
@@ -155,7 +155,7 @@ The Sandbox (official linkding image) is the baseline environment for F4 and F5 
 | Container | Image | Lifetime | Network | Mounts | Memory |
 |---|---|---|---|---|---|
 | Sandbox | Official `sissbruecker/linkding` basic variant, pinned by digest (from `adapters/linkding/adapter.json`) | Created at `sandbox_start`, recreated on restore, stopped while source-change stories develop, removed at Task end | Own bridge network, port 9090 published to `127.0.0.1` only | Fresh named volume at `/etc/linkding/data` per start | 512 MB |
-| Development_Sandbox | `graftlab/dev-sandbox` (built locally) | Created when the flow first needs it (first development story or Prototype), stopped while the Run_Environment and the Verifier run, removed at Task end | Internal network only | `data/tasks/<id>/work` read-write at `/work`; `data/tasks/<id>/context/<storyId>` read-only at `/context`; read-only root filesystem with tmpfs for `/tmp` and the isolated `DSH_HOME` | 768 MB |
+| Development_Sandbox | `graftlab/dev-sandbox` (built locally) | Created when the flow first needs it (first development story or Prototype), stopped while the Run_Environment and the Verifier run, removed at Task end | Internal network only | `data/tasks/<id>/work` read-write at `/work`; `data/tasks/<id>/context/<storyId>` read-only at `/context`; read-only root filesystem with tmpfs for `/tmp` and the session and home directory | 768 MB |
 | Run_Environment | `graftlab/dev-sandbox` | One per story attempt; discarded and recreated for every attempt (R39.5) | Internal network only; app port published to `127.0.0.1` (TO VERIFY, see below) | Read-only snapshot of the Worktree at `/src`; the start commands copy it to an in-container directory before building | 512 MB |
 | Verifier test container | `graftlab/dev-sandbox` | Fresh per `test_suite` check, removed after | Internal network only | Read-only snapshot at `/src` | 768 MB |
 | LLM_Proxy | `graftlab/dev-sandbox` running the bundled proxy script | Per Task, started with the Development_Sandbox | Internal network and the default bridge (to reach the LLM) | none | 64 MB |
@@ -170,7 +170,7 @@ The backend reaches the Sandbox and the Run_Environment through ports published 
 
 - Docker Hub is not reachable from the PC. `ubuntu:latest` (Ubuntu 24.04, glibc 2.39) is already present locally and is the base of `dev-sandbox`.
 - The linkding image is pulled on another machine with `--platform linux/amd64`, pinned by digest in `adapter.json`, transferred with `docker save` and `docker load`, and verified by digest on the PC before use. The developer considers these layers controlled.
-- `docker/dev-sandbox/Dockerfile` installs Python 3, Node, git and the harness runtime executable (extracted from the PyPI wheel, about 97 MB, needs neither Node nor Python to run), clones linkding at the pinned commit to `/opt/linkding-src`, and preinstalls linkding's Python dependencies into `/opt/venv` and its Node dependencies into a cache directory. Reachability of the Ubuntu package mirror, PyPI, nodejs.org, the npm registry and GitHub from the PC at image build time is TO VERIFY.
+- `docker/dev-sandbox/Dockerfile` installs Python 3, git, Node (a Node 24 LTS Linux x64 tarball from nodejs.org, checksum verified at build time; the PC reaches nodejs.org), the pi packages (`@earendil-works/pi-coding-agent`, `@earendil-works/pi-agent-core`, `@earendil-works/pi-ai`, pinned versions, installed from the npm registry at image build time, about 153 MB with their siblings) and the Code_Agent runner (`docker/dev-sandbox/runner/`). The image does not contain the DeepSeek Harness executable. The Dockerfile also clones linkding at the pinned commit to `/opt/linkding-src`, and preinstalls linkding's Python dependencies into `/opt/venv` and its Node dependencies into a cache directory. Reachability of the Ubuntu package mirror, PyPI, nodejs.org, the npm registry and GitHub from the PC at image build time is TO VERIFY.
 
 ### Repository layout
 
@@ -182,6 +182,7 @@ packages/shared/        Event types, zod schemas, UI reducer, Flow_Graph data, g
 runtime-rules/          Layer B: VERSION, roles/, rules/, schemas/ (JSON exported from zod), adapters/linkding-checklist.md, cases/rules.md
 adapters/linkding/      adapter.json, test-data.json, checks/ (assessment helpers usable by the Verifier)
 docker/dev-sandbox/     Dockerfile for Development_Sandbox, Run_Environment, Verifier test container and LLM_Proxy
+docker/dev-sandbox/runner/  Code_Agent runner script (pi-coding-agent embedded; protocol and event normalization)
 docker/llm-proxy/       Entry script and README for the LLM_Proxy container (runs on the dev-sandbox image)
 data/                   gitignored state (see Data Models)
 .kiro/specs/graftlab-ai requirements.md, design.md, tasks.md (layer A)
@@ -190,6 +191,7 @@ data/                   gitignored state (see Data Models)
 ```
 
 Layer locations decide Open item 13 and R35.1: layer A in `.kiro/` and `AGENTS.md`, layer B in `runtime-rules/`, layer C in `data/tasks/<taskId>/docs/`. The repository holds linkding only as references (image digest, upstream URL and commit), never modified target code (R25.6, R38.6).
+Third-party components named in the README (R33.6): the pi packages `@earendil-works/pi-agent-core`, `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent` (MIT), Playwright (Apache-2.0), linkding as an unmodified external dependency (MIT). The DeepSeek Harness runtime is not part of the first version; if it is activated as the fallback, its license note is TO VERIFY and it is added to the README then.
 
 ### Flow_Graph
 
@@ -333,7 +335,7 @@ Rules that keep the graph honest:
 | `tasks/runner.ts` | Hosts one Task: holds `TaskState`, runs node handlers, applies `transition`, enforces node and Task timeouts | R36 |
 | `events/store.ts` | Single writer per Task: assigns `seq`, redacts, appends to `events.jsonl`, fsyncs on decisions and terminals, then broadcasts | R27.1, R27.6, R30.15 |
 | `llm/` | LLM_Config resolution, SSRF validation for Judge-supplied base addresses, pi-ai model setup | R30 |
-| `runtime/` | `AgentRuntime` interface, `PiRuntime`, `HarnessRuntime` | R11, R40, Open item 44 |
+| `runtime/` | `AgentRuntime` interface, `PiRuntime`, `PiCodeRuntime` (the shared pi event mapping lives in one module used by both and by the runner) | R11, R40, Open item 44 |
 | `roles/` | Loads role prompts and rules from `runtime-rules/`, records the Runtime_Rules version at Task start | R35.3, R35.4 |
 | `reader/` | Repo_Reader over the GitHub REST API with cache by commit SHA | R10, R34 |
 | `evidence/` | Evidence checker against the downloaded files | R24 |
@@ -424,43 +426,38 @@ export type RuntimeEvent =
 - Structured outputs are produced through a `submit_<stage>` tool whose arguments are validated by zod. Invalid arguments, a missing submit call at the end of the turn, or a finish reason that shows truncation count as "LLM output format invalid" and the output is discarded (R23.6, R30.4, R30.13). One visible retry is allowed per turn and is shown as a separate attempt (R23.5); after that the turn fails (R11.2).
 - `max_tokens` 16384 per role turn leaves room for thinking, which is on by default (R30.12, R30.14).
 
-### HarnessRuntime (Code_Agent)
-
-- Artifact: the Linux x86_64 runtime executable from the PyPI wheel `deepseek-harness-runtime-bin` 0.2.2rc2 (MIT, ships THIRD_PARTY_NOTICES). The npm CLI package (about 1.4 GB) and the TypeScript SDK client are not used (Open item 29).
-- Started with a Docker exec into the running Development_Sandbox:
-  `<runtime> --profile headless --json --permission-mode workspace-write --approval-policy never "<story prompt>"` with `cwd=/work`, an isolated `DSH_HOME` on tmpfs, and the per-Task proxy credential as the API key (R30.16). The base address variable points at the LLM_Proxy; the spike used `DEEPSEEK_BASE_URL`, and setting it returned HTTP 404 on 2026-11-20 with unknown cause: TO VERIFY.
-- The story prompt is short: it tells the runtime to read `/context/story.md` (Feature_Contract plus referenced documents, mounted read-only) and states the stop-and-ask rule (R19.7, R40.2, R40.11).
-- Continuing after an answer uses `--session-id <id>` with the answer as the new prompt (R40.13).
-- JSONL stdout is parsed line by line with zod. Observed event types in the macOS spike: `session`, `status` (turn and step start or end, usage on step end), `thinking`, `tool_call`, `tool_result`, `text`, `final` (reason completed or error). Unknown lines are counted and shown in Engineering_Details, never dropped silently.
-
-| Harness event | Studio event |
-|---|---|
-| `session` | stored in `TaskState` (session id), no event |
-| `status` step_start | `message_started` (actor `code_agent`) |
-| `thinking`, `text` | collected into the step's message |
-| `status` step_end | `message_completed` with text, reasoning (thinking text) and usage |
-| `tool_call` / `tool_result` | `tool_started` / `tool_finished` (Engineering_Details only) |
-| `final` completed | attempt finished; backend computes `code_change` |
-| `final` error, non-zero exit, or killed by budget | `failure` (interface call failure, or budget exceeded) |
-
-- Ask-user behavior in headless mode is TO VERIFY. Fallback (used until verified): the story prompt requires that the final message end with a JSON block `{"graftlab_question": {"kind": "technical" | "feature", "text": "...", "options": [...]}}` when the agent cannot resolve a problem. The backend validates it with zod and turns it into `question_opened` (R40.11, R40.13). Spike evidence shows that none of the tested runtimes stopped to ask on an ambiguous request in unattended mode, so the Studio also opens a question by code when the retry limit is reached (R40.12).
-- Write confinement: the container has a read-only root filesystem, tmpfs for `/tmp` and `DSH_HOME`, and only `/work` writable from the host (R38.2). A tool result that reports a read-only file system error outside `/work` and `/tmp` is recorded as `failure` with class "rejected by a safety rule", shown only in Engineering_Details (R38.8). The harness runtime running with a read-only root filesystem is TO VERIFY.
-
+### PiCodeRuntime (Code_Agent)
+- Artifact: `@earendil-works/pi-coding-agent` 1.5.2 (MIT, engines node >=22.19.0; built-in tools `read`, `bash`, `edit`, `write`), installed in the dev-sandbox image at build time together with `@earendil-works/pi-agent-core` and `@earendil-works/pi-ai`. Its shipped docs say it does not ask for approval before tool calls and recommend a container; the per-Task Development_Sandbox is that container. These facts come from reading the installed package on 2026-11-21; behavior in our container is TO VERIFY.
+- The runner: a script of about 100 lines in `docker/dev-sandbox/runner/` (our code) that embeds the SDK with `createAgentSession()`. It sets an allow-listed tool set (`tools` option; `noTools` and `excludeTools` are the alternatives), `SessionManager.inMemory()` so no session files are written, thinking level low, no context files, and our custom `ask_question` tool through `customTools`. Whether the SDK-embedded runner or pi's RPC mode (`--mode rpc`, commands `prompt`, `steer`, `follow_up`, `abort`, `get_state`) is used is TO VERIFY in the first spike; the default is the embedded runner.
+- Process model: the backend starts one long-lived runner process per story attempt with a Docker exec into the running Development_Sandbox (`cwd=/work`). The process stays alive while a question is open, so an answer continues the same session (R40.13). It ends after the final event, on abort, or when the budget timer kills the exec.
+- Command protocol (stdin, one JSON object per line, validated by zod in the runner): `{"cmd":"prompt","text":"..."}`, `{"cmd":"answer","questionId":"...","text":"..."}`, `{"cmd":"steer","text":"..."}`, `{"cmd":"abort"}`. A prompt sent while the session streams must choose steer or follow-up; the runner uses `steer()` for `steer` and `followUp()` for `answer` when the turn has not yet ended.
+- Event protocol (stdout, one JSON object per line): the normalized `RuntimeEvent` values (see above) plus `ready` and `runner_error`. The runner calls the same shared mapping module as `PiRuntime`, so a pi event is mapped in one place. The backend parses each line with zod; a line that does not match the protocol is counted and shown in Engineering_Details, never dropped silently.
+- The story prompt is short: it tells the Code_Agent to read `/context/story.md` (Feature_Contract plus referenced documents, mounted read-only) and states the stop-and-ask rule (R19.7, R40.2, R40.11).
+- Mapping from pi-coding-agent events to Studio events: the same table as `PiRuntime` (`message_start`, `message_update` deltas, `message_end`, `tool_execution_start` and `tool_execution_end`, stream error or abort mid-message), with these differences:
+| pi-coding-agent event or result | RuntimeEvent | Studio event |
+|---|---|---|
+| `message_end` of an assistant message | `message_end` | `message_completed` (actor `code_agent`; text, reasoning text, usage) |
+| `tool_execution_start` / `tool_execution_end` | `tool_start` / `tool_end` | `tool_started` / `tool_finished` (Engineering_Details only) |
+| queue and retry events | none | counted, shown in Engineering_Details |
+| `ask_question` tool call with valid arguments | `question` | `question_opened` (R40.11, R40.13) |
+| `agent_end` followed by `agent_settled` (the session will not continue automatically) | `final` completed | attempt finished; the backend computes `code_change` from the Worktree diff |
+| error result, abort, non-zero exit, or killed by budget | `final` error or aborted | `failure` (interface call failure, or budget exceeded) |
+- The ask-question flow replaces the earlier `graftlab_question` JSON fallback. The custom tool `ask_question` takes `{ kind: "technical" | "feature", text: string, options?: string[] }`, validated by zod. A valid call emits the `question` event and ends the turn (the same terminate pattern as the earlier design: the tool result tells the session to stop). The runner then waits for an `answer` command and resumes the same session. Invalid arguments return an error result to the model. Spike evidence shows that none of the tested runtimes stopped to ask on an ambiguous request in unattended mode, so the Studio also opens a question by code when the retry limit is reached (R40.12).
+- Write confinement: the container has a read-only root filesystem, tmpfs for `/tmp` and the session and home directory, and only `/work` writable from the host (R38.2). A tool result that reports a read-only file system error outside `/work` and `/tmp` is recorded as `failure` with class "rejected by a safety rule", shown only in Engineering_Details (R38.8). The embedded runner running with a read-only root filesystem and a tmpfs home is TO VERIFY.
+- LLM access: the runner holds only the per-Task credential for the LLM_Proxy (R30.16). A custom provider and model entry in the runner's model registry sets the base address to the LLM_Proxy (pi-ai supports custom OpenAI-compatible providers). Whether this works through the proxy is TO VERIFY. The earlier 404 was seen with the harness runtime and stays as history.
+- Code_Agent rules (in the Runtime_Rules, R35.9, R40): never special-case code to satisfy tests; report a contradiction between tests, story or documents by asking through `ask_question`; do not edit tests unless the story says so. This is best effort, not a guarantee: in the 2026-11-20 spike pi-coding-agent special-cased the code on the contradictory-tests fixture and did not point out the contradiction. The backstops are the Tech_Manager review and the Verifier.
+- Steer and abort: `steer` and `abort` arrive over stdin; the runner calls `session.steer()` and `session.abort()` and waits for idle (`waitForIdle()`), and the backend expects the exec to finish within a few seconds of `abort`, otherwise it kills the exec. `dispose()` runs on exit.
 ### Runtime selection (Open item 44)
-
-Decided with the user: meeting roles, planning roles, the Browser_Use operator and the Tech_Manager use pi-agent-core in the backend process; the Code_Agent uses the official DeepSeek Harness runtime executable headless; alternates are OpenCode (`opencode run --format json`, MIT) and the OpenHands Software Agent SDK (agent server with REST and WebSocket, MIT TypeScript client `@openhands/typescript-client`, about 587 MB Python 3.12 environment). Only `HarnessRuntime` and `PiRuntime` are built in the first version; an alternate is built only if the harness fails its TO VERIFY items.
-
+Decided with the user on 2026-11-21: one agent family for everything, the pi packages. Meeting roles, planning roles, the Browser_Use operator and the Tech_Manager use `@earendil-works/pi-agent-core` with `@earendil-works/pi-ai` in the backend process; the Code_Agent uses `@earendil-works/pi-coding-agent` embedded by the runner inside the Development_Sandbox. Rationale: one event model, one provider configuration, one steer and abort interface, one learning cost, and TypeScript only. The DeepSeek Harness headless mode emits step-level (not token-level) thinking and text events and has no mid-turn steer or abort, so it cannot serve the streaming meeting UI and is only a Code_Agent alternative.
+Fallbacks for the Code_Agent, behind the `AgentRuntime` interface and not built in the first version: the DeepSeek Harness runtime (official bundled executable, headless JSON events), OpenCode (`opencode run --format json`, MIT) and the OpenHands Software Agent SDK (agent server with REST and WebSocket, MIT TypeScript client `@openhands/typescript-client`, about 587 MB Python 3.12 environment). Fallback trigger: pi-coding-agent fails the real-document comparison at the first development story, or fails its TO VERIFY items (read-only root with tmpfs home, custom base address through the LLM_Proxy, custom `ask_question` tool, steer and abort over stdin). The first fallback is pi RPC mode, the second is the harness runtime. If the harness is ever activated, its license note (MIT per its wheel metadata, third-party notices) is TO VERIFY and must be listed in the README.
 Spike evidence (2026-11-20, macOS, a single run per scenario on a toy Python repository; this is evidence, not a guarantee):
-
 | Scenario | pi-coding-agent | Harness runtime | OpenCode | OpenHands |
 |---|---|---|---|---|
 | Fix failing tests | passed, 20 s | passed, 15 s | passed, 34 s | passed, 18.5 s |
 | Ambiguous request, unattended | did not ask | did not ask | did not ask | did not ask |
 | Contradictory tests with "do not modify tests" | special-cased code to pass all tests | reported the contradiction, left two failing tests (`test_slug`, `test_slug_trim`) | reported the contradiction, left one failing test | special-cased code to pass all tests, disclosed it |
-| Event output size | larger | 9-76 KB | larger | larger |
-
-None of them edited tests in the first scenario. The comparison is repeated at the first development story with real documents, using the same criteria: works out of the box, cheaper and faster, follows instructions better (tool whitelists and stopping to ask).
-
+| Event output size | larger (`--mode json`, 171-882 KB) | 9-76 KB | larger | larger |
+None of them edited tests in the first scenario. The comparison is repeated at the first development story with real documents, using the same criteria: works out of the box, cheaper and faster, follows instructions better (tool whitelists and stopping to ask). The fixtures of the spike live in `spike/bench`.
 ### LLM_Proxy (R30.16)
 
 - A small Node HTTP server bundled from `apps/server/src/proxy/` into one file, run in its own container on the `dev-sandbox` image, started per Task with the real key and a freshly generated per-Task credential in its environment.
@@ -1024,8 +1021,9 @@ Every failure appends a `failure` event with a Failure_Class and a source before
 | Docker engine unavailable | engine ping at `sandbox_start` and at server start | interface_call_failure | `failed`, marked not executed; the home page shows that live execution is unavailable | R13.4 |
 | Sandbox start, reset or reset verification failure | Docker error, readiness timeout, Verifier comparison | interface_call_failure or readback_mismatch | `failed`, marked not executed | R13.4, R29.5 |
 | Development_Sandbox start failure | Docker error | interface_call_failure | `failed` | R38.7 |
-| Code_Agent error | `final` error, non-zero exit | interface_call_failure | `failed` (chart edge from F10) | R38.7 |
-| Story budget exceeded | runner timer; exec killed | budget_exceeded | `failed` | R38.3, R38.7 |
+| Code_Agent error | `final` error, runner exit non-zero, or `runner_error` | interface_call_failure | `failed` (chart edge from F10) | R38.7 |
+| Runner protocol line invalid (not matching the zod event schema) | zod parse of a stdout line | none (counted) | Counted and shown in Engineering_Details, never dropped; a runner that ends without a `final` event is a Code_Agent error | R38.7, R40.2 |
+| Story budget exceeded | backend timer; exec killed | budget_exceeded | `failed` | R38.3, R38.7 |
 | Retry limit reached | attempt counter | none | `story_ask` | R40.12 |
 | Unanswered Code_Agent question | 300 s timer | blocked_unanswered_question | Story marked Unconfirmed-blocked; next story or `failed` | R40.11, Open item 39 |
 | Write outside the Worktree | read-only file system error in a tool result | rejected_by_safety_rule | Recorded in Engineering_Details; the attempt continues | R38.8 |
@@ -1065,9 +1063,9 @@ The final view shows the Verifier results, the counts per Failure_Class, the Unc
 
 ### Recorded-event fixture suite (Process Principle 6)
 
-- Real event files from the spikes and from real runs are the fixtures: harness JSONL output, pi event traces, real `events.jsonl` files from development runs.
+- Real event files from the spikes and from real runs are the fixtures: pi and pi-coding-agent event traces and runner protocol output, real `events.jsonl` files from development runs.
 - Fixtures are sanitized before they are committed: absolute local paths, machine names and account names are replaced, and the secret scan runs over them.
-- Parsers (harness JSONL, pi events), the reducer and the Role_Status derivation are tested against these fixtures; each new stage is debugged with the real output of the previous stage.
+- Parsers (the runner protocol with its zod command and event schemas, pi events), the reducer and the Role_Status derivation are tested against these fixtures; each new stage is debugged with the real output of the previous stage.
 
 ### Integration tests (one per container kind, run on the PC with Docker)
 
@@ -1077,6 +1075,7 @@ The final view shows the Verifier results, the counts per Failure_Class, the Unc
 | Development_Sandbox | Write to `/work` reaches the host Worktree; write to `/etc` fails with a read-only error; no host path outside the Worktree changes; internet request fails; LLM_Proxy reachable | R38.2, R38.4, R38.8 |
 | Run_Environment | Start modified linkding from a snapshot with given start commands; health wait; failure path ends `failed` | R39.3-R39.5, R39.11 |
 | Verifier test container | Run a test command on a snapshot, exit code and summary parsed | R22.2 |
+| Code_Agent runner | In the Development_Sandbox with a fake upstream behind the LLM_Proxy: prompt, `ask_question` then `answer` in the same process, `steer`, `abort`; every stdout line matches the zod event schema | R40.2, R40.11, R40.13 |
 | LLM_Proxy | Rejects a wrong credential, forwards an allowed path to a fake upstream with the real key replaced, refuses other paths | R30.16 |
 
 A live LLM smoke test against `deepseek-flash` (streaming, a submit tool, abort) runs only when explicitly enabled by environment variable, so the normal test run makes no paid calls.
@@ -1141,7 +1140,7 @@ Live execution (F4-F10) needs Docker on the PC. When the PC or its tunnel is dow
 
 - Running more than one Task at a time; queue scaling beyond one operator (R28).
 - Docker-in-Docker, and giving any container the Docker socket.
-- The harness process sandbox on Windows (R38.10, R38.11, R39.8) and the harness npm CLI and TypeScript SDK client.
+- The DeepSeek Harness runtime, its process sandbox on Windows (R38.10, R38.11, R39.8), its npm CLI and TypeScript SDK client (fallback only, not built).
 - Multiple worktrees with merging for large projects; one Worktree per Task only.
 - A database server and SQLite; one JSON state file plus JSONL files.
 - Accounts and login for Judges beyond an anonymous session cookie.
@@ -1150,7 +1149,7 @@ Live execution (F4-F10) needs Docker on the PC. When the PC or its tunnel is dow
 - A second, Verification-designed case for API-operation stories; the Verifier checks the Demo_Case expected outcome (to save model calls).
 - Delete operations on linkding in a Demo_Case; the Adapter allow-list has no delete endpoint in the first version.
 - Automatic repair loops for LLM output beyond one visible retry.
-- Building the alternate Code_Agent runtimes unless the harness fails its TO VERIFY items.
+- Building the fallback Code_Agent runtimes (DeepSeek Harness, OpenCode, OpenHands) unless pi-coding-agent fails the real-document comparison or its TO VERIFY items.
 - Narration, Remotion presentation, Case_Cards and Prototype (Stretch, sections above).
 - Benchmark tooling beyond the metrics recorded in each Retrospective.
 - Data retention and clean-up of old Tasks.
@@ -1181,9 +1180,9 @@ Each item is verified by an early spike task in `tasks.md` (task group 1; item 1
 
 | # | Item | First task that verifies it | Fallback |
 |---|---|---|---|
-| 1 | The harness runtime accepts a custom base address pointing at the LLM_Proxy (a 2026-11-20 attempt with `DEEPSEEK_BASE_URL` returned HTTP 404, cause unknown) | Spike A: run the Linux runtime in the dev-sandbox image with the proxy, read the proxy's path log, adjust the allow-listed paths or the base address form | OpenCode or OpenHands SDK as Code_Agent runtime |
-| 2 | How the harness headless mode exposes its ask-user tool | Spike A: ambiguous story prompt with the stop-and-ask rule, inspect the JSONL events | Structured `graftlab_question` final message plus resume with `--session-id` |
-| 3 | The Linux x86_64 harness build runs on Ubuntu 24.04 (glibc 2.39) with a read-only root filesystem, tmpfs `HOME` and `DSH_HOME`, and emits the same event types as the macOS spike | Spike A | Writable root filesystem with confinement by mounts only; then outside writes are not detected, only kept off the host |
+| 1 | The pi-coding-agent embedded runner works in the dev-sandbox container with a read-only root filesystem and a tmpfs home and session directory, writing only under `/work` and `/tmp` | Spike A part 1 | pi RPC mode; then writable root filesystem with confinement by mounts only (outside writes are not detected, only kept off the host); then the harness runtime fallback |
+| 2 | A custom provider and model entry in pi-coding-agent points at the LLM_Proxy as base address and the story completes with only the per-Task credential in the container (the 404 of 2026-11-20 was seen with the harness runtime) | Spike A part 1: read the proxy's path log, adjust the allow-listed paths or the base address form | pi RPC mode; then the harness runtime fallback; then OpenCode or OpenHands SDK |
+| 3 | The custom `ask_question` tool ends the turn and the same runner process resumes with an answer | Spike A part 2: ambiguous story prompt with the stop-and-ask rule, inspect the events | Question opened by code at the retry limit (R40.12) plus a new prompt in the same session; or pi RPC mode `follow_up` |
 | 4 | Docker Desktop for Windows: a container on an internal network can publish a port to `127.0.0.1` | Spike B: create the internal network, start a test container, curl from the host | LLM_Proxy container relays the app port |
 | 5 | Bind mounting the Windows host Worktree into Linux containers: performance, permissions, line endings with `core.autocrlf=false` | Spike B | Keep the Worktree in a named volume and compute diffs with a helper container |
 | 6 | linkding API token creation by a Django management shell command inside the container, and the Adapter `api` allow-list paths (create, PATCH, archive, list) on the pinned image | Spike C: start the pinned image, create the token, call each allow-listed endpoint | Create the token through the settings page with Playwright; correct the allow-list paths to the observed ones |
@@ -1195,3 +1194,5 @@ Each item is verified by an early spike task in `tasks.md` (task group 1; item 1
 | 12 | Node upgrade on the PC to >=22.19 (Open item 47) | First setup task | none (required) |
 | 13 | Reachability of the Ubuntu package mirror, PyPI, nodejs.org, the npm registry, GitHub and the Playwright browser download from the PC | First setup task | Download on another machine and transfer, as for images |
 | 14 | SSE through the Cloudflare tunnel (buffering, idle timeout) | Deployment task | Long polling of `/api/tasks/:id/events?after=<seq>` |
+| 15 | Steer and abort through stdin commands reach the running pi-coding-agent session, and abort ends the exec within a few seconds | Spike A part 2 | Kill the exec on abort; interjections only between turns |
+| 16 | The Code_Agent follows the rule "report contradictions by asking, never special-case code to satisfy tests" on the toy-trap fixture in `spike/bench` (the result is recorded, not treated as a guarantee) | Spike A part 2 | Rely on the Tech_Manager review and the Verifier; harness runtime fallback if the real-document comparison shows it is clearly better |

@@ -54,21 +54,22 @@ Conventions:
     - Record the working commands (they inform the Agent_Roles' `runEnvironment` analysis, not an Adapter recipe) in `spike/results/S-linkding-source.md`
     - Design: Images, Run_Environment, TO VERIFY list
     - _Requirements: 39.2, 39.9, 39.10_
-  - [ ] 1.7 Spike A part 1: harness runtime Linux build in a container with read-only root through the LLM_Proxy (TO VERIFY 1, 3)
-    - Put the Linux x86_64 runtime executable from the PyPI wheel into the spike image; run it with read-only root filesystem, tmpfs `/tmp`, `HOME` and `DSH_HOME`, `/work` writable, on an internal network with a throwaway logging proxy that logs method, path and status only
-    - Run the "fix failing tests" scenario from `spike/bench/` through the proxy; read the proxy log to find the cause of the earlier HTTP 404 (base address form or path)
-    - Pass: the scenario completes through the proxy and the JSONL event types match the macOS spike. Fail fallback: item 1 OpenCode or OpenHands SDK as Code_Agent runtime; item 3 writable root with confinement by mounts only
-    - Record in `spike/results/S-harness-linux.md`, with sanitized JSONL samples for later fixtures
-    - Design: HarnessRuntime, LLM_Proxy, TO VERIFY list
+  - [ ] 1.7 Spike A part 1: pi-coding-agent embedded runner in a container with read-only root, reaching the model through the LLM_Proxy (custom base address) (TO VERIFY 1, 2)
+    - Put the pi packages (pinned versions, installed from the npm registry) and a first version of the runner into the spike image; run it with read-only root filesystem, tmpfs `/tmp` and the session and home directory, `/work` writable, on an internal network with a throwaway logging proxy that logs method, path and status only; define a custom provider and model entry whose base address is the proxy
+    - Run the "fix failing tests" scenario from `spike/bench/` (toy repository fixtures) through the proxy with only the per-Task credential in the container; read the proxy log to check the base address form and paths
+    - Pass: the runner completes a small story on the toy repository through the proxy, no real key is in the container, and writes land only under `/work` and `/tmp`. Fail fallback: pi RPC mode; second fallback: the DeepSeek Harness runtime (design fallback)
+    - Record in `spike/results/S-pi-code-linux.md`, with sanitized event samples for later fixtures
+    - Design: PiCodeRuntime, LLM_Proxy, TO VERIFY list
     - _Requirements: 30.16, 38.2, 38.8_
-  - [ ] 1.8 Spike A part 2: harness headless ask behavior (TO VERIFY 2)
-    - Run the ambiguous scenario with a story prompt that states the stop-and-ask rule; inspect the JSONL for an ask-user event; test resume with `--session-id` and an answer
-    - Pass: an ask event appears and resume works. Fail fallback: the `graftlab_question` JSON block in the final message plus resume with `--session-id` (verify that this fallback works either way)
-    - Record in `spike/results/S-harness-ask.md`
-    - Design: HarnessRuntime
+  - [ ] 1.8 Spike A part 2: custom ask_question tool, resuming in the same process, steer and abort over stdin, and the toy-trap contradiction fixture (TO VERIFY 3, 15, 16)
+    - Run the ambiguous-story fixture (and a prompt that says to stop and ask) from `spike/bench/`; check that the custom `ask_question` tool ends the turn and that an `answer` command resumes the same process; send `steer` and `abort` over stdin
+    - Run the `toy-trap` fixture (contradictory tests) from `spike/bench/` with the Code_Agent rules (never special-case code to satisfy tests, report contradictions by asking) and record whether the contradiction is reported; this is a recorded result, not a guarantee
+    - Pass: the runner asks a question on the ambiguous-story fixture or when told to stop and ask, resumes with an answer, and honors abort within a few seconds. Fail fallback: question opened by code plus a new prompt in the same session, or pi RPC mode `follow_up`; then the harness runtime fallback
+    - Record in `spike/results/S-pi-code-ask.md`
+    - Design: PiCodeRuntime
     - _Requirements: 40.11, 40.13_
   - [ ] 1.9 Spike B part 2: memory fit under the 2 GB cap (TO VERIFY 11)
-    - Run the Sandbox, a Run_Environment from the 1.6 image, and the logging proxy together with the design's memory limits, then run the harness scenario; sample `docker stats`
+    - Run the Sandbox, a Run_Environment from the 1.6 image, and the logging proxy together with the design's memory limits, then run the pi-coding-agent scenario from 1.7; sample `docker stats`
     - Pass: no container is OOM-killed and the peak stays under the WSL cap. Fail fallback: lower limits or stop the Sandbox earlier
     - Record peaks in `spike/results/S-memory.md`
     - Design: Containers, Initial values
@@ -86,7 +87,7 @@ Conventions:
     - Design: PiRuntime
     - _Requirements: 12.2, 5.2_
   - [ ] 1.12 Record spike outcomes in design.md
-    - Update the TO VERIFY list (status per item, chosen fallback) and the dependent design sections (Containers, HarnessRuntime, Adapter allow-list, Browser_Use); sanitize spike outputs (no local paths, machine names, account names or secrets)
+    - Update the TO VERIFY list (status per item, chosen fallback) and the dependent design sections (Containers, PiCodeRuntime, Runtime selection, Adapter allow-list, Browser_Use); sanitize spike outputs (no local paths, machine names, account names or secrets)
     - Design: TO VERIFY list
     - _Requirements: 35.5_
   - [ ] 1.13 Demo and verify: spike results
@@ -142,7 +143,7 @@ Conventions:
     - Design: Secret redactor
     - _Requirements: 30.15, 28.4, 30.5_
   - [ ] 3.2 Create sanitized fixture events
-    - Turn the spike outputs (pi event traces, harness JSONL) into sanitized Studio event fixtures in `packages/shared/test/fixtures/`, one per stage kind; run the secret scan over them
+    - Turn the spike outputs (pi event traces, runner protocol output) into sanitized Studio event fixtures in `packages/shared/test/fixtures/`, one per stage kind; run the secret scan over them
     - Design: Recorded-event fixture suite
     - _Requirements: 27.1, 30.5_
   - [ ] 3.3 Implement the event store
@@ -346,7 +347,7 @@ Conventions:
 
 - [ ] 10. Containers: dev-sandbox image, LLM_Proxy, Sandbox with test data and reset, Worktree manager (target 2026-11-27)
   - [ ] 10.1 Write the dev-sandbox Dockerfile
-    - `docker/dev-sandbox/Dockerfile` on `ubuntu:latest`: Python 3, Node, git, the harness runtime executable, linkding source at the pinned commit in `/opt/linkding-src`, Python dependencies in `/opt/venv`, Node dependencies cached; uses the results of 1.2 and 1.6
+    - `docker/dev-sandbox/Dockerfile` on `ubuntu:latest`: Python 3, git, Node (a Node 24 LTS Linux x64 tarball from nodejs.org with its checksum verified at build time), the pi packages installed from the npm registry at pinned versions, the Code_Agent runner copied from `docker/dev-sandbox/runner/` (task 10.13), linkding source at the pinned commit in `/opt/linkding-src`, Python dependencies in `/opt/venv`, Node dependencies cached; uses the results of 1.2 and 1.6
     - Design: Images
     - _Requirements: 39.2, 25.6_
   - [ ] 10.2 Implement the Verifier `api_readback` check
@@ -390,6 +391,14 @@ Conventions:
     - Show the user a Sandbox reset with the Verifier equality table, a restore, and a write attempt outside `/work` failing; check `docker stats` against the memory limits and that no container has the Docker socket
     - _Requirements: 29.4, 38.2, 38.8_
 
+  - [ ] 10.13 Write the Code_Agent runner (`docker/dev-sandbox/runner`) with the protocol, normalized events and unit tests with recorded event fixtures
+    - `docker/dev-sandbox/runner/`: embeds `createAgentSession()` with an allow-listed tool set, `SessionManager.inMemory()`, thinking level low, custom provider pointing at the LLM_Proxy; custom `ask_question` tool (zod-validated arguments `kind`, `text`, optional `options`; ends the turn); stdin commands `prompt`, `answer`, `steer`, `abort` validated by zod; stdout normalized JSON-line events using the shared pi event mapping module from 6.4; one long-lived process per story attempt; `dispose()` on exit; shape follows the 1.7 and 1.8 results (embedded runner by default, pi RPC mode if the spike says so)
+    - Unit tests with vitest using the sanitized recorded event fixtures from 1.7 and 1.8: every fixture line maps to the expected `RuntimeEvent`, invalid commands are rejected, an `ask_question` call produces a `question` event and the turn ends, `answer` resumes
+    - Design: PiCodeRuntime, Repository layout
+    - _Requirements: 38.7, 40.2, 40.11, 40.13_
+  - [ ] 10.14 Demo and verify: Code_Agent runner
+    - Show the user the runner inside the built dev-sandbox image completing a small story on the toy repository through the LLM_Proxy, a question raised by `ask_question` and answered in the same process, and an abort; check that only `/work` and `/tmp` were written and that no real key is in the container environment
+    - _Requirements: 30.16, 40.11, 40.13_
 - [ ] 11. F4-F5: Sandbox start and Browser_Use experience with live screenshots (target 2026-11-28)
   - [ ] 11.1 Wire `sandbox_start` into the flow
     - Node handler after `adapter_branch` for Adapted_Repo; Docker unavailable path to `failed` "not executed" after analysis
@@ -448,14 +457,14 @@ Conventions:
     - Show the user the backlog with Feature_Contracts and the `runEnvironment` section generated from the M1 Decision_Doc, and an Other_Repo ending as Docs only; check every document records the Frozen version and that a story without a Feature_Contract is rejected
     - _Requirements: 20.4, 20.9, 25.2_
 
-- [ ] 14. F10: HarnessRuntime, development, Tech_Manager review, stop and ask, Run_Environment, checkpoints, Verifier and API-operation path (target 2026-11-30)
+- [ ] 14. F10: PiCodeRuntime, development, Tech_Manager review, stop and ask, Run_Environment, checkpoints, Verifier and API-operation path (target 2026-11-30)
   - [ ] 14.1 Implement the context builder and the development rules
     - `apps/server/src/dev/context.ts` writes only the story, its Feature_Contract and the referenced documents; Runtime_Rules rules "small scope per Agent" and "no decision power, stop and ask, reviewed by the Tech_Manager"
     - Design: Development stage
     - _Requirements: 19.5, 19.7, 19.8, 35.8, 35.9, 40.2_
-  - [ ] 14.2 Implement the HarnessRuntime
-    - `apps/server/src/runtime/harness.ts`: docker exec with the per-Task proxy credential, JSONL parsing with zod, event mapping table, unknown lines counted, session id resume, `graftlab_question` fallback (or the native ask event if 1.8 passed), budget timer that kills the exec, read-only errors as rejected by a safety rule
-    - Design: HarnessRuntime
+  - [ ] 14.2 Implement the PiCodeRuntime
+    - `apps/server/src/runtime/pi-code.ts`: Docker exec of the runner (task 10.13) in the Development_Sandbox with the per-Task proxy credential, stdin commands (prompt, answer, steer, abort), stdout protocol parsing with zod, unknown lines counted, `question` events turned into `question_opened`, answer resumes the same process, budget timer that kills the exec, read-only errors as rejected by a safety rule, `final` events mapped to attempt end
+    - Design: PiCodeRuntime
     - _Requirements: 30.16, 38.3, 38.7, 38.8, 40.11, 40.13_
   - [ ] 14.3 Implement the Demo_Case schema, validator and check derivation
     - `packages/shared` Demo_Case and suggestion schemas; `apps/server/src/apiops/validate.ts` (Item_Count_Cap from `GL_DEMO_CASE_MAX_ITEMS`, Adapter allow-list, Sandbox target); `deriveChecks`
@@ -464,8 +473,8 @@ Conventions:
   - [ ]* 14.4 Write property test for small scope per Agent
     - **Property 16: Small scope per Agent**
     - **Validates: Requirements 19.5, 19.7, 35.8, 40.2**
-  - [ ]* 14.5 Write unit tests for the HarnessRuntime parser
-    - Sanitized JSONL fixtures from 1.7 and 1.8 map to the expected Studio events; unknown lines counted
+  - [ ]* 14.5 Write unit tests for the PiCodeRuntime protocol parser
+    - Sanitized runner event fixtures from 1.7 and 1.8 map to the expected Studio events; invalid lines counted
     - _Requirements: 38.7, 40.11_
   - [ ] 14.6 Implement `story_develop` and change recording
     - Start or resume the Development_Sandbox, run the Code_Agent, compute changed files and diff with a temporary index, append `code_change`, diff in Engineering details only, budget accounting
@@ -515,7 +524,7 @@ Conventions:
     - Recording fake HTTP client; mutated Demo_Cases (missing harmlessness reason, reversal or expected outcome, too many items, disallowed endpoint, other origin)
     - **Validates: Requirements 18.8, 18.9, 18.10, 18.11, 18.12**
   - [ ]* 14.19 Repeat the runtime comparison with real documents
-    - Run the first real story context with the harness runtime and one alternate; compare out of the box behavior, cost, speed and instruction following; record in `spike/results/S-runtime-real.md`
+    - Run the first real story context with pi-coding-agent; optionally also with the DeepSeek Harness runtime fallback for comparison; compare out of the box behavior, cost, speed and instruction following; if pi-coding-agent fails, activate the fallback behind the `AgentRuntime` interface; record in `spike/results/S-runtime-real.md`
     - _Requirements: 40.16_
   - [ ] 14.20 Demo and verify: development stage
     - Show the user one source-change story (develop, review, run, checkpoint, Verifier) and one API-operation story (Demo_Case, writes, read-back, Verifier), then a restore; check that success appears only after Verifier results, that every `api_write` names an item of the validated Demo_Case, and that diffs stay in Engineering details
@@ -579,7 +588,7 @@ Conventions:
     - Design: Web app
     - _Requirements: 4.1, 5.4, 21.2_
   - [ ] 18.4 Write the README
-    - Run instructions, how Judges try the product, new-work statement, third-party notices: DeepSeek Harness runtime executable MIT with its THIRD_PARTY_NOTICES, pi packages MIT, Playwright Apache-2.0, linkding MIT as an unmodified external dependency, Remotion only if used; Kiroween rule facts kept as TO BE CONFIRMED
+    - Run instructions, how Judges try the product, new-work statement, third-party notices: pi packages MIT, Playwright Apache-2.0, linkding MIT as an unmodified external dependency, the DeepSeek Harness runtime only if it was activated as the fallback (MIT with its THIRD_PARTY_NOTICES, to be verified), Remotion only if used; Kiroween rule facts kept as TO BE CONFIRMED
     - Design: Kiro usage plan, Deployment and hosting
     - _Requirements: 33.1, 33.5, 33.6, 33.8, 27.5_
   - [ ] 18.5 Write the Kiro usage write-up
@@ -689,13 +698,13 @@ Conventions:
     { "id": 47, "tasks": ["9.4", "9.5"] },
     { "id": 48, "tasks": ["9.6", "9.7"] },
     { "id": 49, "tasks": ["9.8"] },
-    { "id": 50, "tasks": ["10.1", "10.2"] },
+    { "id": 50, "tasks": ["10.1", "10.2", "10.13"] },
     { "id": 51, "tasks": ["10.3", "10.4"] },
     { "id": 52, "tasks": ["10.5", "10.6"] },
     { "id": 53, "tasks": ["10.7", "10.8"] },
     { "id": 54, "tasks": ["10.9", "10.10"] },
     { "id": 55, "tasks": ["10.11"] },
-    { "id": 56, "tasks": ["10.12"] },
+    { "id": 56, "tasks": ["10.12", "10.14"] },
     { "id": 57, "tasks": ["11.1", "11.2"] },
     { "id": 58, "tasks": ["11.3", "11.4"] },
     { "id": 59, "tasks": ["11.5"] },
