@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file holds constraints and an index only. Details live in `.kiro/specs/repo-agent-studio/`.
+This file holds constraints and an index only. Details live in `.kiro/specs/graftlab-ai/`.
 
 ## Constraints
 
@@ -34,5 +34,5 @@ This file holds constraints and an index only. Details live in `.kiro/specs/repo
 
 ## Index
 
-- Requirements: `.kiro/specs/repo-agent-studio/requirements.md` (R1-R41)
+- Requirements: `.kiro/specs/graftlab-ai/requirements.md` (R1-R41)
 - Design and tasks: not created yet (only the requirements phase is done).

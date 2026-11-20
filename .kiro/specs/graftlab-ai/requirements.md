@@ -1,6 +1,6 @@
 # Requirements Document
 
-> Language: English (hackathon submission). The feature directory name `repo-agent-studio` is a temporary name and may be changed by the user.
+> Language: English (hackathon submission). Project name: GraftLab AI. Feature directory: `graftlab-ai`. In this document the product is called "the Studio".
 > Anything marked "TO BE CONFIRMED" is an unverified external fact or a decision not yet made and MUST NOT be treated as verified. Anything marked "UNDECIDED" is a value or choice deferred to the design stage or later.
 > Priority labels: "Must-have" (first version) or "Stretch" (only if time remains). The UI group (Requirements 1-8) is "Must-have, highest priority".
 > Fallback statement (user): If the project cannot be finished, the user wants the UI (Requirements 1-8) and the requirement-analysis stage (flow steps F1-F6, ending with the frozen Decision_Doc) protected first. The final scope decision is made in the last week before the deadline; until then work proceeds at the normal pace. No priority tiers are defined now.
