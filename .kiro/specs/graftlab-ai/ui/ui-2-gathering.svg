@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" width="1280" height="800" font-family="Inter, system-ui, sans-serif">
+  <title>UI 2 Workspace: evidence gathering</title>
+  <style>
+    .bg{fill:#0f0b14}.panel{fill:#1a1422;stroke:#3a2d4a}.t{fill:#e9e3f0}.m{fill:#9b8fae}
+    .work{fill:#7cff6b}.think{fill:#8fd3ff}.wait{fill:#ffc857}.fail{fill:#ff5468}
+    .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+    .glow{filter:drop-shadow(0 0 6px #7cff6b)}
+  </style>
+  <rect class="bg" width="1280" height="800"/>
+  <!-- top bar -->
+  <rect y="0" width="1280" height="48" fill="#140f1b"/>
+  <text x="20" y="30" class="t" font-size="15" font-weight="600">🧪 GraftLab AI</text>
+  <text x="170" y="30" class="m mono" font-size="13">sissbruecker/linkding @ v1.47.0</text>
+  <rect x="1180" y="14" width="80" height="22" rx="11" fill="#7cff6b"/><text x="1220" y="30" fill="#0f0b14" font-size="12" font-weight="700" text-anchor="middle">● LIVE</text>
+  <!-- flow line -->
+  <g font-size="12">
+    <text x="20" y="72" class="work">✓ reading</text><text x="104" y="72" class="work">✓ adapter</text><text x="186" y="72" class="work">✓ sandbox_start</text>
+    <text x="300" y="72" class="t" font-weight="700">▶ browser_experience</text>
+    <text x="450" y="72" class="m">meeting · deciding · confirm · frozen · planning · documenting · development</text>
+  </g>
+
+  <!-- presence cards -->
+  <g font-size="13">
+    <rect x="16" y="90" width="264" height="74" rx="10" class="panel"/>
+    <text x="30" y="122" font-size="26">🎃</text><text x="68" y="114" class="t" font-weight="600">Product</text>
+    <text x="68" y="134" class="work">● speaking · using the browser</text>
+    <text x="68" y="152" class="m" font-size="11">Browser_Use role TBD (Product or Tech_Manager)</text>
+    <rect x="16" y="90" width="264" height="74" rx="10" fill="none" stroke="#7cff6b" stroke-width="1.5" class="glow"/>
+
+    <rect x="16" y="172" width="264" height="58" rx="10" class="panel"/>
+    <text x="30" y="210" font-size="26">🦇</text><text x="68" y="196" class="t" font-weight="600">Architecture</text>
+    <text x="68" y="216" class="m">idle · read 38 of 40 files</text>
+
+    <rect x="16" y="238" width="264" height="58" rx="10" class="panel"/>
+    <text x="30" y="276" font-size="26">🧙</text><text x="68" y="262" class="t" font-weight="600">Moderator</text>
+    <text x="68" y="282" class="m">idle · meeting starts after gathering</text>
+
+    <rect x="16" y="304" width="264" height="58" rx="10" class="panel"/>
+    <text x="30" y="342" font-size="26">💀</text><text x="68" y="328" class="t" font-weight="600">Risk_and_Security</text><text x="68" y="348" class="m">idle</text>
+
+    <rect x="16" y="370" width="264" height="58" rx="10" class="panel"/>
+    <text x="30" y="408" font-size="26">👻</text><text x="68" y="394" class="t" font-weight="600">Verification</text><text x="68" y="414" class="m">idle</text>
+
+    <!-- Verifier: distinct non-LLM card -->
+    <rect x="16" y="446" width="264" height="58" rx="2" fill="#11161c" stroke="#c9d1d9" stroke-dasharray="4 3"/>
+    <text x="30" y="484" font-size="24">⚖</text><text x="68" y="470" fill="#c9d1d9" font-weight="600" class="mono" font-size="12">Verifier · code, no LLM</text>
+    <text x="68" y="490" class="m mono" font-size="11">no checks yet</text>
+  </g>
+
+  <!-- activity feed -->
+  <rect x="296" y="90" width="520" height="630" rx="10" class="panel"/>
+  <text x="312" y="114" class="m" font-size="12" font-weight="600">ACTIVITY</text>
+  <g font-size="13">
+    <text x="312" y="146" class="m">14:02:11</text><text x="380" y="146" class="t">🦇 Read <tspan class="mono">bookmarks/api/serializers.py</tspan></text>
+    <text x="312" y="172" class="m">14:02:40</text><text x="380" y="172" class="work">✓ Sandbox ready · health in 34 s</text>
+    <text x="312" y="198" class="m">14:03:02</text><text x="380" y="198" class="t">🎃 browser_open <tspan class="mono">/bookmarks</tspan></text>
+    <text x="312" y="224" class="m">14:03:05</text><text x="380" y="224" class="fail">✗ browser_click "Add bookmark": not found in snapshot</text>
+    <text x="312" y="250" class="m">14:03:07</text><text x="380" y="250" class="t">🎃 browser_snapshot · 6.1 KB</text>
+    <!-- thinking collapsed -->
+    <rect x="312" y="270" width="488" height="30" rx="6" fill="#211a2b"/>
+    <text x="326" y="290" class="think">▸ model-provided reasoning · thinking, 4 s</text>
+    <!-- live streaming message -->
+    <rect x="312" y="310" width="488" height="110" rx="8" fill="#211a2b" stroke="#7cff6b" stroke-opacity=".5"/>
+    <text x="326" y="334" class="t" font-weight="600">🎃 Product</text><text x="760" y="334" class="work" font-size="11">● live</text>
+    <text x="326" y="358" class="t">The add form has URL, title, description and tags.</text>
+    <text x="326" y="378" class="t">Tags are free text; nothing suggests them. That is a</text>
+    <text x="326" y="398" class="t">likely place for AI help▍</text>
+  </g>
+  <text x="312" y="700" class="m" font-size="12">Judge messages during gathering are queued and delivered when the meeting starts.</text>
+
+  <!-- artifact area -->
+  <rect x="832" y="90" width="432" height="630" rx="10" class="panel"/>
+  <g font-size="12"><text x="848" y="114" class="t" font-weight="700">Browser</text><text x="910" y="114" class="m">Evidence · Files · Engineering_Details</text></g>
+  <rect x="848" y="128" width="400" height="250" rx="6" fill="#f4f4f5"/>
+  <rect x="848" y="128" width="400" height="28" rx="6" fill="#d4d4d8"/><text x="860" y="146" fill="#3f3f46" font-size="11" class="mono">sandbox · /bookmarks/new</text>
+  <rect x="868" y="176" width="360" height="22" fill="#fff" stroke="#a1a1aa"/><rect x="868" y="210" width="360" height="22" fill="#fff" stroke="#a1a1aa"/><rect x="868" y="244" width="360" height="22" fill="#fff" stroke="#ff8a1f" stroke-width="2"/>
+  <text x="848" y="398" class="m" font-size="12">Screenshot after action 7 of max 40 · 2 failed actions</text>
+  <text x="848" y="430" class="t" font-size="13" font-weight="600">Observations so far</text>
+  <text x="848" y="454" class="t" font-size="12">• Bookmarks list, search and tag filter work</text>
+  <text x="848" y="474" class="t" font-size="12">• Adding needs manual tags</text>
+  <!-- start now -->
+  <rect x="848" y="660" width="400" height="44" rx="8" fill="#2a2036" stroke="#ff8a1f"/>
+  <text x="1048" y="688" fill="#ff8a1f" font-size="14" font-weight="600" text-anchor="middle">Start the meeting now (evidence will be labeled partial)</text>
+
+  <!-- interjection input -->
+  <rect x="16" y="736" width="1248" height="48" rx="24" class="panel"/>
+  <text x="40" y="766" class="m" font-size="14">To: everyone ▾   Message the team at any time…</text>
+</svg>

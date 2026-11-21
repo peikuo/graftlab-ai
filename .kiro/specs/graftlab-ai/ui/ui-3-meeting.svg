@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" width="1280" height="800" font-family="Inter, system-ui, sans-serif">
+  <title>UI 3 Workspace: meeting</title>
+  <style>
+    .bg{fill:#0f0b14}.panel{fill:#1a1422;stroke:#3a2d4a}.t{fill:#e9e3f0}.m{fill:#9b8fae}
+    .work{fill:#7cff6b}.think{fill:#8fd3ff}.wait{fill:#ffc857}.fail{fill:#ff5468}
+    .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+    .glow{filter:drop-shadow(0 0 6px #8fd3ff)}
+  </style>
+  <rect class="bg" width="1280" height="800"/>
+  <rect width="1280" height="48" fill="#140f1b"/>
+  <text x="20" y="30" class="t" font-size="15" font-weight="600">🧪 GraftLab AI</text>
+  <text x="170" y="30" class="m mono" font-size="13">sissbruecker/linkding @ v1.47.0</text>
+  <rect x="1180" y="14" width="80" height="22" rx="11" fill="#7cff6b"/><text x="1220" y="30" fill="#0f0b14" font-size="12" font-weight="700" text-anchor="middle">● LIVE</text>
+  <g font-size="12">
+    <text x="20" y="72" class="work">✓ reading ✓ adapter ✓ sandbox_start ✓ browser_experience</text>
+    <text x="400" y="72" class="t" font-weight="700">▶ meeting</text>
+    <text x="474" y="72" class="m">deciding · confirm · frozen · planning · documenting · development</text>
+  </g>
+
+  <g font-size="13">
+    <rect x="16" y="90" width="264" height="58" rx="10" class="panel"/>
+    <text x="30" y="128" font-size="26">🧙</text><text x="68" y="114" class="t" font-weight="600">Moderator</text><text x="68" y="134" class="m">idle · next: Architecture</text>
+
+    <rect x="16" y="156" width="264" height="58" rx="10" class="panel"/>
+    <rect x="16" y="156" width="264" height="58" rx="10" fill="none" stroke="#8fd3ff" stroke-width="1.5" class="glow"/>
+    <text x="30" y="194" font-size="26">🎃</text><text x="68" y="180" class="t" font-weight="600">Product</text><text x="68" y="200" class="think">● thinking</text>
+
+    <rect x="16" y="222" width="264" height="58" rx="10" class="panel"/>
+    <text x="30" y="260" font-size="26">🦇</text><text x="68" y="246" class="t" font-weight="600">Architecture</text><text x="68" y="266" class="wait">waiting for LLM · 6 s</text>
+
+    <rect x="16" y="288" width="264" height="58" rx="10" class="panel"/>
+    <text x="30" y="326" font-size="26">💀</text><text x="68" y="312" class="t" font-weight="600">Risk_and_Security</text><text x="68" y="332" class="m">idle · spoke 1×</text>
+
+    <rect x="16" y="354" width="264" height="58" rx="10" class="panel"/>
+    <text x="30" y="392" font-size="26">👻</text><text x="68" y="378" class="t" font-weight="600">Verification</text><text x="68" y="398" class="fail">blocked · output format invalid (1 retry left)</text>
+
+    <rect x="16" y="430" width="264" height="58" rx="2" fill="#11161c" stroke="#c9d1d9" stroke-dasharray="4 3"/>
+    <text x="30" y="468" font-size="24">⚖</text><text x="68" y="454" fill="#c9d1d9" font-weight="600" class="mono" font-size="12">Verifier · code, no LLM</text><text x="68" y="474" class="m mono" font-size="11">no checks yet</text>
+  </g>
+
+  <rect x="296" y="90" width="520" height="630" rx="10" class="panel"/>
+  <text x="312" y="114" class="m" font-size="12" font-weight="600">MEETING · round 2 of 3</text>
+  <g font-size="13">
+    <rect x="312" y="128" width="488" height="84" rx="8" fill="#211a2b"/>
+    <text x="326" y="150" class="t" font-weight="600">🧙 Moderator</text><text x="786" y="150" class="m" font-size="11" text-anchor="end">complete</text>
+    <text x="326" y="172" class="t">Evidence summary: 40 files read, browser experience</text>
+    <text x="326" y="192" class="t">complete (7 actions, 2 failed). Two candidate areas.</text>
+
+    <rect x="312" y="222" width="488" height="66" rx="8" fill="#2a2036" stroke="#ff8a1f"/>
+    <text x="326" y="244" fill="#ff8a1f" font-weight="600">🧑 Judge → Product</text>
+    <text x="326" y="266" class="t">Would auto-tagging be useful without a large model?</text>
+
+    <rect x="312" y="298" width="488" height="30" rx="6" fill="#211a2b"/>
+    <text x="326" y="318" class="think">▾ model-provided reasoning · 9 s</text>
+    <text x="336" y="346" class="m" font-size="12">Existing tags are user-specific; a suggestion must come from the</text>
+    <text x="336" y="364" class="m" font-size="12">user's own vocabulary, otherwise it adds noise…</text>
+
+    <rect x="312" y="378" width="488" height="104" rx="8" fill="#211a2b" stroke="#8fd3ff" stroke-opacity=".5"/>
+    <text x="326" y="400" class="t" font-weight="600">🎃 Product</text><text x="786" y="400" class="think" font-size="11" text-anchor="end">● live</text>
+    <text x="326" y="424" class="t">Yes. Suggest tags only from the user's existing tags,</text>
+    <text x="326" y="444" class="t">and let the user confirm. Evidence: <tspan class="mono" font-size="12">tags.py:42</tspan> ✓,</text>
+    <text x="326" y="464" class="t">browser step 5 ✓▍</text>
+
+    <rect x="312" y="494" width="488" height="40" rx="8" fill="#2a1418" stroke="#ff5468"/>
+    <text x="326" y="519" class="fail">✗ Verification: output did not match the schema · retrying once</text>
+  </g>
+
+  <!-- question card -->
+  <rect x="312" y="548" width="488" height="160" rx="10" fill="#221a10" stroke="#ffc857"/>
+  <text x="328" y="574" class="wait" font-size="13" font-weight="700">🧙 Moderator asks you</text>
+  <text x="328" y="598" class="t" font-size="13">Should suggestions be applied automatically or only after you confirm?</text>
+  <g font-size="13">
+    <rect x="328" y="614" width="170" height="32" rx="16" fill="#3a2d4a"/><text x="413" y="635" class="t" text-anchor="middle">After I confirm</text>
+    <rect x="508" y="614" width="150" height="32" rx="16" fill="#3a2d4a"/><text x="583" y="635" class="t" text-anchor="middle">Automatically</text>
+    <rect x="328" y="658" width="456" height="36" rx="6" fill="#140f1b" stroke="#3a2d4a"/><text x="340" y="681" class="m">Or type your own answer…</text>
+  </g>
+
+  <rect x="832" y="90" width="432" height="630" rx="10" class="panel"/>
+  <g font-size="12"><text x="848" y="114" class="t" font-weight="700">Evidence</text><text x="916" y="114" class="m">Browser · Files · Engineering_Details</text></g>
+  <g font-size="12">
+    <text x="848" y="146" class="t" font-weight="600">Reading</text>
+    <text x="848" y="168" class="work">✓ bookmarks/models.py · tags.py · api/serializers.py</text>
+    <text x="848" y="190" class="t" font-weight="600">Browser experience</text>
+    <text x="848" y="212" class="work">✓ 7 actions · 3 screenshots · 2 failed actions shown</text>
+    <text x="848" y="244" class="t" font-weight="600">Claims checked by code</text>
+    <text x="848" y="266" class="work">✓ tags.py:42 exists</text>
+    <text x="848" y="288" class="fail">✗ "views/ai.py" cited by Architecture: file not found (Unverified)</text>
+  </g>
+
+  <rect x="16" y="736" width="1248" height="48" rx="24" class="panel"/>
+  <text x="40" y="766" class="m" font-size="14">To: Product ▾   Interject now; it reaches the speaker at the next step…</text>
+</svg>

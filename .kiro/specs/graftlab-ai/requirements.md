@@ -355,6 +355,8 @@ Process note for our own work (layer A stays in Kiro format): each feature in ou
 
 The number of roles is TO BE CONFIRMED and may change during development.
 
+The Browser_Use operator is a duty, not a separate Agent_Role: one existing Agent_Role performs the browser experience and shows it on its own Presence_Card. Which role (Product or Tech_Manager) is UNDECIDED and is chosen after the first real run (user, 2026-11-22). The Code_Agent has its own Presence_Card. The Verifier has a Presence_Card that is visibly different from Agent_Role cards (no reasoning section, a list of checks only) and labeled "code, no LLM".
+
 Queue and watching rules: only one Judge operates at a time; others queue and may watch the current Task; no view may display a key.
 
 ## Requirements
@@ -450,7 +452,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 4. WHEN a decision, a confirmation or a Checkpoint_Demo needs the Judge, THE Workspace SHALL display an inline confirm/reject card worded in feature terms (feature name, what it does, the demo), without file names, paths or diffs.
 5. WHEN a Code_Agent question or a Tech_Manager escalation about a feature or requirement needs the Judge, THE Workspace SHALL display it as a question card phrased in feature terms.
 6. WHEN the Judge answers a card, THE Studio SHALL record the answer in the Event_Stream and deliver it to the asking role.
-7. THE exact decision-step UI SHALL be UNDECIDED and SHALL be explored by experimenting during implementation.
+7. WHEN a schema-valid Decision_Doc draft is ready for confirmation, THE Workspace SHALL present it as a list of review items (one per Decision_Doc section, the approach options as one item with exactly one selectable approach or combination), SHALL let the Judge accept or reject each item, SHALL require a reason for each rejection, SHALL send the draft back for revision with the rejected items and reasons only when every item has a verdict and at least one is rejected, SHALL keep the verdict of an item whose content is unchanged in the next draft and reset changed items to pending, and SHALL enable the final freeze only when every item is accepted (decided by the user, 2026-11-22: draft, item-by-item accept or reject, final freeze).
 8. WHEN the Studio reminds the Judge of pending Unconfirmed items (Requirement 21.8), THE Workspace SHALL display the reminder as an inline card that lists each pending item in feature terms, without file names, paths or diffs.
 
 ### Requirement 6: Feedback for every user action
@@ -1121,7 +1123,7 @@ Nothing here may be assumed:
 6. UNDECIDED: Source of the Judge's LLM key: Judge-supplied, hosted key with a cap, or both.
 7. UNDECIDED: Hosting domain and public entry.
 8. UNDECIDED: Network path from the PC to the TTS_Service; TO BE CONFIRMED: the TTS_Service facts in Requirement 31.
-9. UNDECIDED: Decision-step UI form (decided by experimenting during implementation).
+9. DECIDED (user, 2026-11-22): Decision-step UI form is draft, item-by-item accept or reject with a reason, then final freeze (Requirement 5.7; mocks in design.md, "UI design").
 10. Initial value set in design.md (adjustable): Confirmation wait time at confirmation points (Requirement 21).
 11. TO BE CONFIRMED: Number of meeting roles.
 12. TO BE CONFIRMED: GitHub anonymous rate limit value.

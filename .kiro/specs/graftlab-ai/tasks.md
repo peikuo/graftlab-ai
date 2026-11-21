@@ -309,9 +309,10 @@ Conventions:
     - Design: Decision step
     - _Requirements: 15.1, 15.2, 15.8, 15.9, 15.10, 24.4, 37.1, 37.2, 37.3, 37.5, 37.6, 37.7_
   - [ ] 7.4 Implement confirmation and freeze
+    - Item review per `ui/ui-4-decide.svg`: draft split into review items by code, accept or reject with a reason (`decision_item_reviewed`), send back only when every item has a verdict, unchanged items keep their verdict by `itemHash`, freeze only when every item is accepted
     - Confirm card in feature words with exactly one selectable approach or combination; freeze records version, hash, session and time (`decision_doc_frozen`); request changes back to `deciding`; Other_Repo end before freeze to `analysis_only`; guards block planning while unconfirmed
     - Design: Decision step, Flow_Graph
-    - _Requirements: 15.3, 15.4, 15.5, 15.11, 16.2, 16.3, 25.1, 37.4_
+    - _Requirements: 5.7, 15.3, 15.4, 15.5, 15.11, 16.2, 16.3, 25.1, 37.4_
   - [ ]* 7.5 Write property test for confirmable options
     - **Property 10: Only complete approach options can be confirmed**
     - **Validates: Requirements 15.11, 37.4, 37.5**

@@ -65,6 +65,7 @@ Success is decided only by the Verifier, plain TypeScript with no LLM, that runs
 | Container memory limits | Explicit limit per container; values per deployment, see reference-deployment.md | `GL_MEM_*_MB` | R38.3, Open item 25 |
 | Run_Environment start and health wait | 240 s | `GL_RUN_START_TIMEOUT_S` | R39.11 |
 | Per-node timeouts | see the node table in Flow_Graph | `GL_NODE_TIMEOUT_<NODE>_S` | R36.6, Open item 28 |
+| Agent_Role that performs the Browser_Use operator duty | `product` (to be chosen after the first real run: product or tech_manager) | `GL_BROWSER_ROLE` | Roles and Queue Rules, R14 |
 
 ## Architecture
 
@@ -453,7 +454,7 @@ export interface AgentRuntime {
 
 export interface RuntimeStartOptions {
   taskId: string;
-  roleId: RoleId;                 // "moderator" | "product" | ... | "tech_manager" | "operator" | "code_agent"
+  roleId: RoleId;                 // "moderator" | "product" | ... | "tech_manager" | "code_agent"; the operator duty runs as BROWSER_ROLE
   systemPrompt: string;           // from runtime-rules
   tools: ToolDefinition[];        // already filtered to the node's whitelist
   context: ContextBundle;         // story plus referenced documents only (R19.7)
@@ -607,7 +608,8 @@ None of them edited tests in the first scenario. The comparison is repeated at t
 - In `deciding`, the roles propose Approach_Options and the Risk_and_Security and Verification roles add Assessments (best effort, R37.1, R37.2). The Moderator submits the draft with `submit_decision_draft`; zod validates every section of R15.2.
 - The Studio computes, by code, `assessment.complete = acceptanceChecks.length > 0` per option; an incomplete option cannot be selected in the confirm card (R37.5). Every Assessment is labeled "LLM assessment, not a guarantee" (R37.3).
 - The confirm card shows the draft in feature terms with exactly one selectable approach or one combination (R15.11, R37.4). Confirm freezes: the server computes the content hash, records version, hash, Judge session id and time, and appends `decision_doc_frozen` (R15.3). Frozen versions are immutable; any later change creates version n+1 (R15.6, R16.1-R16.4).
-- Cards and the Decision_Doc view are the first decision-step UI; the exact UI is explored during implementation (R5.7, Open item 9).
+- Item review (R5.7, decided 2026-11-22; mock `ui/ui-4-decide.svg`): `decision/items.ts` splits a draft into review items by code, one per section of R15.2 (purpose and workflows, scope, approach, UI impact, executable acceptance checks, risks, open questions); evidence sources are shown inside the items they support. Each item has an `itemHash` (sha256 of the canonical JSON of its section). The Judge accepts or rejects each item; a rejection needs a non-empty reason. Each verdict appends `decision_item_reviewed`. "Send back" is enabled only when every item has a verdict and at least one is rejected; it takes the `awaiting_confirmation` to `deciding` edge and gives the Moderator the rejected items and reasons. In the next draft, an item whose `itemHash` is unchanged keeps its verdict; a changed item becomes pending. "Freeze" is enabled only when every item is accepted and the approach item has exactly one complete approach or combination selected; the server checks the same conditions again before it appends `decision_doc_frozen` (R15.3, R15.11).
+- A rejected draft history (drafts, verdicts, reasons) stays visible next to the review list; drafts are not Decision_Doc versions, only a freeze creates a version (R16).
 
 ### Planning and document-first (R19, R20, R40)
 
@@ -683,6 +685,53 @@ Plain TypeScript, no LLM (R22.9). Each Acceptance_Check produces a per-item resu
 - Accessibility: `prefers-reduced-motion` disables non-essential animation; all cards are operable by keyboard with visible focus; status always has text, never color alone (R8).
 - Halloween styling is optional and every avatar effect is bound to the derived Role_Status (R1.7, R2.9).
 
+### UI design (R1-R8, R26; reviewed with the user 2026-11-22)
+
+The mocks are SVG files in `ui/` next to this document. They fix layout, components and wording rules; pixel details, copy and colors may change during implementation. Example texts in the mocks (file names, tags, times) are illustrative only.
+
+| Mock | Screen and state | Main requirements |
+|---|---|---|
+| `ui/ui-1-home.svg` | Home: one URL input, validation feedback, scope line, Replay entry | R9.1, R6, R26.1 |
+| `ui/ui-2-gathering.svg` | Workspace during evidence gathering: file reading, Sandbox, live browser screenshots, queued Judge messages, "Start the meeting now" | R2, R3, R4.2, R11.9, R12.5, R14 |
+| `ui/ui-3-meeting.svg` | Workspace in the meeting: streaming statements, collapsible reasoning, interjection to a role, question card, a blocked role with its failure, evidence check marks | R2, R3, R5.1-R5.3, R12, R23, R24 |
+| `ui/ui-4-decide.svg` | Decision step: draft as review items, accept or reject with reason, one selectable approach, Unverified marks, send back, freeze | R5.7, R15, R16, R37 |
+| `ui/ui-5-build-checkpoint.svg` | Development: Code_Agent question in feature words, Tech_Manager verdict, Feature_Contract, Task_Board, checkpoint demo card, Verifier card with pending checks | R5.4, R5.5, R21, R22, R40 |
+| `ui/ui-6-replay.svg` | Replay: permanent "Replay" label, simulated typing note, seek bar with phase and failure markers, result from the Verifier | R7.4, R26 |
+
+Layout of the Workspace (1280 px reference width): a top bar (product name, repository and pinned version, frozen Decision_Doc version, LIVE or REPLAY label), the Flow_Graph progress line below it, three columns (Presence_Cards about 264 px, Activity_Feed about 520 px, Artifact_Area with tabs about 432 px), and the Interjection_Input with addressee selector fixed at the bottom. Interaction_Cards (question, confirm, checkpoint, reminder) appear inline in the Activity_Feed, so the Judge sees them where the work happens. The decision step widens the middle column to the review list and narrows the Presence_Cards to a compact column.
+
+Presence_Cards:
+
+| Card | Avatar | Notes |
+|---|---|---|
+| Moderator | 🧙 | |
+| Product | 🎃 | |
+| Architecture | 🦇 | |
+| Risk_and_Security | 💀 | |
+| Verification | 👻 | |
+| Tech_Manager | 🐈 | Development stage; its verdicts carry "LLM judgment, not a guarantee" |
+| Code_Agent | 🧪 | Development stage; shows attempt count and the container per Task |
+| Verifier | ⚖ | Different card style: square corners, dashed steel border, monospace, label "code, no LLM", no reasoning section, a list of checks with per-item state |
+
+There is no separate operator card. The role named by `GL_BROWSER_ROLE` shows "using the browser" on its own card while it runs the experience. Cards of roles that are not active in the current stage may be hidden or compacted.
+
+Status and theme tokens (dark theme; text always accompanies color, R8):
+
+| Token | Value | Use |
+|---|---|---|
+| `bg` / `panel` / `border` | #0f0b14 / #1a1422 / #3a2d4a | Background, panels, borders |
+| `text` / `muted` | #e9e3f0 / #9b8fae | Main and secondary text |
+| `accent` | #ff8a1f | Primary action, Judge messages, checkpoint card |
+| `working` | #7cff6b | speaking, reading, passed checks, LIVE |
+| `thinking` | #8fd3ff | thinking, reasoning sections |
+| `waiting` | #ffc857 | waiting for user, waiting for answer, waiting for LLM, question cards, REPLAY |
+| `failure` | #ff5468 | blocked, failures, rejected items, Unverified marks |
+| `verifier` | #c9d1d9 | Verifier card |
+
+Avatar effect rules (R1.7, R2.9): only a Role_Status with "Working indicator: yes" in the Role_Status derivation table (speaking, thinking, reading) gets a glow, in the color of that status. Waiting, blocked and idle get no glow. The effect is computed from `roleStatus(state, roleId, now)` only, so Live and Replay render the same effect at the same event (Property 4), and `prefers-reduced-motion` replaces animation with a static border.
+
+Wording rules: Interaction_Cards for the Judge use feature words without file names, paths or diffs (R5.4, R5.5, R21.2); those details live in the collapsed Engineering_Details tab. Every LLM assessment, verdict or Demo_Case carries its label. Results come only from the Verifier card and the result panel.
+
 ## Data Models
 
 All models are zod schemas in `packages/shared`. Field lists below are the first version; schema versions start at 1.
@@ -692,7 +741,8 @@ All models are zod schemas in `packages/shared`. Field lists below are the first
 ```ts
 type Actor =
   | { kind: "role"; roleId: RoleId }      // moderator, product, architecture, risk_and_security,
-                                          // verification, tech_manager, operator
+                                          // verification, tech_manager; the Browser_Use operator duty
+                                          // is performed by one of these (BROWSER_ROLE, product or tech_manager)
   | { kind: "judge" } | { kind: "system" } | { kind: "verifier" } | { kind: "code_agent" };
 
 interface StudioEvent<T extends EventType = EventType> {
@@ -728,6 +778,7 @@ Event types and payloads:
 | `artifact_updated` | artifactKind (file, diagram, decision_doc, doc, task_board, worktree_handoff, patch, screenshot, demo_case), ref, title | R4.3, R39.7 |
 | `decision_doc_version` | version, content, hash | R15.2, R16.1 |
 | `decision_doc_frozen` | version, hash, confirmedBy (session id), confirmedAt | R15.3 |
+| `decision_item_reviewed` | draftId, itemId, itemHash, verdict (accept, reject), reason (required for reject) | R5.7 |
 | `browser_action` | action, target, ok | R14.2 |
 | `browser_observation` | snapshotSummary, screenshotRef | R14.2, R14.7 |
 | `code_change` | storyId, attempt, changedFiles[], diffRef | R38.5, R40.5 |
