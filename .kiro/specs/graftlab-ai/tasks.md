@@ -45,13 +45,15 @@ Conventions:
     - Record in `spike/results/S-docker-network.md`
     - Design: Containers, Worktree manager, TO VERIFY list
     - _Requirements: 38.4, 39.6_
-  - [ ] 1.5 Spike C part 1: linkding API token creation and API allow-list paths (TO VERIFY 6)
+  - [x] 1.5 Spike C part 1: linkding API token creation and API allow-list paths (TO VERIFY 6)
+    - Done 2026-11-21 (`spike/results/S-linkding-api.md`): only the `bookmarks.ApiToken` model works (`ApiToken.objects.create(user=..., name="graftlab")` in `manage.py shell`, workdir `/etc/linkding`); `authtoken.Token` returns 401. Wait for `/health` (34 s) before management commands, because the SQLite database is locked during startup migrations. Every allow-list endpoint answered as documented (`?disable_scraping` on create). Correction: a POST with an existing URL returns 201 with the same id and REPLACES title and tags; auto-tagging rules add their tag on create and keep it on a PATCH without `tag_names`.
     - Start the pinned image with a generated superuser password, create a token with a Django management shell command inside the container, then call `GET /api/bookmarks/`, `POST /api/bookmarks/`, `PATCH /api/bookmarks/{id}/`, `POST /api/bookmarks/{id}/archive/` and `GET /api/tags/`; confirm the same-URL update behavior and tag merging
     - Pass: token works and every allow-list endpoint answers as documented. Fail fallback: create the token through the settings page with Playwright; correct the allow-list to the observed paths
     - Record in `spike/results/S-linkding-api.md` (no token values)
     - Design: Sandbox and test data, Adapter, Demo_Case and suggestion
     - _Requirements: 13.2, 18.10, 29.1_
-  - [ ] 1.6 Spike C part 2: run linkding from source in a dev-sandbox-like image (TO VERIFY 7, 8)
+  - [x] 1.6 Spike C part 2: run linkding from source in a dev-sandbox-like image (TO VERIFY 7, 8)
+    - Done 2026-11-21 (`spike/results/S-linkding-source.md`): linkding 1.47.0 needs Python >=3.13, so the dev-sandbox prototype is built FROM the digest-pinned official image (Python 3.13.7, runtime deps incl. compiled uwsgi) plus git, Node 24, uv, the dev dependency group with `--require-hashes`, `npm ci` and `npm run build` (1.03 GB). Use mirrors.aliyun.com for apt and pypi.tuna for Python packages (official sources are about 0.01 MB/s from the PC). From source: migrate 29 s, `runserver` `/health` 200 after 2 s; `pytest -n 4 bookmarks/tests`: 1380 passed in 300 s under 768 MiB. The full suite is too slow for every story attempt: run targeted test files. Image tag and source tag are the same release.
     - Throwaway Dockerfile in `spike/dev-sandbox/` on `ubuntu:latest` with Python 3, Node and git; clone linkding at the commit of the pinned image tag; preinstall Python and Node dependencies; run migrations, the frontend build, the dev server with a health path, and the linkding test command
     - Pass: the app answers on its health path and the test command runs; the image tag and the commit are the same release. Fail fallback: pin a Python version linkding supports; choose a tag that exists for both
     - Record the working commands (they inform the Agent_Roles' `runEnvironment` analysis, not an Adapter recipe) in `spike/results/S-linkding-source.md`
