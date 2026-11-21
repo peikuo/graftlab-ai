@@ -115,7 +115,9 @@ Evidence for the Agent_Roles' `runEnvironment` analysis (R39.9). This is not an 
 
 - Login is performed by Studio code with the generated superuser credentials; the operator role never sees the password.
 - Pages to experience: login, bookmark list, add-bookmark form, tag view, archived list, settings (including the auto-tagging rules).
-- ARIA snapshot quality on these pages and screenshot reading quality are pending (task 1.10, TO VERIFY 9, Open item 45). Fallback: screenshots as the main input where snapshots are poor.
+- ARIA snapshots (task 1.10, Playwright `locator("body").ariaSnapshot()`, 2026-11-22): login 318 characters with 8 named elements; bookmark list 1061 and 20; add form 868 and 15 (`textbox "URL"`, `textbox "Title"`, `textbox "Tags"`, `button "Save"`); tag view 868 and 18; settings exceeds the 8 KB cap (68 named elements before truncation), so the operator should snapshot a region of the settings page instead of the whole body.
+- One operator turn with deepseek-flash, using only role and name targets from the snapshots, added a bookmark in 9.4 s with 7 actions and 0 tool errors (open, snapshot, fill URL, Tags and Title, click Save, snapshot); the bookmark then appeared in the list.
+- A real screenshot of the bookmark list was described correctly (page name and the one visible title). Snapshots stay the primary observation; screenshots are a supplement.
 
 ## Adapter JSON example
 

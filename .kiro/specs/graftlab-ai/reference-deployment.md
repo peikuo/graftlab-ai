@@ -32,7 +32,8 @@
 | Verifier test container | 768 MB |
 | LLM_Proxy (and the relay it hosts) | 64 MB |
 
-- Only one Task runs at a time and containers that are not needed are stopped, so the peak is the Run_Environment or the test container plus the LLM_Proxy and, for API-operation stories, the Sandbox. Measured so far: the linkding Sandbox idles at about 85 MiB, and the linkding full test suite ran under 768 MiB without an OOM kill. The memory fit of the whole set under the 2 GB cap is pending (task 1.9, TO VERIFY 11).
+- Only one Task runs at a time and containers that are not needed are stopped, so the peak is the Run_Environment or the test container plus the LLM_Proxy and, for API-operation stories, the Sandbox. Measured so far: the linkding Sandbox idles at about 85 MiB, and the linkding full test suite ran under 768 MiB without an OOM kill. Worst case measured in task 1.9 (2026-11-22): the Sandbox, a Run_Environment running linkding from source, the LLM_Proxy and the Code_Agent runner doing a story, all at once: peaks Sandbox 98 MiB, Run_Environment 120 MiB, LLM_Proxy 35 MiB, runner 110 MiB; the WSL VM (1971 MiB) peaked at 917 MiB used; no OOM kill. `docker stats` takes several seconds per sample (19 samples), so the peaks are approximate. The full test suite was not run at the same time; it ran alone under 768 MiB without an OOM kill (task 1.6).
+- Playwright on the PC (task 1.10): `npm install playwright` from registry.npmmirror.com took 18 s; `npx playwright install chromium` with `PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright` took 44 s.
 
 ### Docker Desktop facts (spike 1.4)
 

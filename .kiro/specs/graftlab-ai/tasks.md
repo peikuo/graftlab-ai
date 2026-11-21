@@ -14,7 +14,7 @@ Conventions:
 
 ## Tasks
 
-- [ ] 1. Spike milestone: verify blocking TO VERIFY items (target 2026-11-21 to 2026-11-22)
+- [x] 1. Spike milestone: verify blocking TO VERIFY items (target 2026-11-21 to 2026-11-22)
   - [x] 1.1 Check Node >=22.19 on the PC (TO VERIFY 12, Open item 47)
     - Run `node --version` on the PC and rerun `spike/pi/smoke.mjs` against `deepseek-flash` (streaming, tool call, abort)
     - Pass: version >=22.19.0 and the smoke test completes. Fail: stop; there is no fallback (required)
@@ -75,30 +75,35 @@ Conventions:
     - Record in `spike/results/S-pi-code-ask.md`
     - Design: PiCodeRuntime
     - _Requirements: 40.11, 40.13_
-  - [ ] 1.9 Spike B part 2: memory fit under the 2 GB cap (TO VERIFY 11)
+  - [x] 1.9 Spike B part 2: memory fit under the 2 GB cap (TO VERIFY 11)
+    - Done 2026-11-22 (reference-deployment.md, "Docker Desktop and memory"): all four containers together peaked at 917 MiB of the 1971 MiB WSL VM; per container 35 to 120 MiB; no OOM kill. The limits stay as they are.
     - Run the Sandbox, a Run_Environment from the 1.6 image, and the logging proxy together with the design's memory limits, then run the pi-coding-agent scenario from 1.7; sample `docker stats`
     - Pass: no container is OOM-killed and the peak stays under the WSL cap. Fail fallback: lower limits or stop the Sandbox earlier
     - Record peaks in `spike/results/S-memory.md`
     - Design: Containers, Initial values; reference-deployment.md (Docker Desktop and memory)
     - _Requirements: 38.3_
-  - [ ] 1.10 Spike D part 1: ARIA snapshot quality on linkding and screenshot reading (TO VERIFY 9, Open item 45)
+  - [x] 1.10 Spike D part 1: ARIA snapshot quality on linkding and screenshot reading (TO VERIFY 9, Open item 45)
+    - Done 2026-11-22 (reference-target-linkding.md, "Browser_Use notes"): snapshots give usable role and name targets; one operator turn added a bookmark in 9.4 s with 0 tool errors; a real screenshot was read correctly. The settings page exceeds the 8 KB snapshot cap, so snapshot a region there. Playwright and Chromium install on the PC through the npm mirror (18 s and 44 s).
     - With Playwright against the 1.5 Sandbox, take ARIA snapshots of login, bookmark list, add form, tag view and settings; run one operator turn with `deepseek-flash` that adds a bookmark using snapshot targets; send one real screenshot and ask what is on the page
     - Pass: snapshots give usable role and name targets and the turn adds the bookmark. Fail fallback: screenshots as the main input where snapshots are poor
     - Record in `spike/results/S-aria.md`
     - Design: Browser_Use; reference-target-linkding.md (Browser_Use notes)
     - _Requirements: 14.7, 14.8, 14.9_
-  - [ ] 1.11 Spike D part 2: pi-agent-core steer and followUp (TO VERIFY 10)
+  - [x] 1.11 Spike D part 2: pi-agent-core steer and followUp (TO VERIFY 10)
+    - Done 2026-11-22: `steer()` entered the same run after the current tool call (sent at 1.5 s, applied at 4.2 s) and the answer covered it; `followUp()` ran after the answer. Judge interjections reach the speaking role at the next tool boundary.
     - Extend `spike/pi/` with a run that calls `steer()` while a turn streams and `followUp()` after it ends
     - Pass: the steered message is taken into the running turn and the follow-up runs after it. Fail fallback: deliver interjections only before the next turn
     - Record in `spike/results/S-pi-steer.md`
     - Design: PiRuntime
     - _Requirements: 12.2, 5.2_
-  - [ ] 1.12 Record spike outcomes in design.md and the references
+  - [x] 1.12 Record spike outcomes in design.md and the references
+    - Done 2026-11-22: TO VERIFY items 1, 2, 3, 9, 10, 11, 15 and 16 updated in design.md; PiCodeRuntime notes on tool activation and plain-text questions; memory and Playwright facts in reference-deployment.md; snapshot facts in reference-target-linkding.md.
     - Update the TO VERIFY list (status per item with the recording reference section, chosen fallback) and the dependent design sections (Containers, PiCodeRuntime, Runtime selection, Adapter contract, Browser_Use); record target-specific results in `reference-target-linkding.md` and host-specific results in `reference-deployment.md`; sanitize spike outputs (no local paths, machine names, account names or secrets)
     - Note: the results of 1.1-1.6 are already recorded there; 1.7-1.11 remain
     - Design: TO VERIFY list
     - _Requirements: 35.5_
-  - [ ] 1.13 Demo and verify: spike results
+  - [x] 1.13 Demo and verify: spike results
+    - Done 2026-11-22: every result file exists in `spike/results/` (S-node, S-mirrors, S-linkding-image, S-docker-network, S-linkding-api, S-linkding-source, S-pi-code-linux, S-pi-code-ask; 1.9 to 1.11 are recorded in the references); the secret scan finds neither the real key nor secret-like strings. Only TO VERIFY item 14 stays open (task 17.1).
     - Show the user the pass or fail table per spike with the chosen fallbacks; check that every result file exists and that the secret scan finds nothing in `spike/results/`
     - _Requirements: 23.1, 33.4_
 
