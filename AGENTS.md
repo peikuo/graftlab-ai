@@ -36,4 +36,6 @@ This file holds constraints and an index only. Details live in `.kiro/specs/graf
 
 - Requirements: `.kiro/specs/graftlab-ai/requirements.md` (R1-R41)
 - Design: `.kiro/specs/graftlab-ai/design.md`
-- Tasks: not created yet.
+- Reference, first target: `.kiro/specs/graftlab-ai/reference-target-linkding.md` (how linkding is installed, run, provisioned, tested and verified; design.md is authoritative)
+- Reference, deployment: `.kiro/specs/graftlab-ai/reference-deployment.md` (where and how the Studio is deployed, and the host facts from the spikes; design.md is authoritative)
+- Tasks: `.kiro/specs/graftlab-ai/tasks.md`

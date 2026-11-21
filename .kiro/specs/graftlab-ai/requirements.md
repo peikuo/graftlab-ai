@@ -92,12 +92,7 @@ What the combination adds: an Agent that looks like "just chat" is checked again
 
 ### Verified linkding facts
 
-Verified from the official linkding documentation and GitHub repository metadata:
-
-- linkding is licensed under MIT.
-- The REST API supports listing, querying, creating, PATCH, archiving and deleting bookmarks, plus tags and bundles, with Token authentication.
-- Creating a bookmark whose URL already exists silently updates the existing bookmark instead of creating a new one.
-- Auto-tagging rules merge tags into the tag list on each update.
+Moved to `reference-target-linkding.md`, section "Verified linkding facts" (including the verified correction that a POST with an existing URL replaces title and tags).
 
 ## Glossary
 
@@ -110,11 +105,12 @@ Verified from the official linkding documentation and GitHub repository metadata
 - **Review_Verdict**: The Tech_Manager's result for one story attempt: approve, request changes, or escalate. Labeled "reviewed by Tech_Manager (LLM judgment)".
 - **Engineering_Details**: The collapsed, on-demand view of diffs, review verdicts, rejected changes and tool calls. Never the main Judge view.
 - **Best_Effort_Goal**: A requirement worded "THE Agent_Roles SHOULD ... (best effort, measured, not guaranteed)"; its quality is measured by benchmarks and mitigated by checks.
-- **Adapter**: An adaptation package for one specific software. The first version has only the linkding Adapter. It carries only what the Studio itself needs: the target identity and reference (the upstream repository and pinned commit for the source copy, and the unmodified baseline, identified as the official linkding container image pinned by digest plus its documented configuration), the fixed test data set, and the assessment checks. The Sandbox runs that unmodified baseline. The Adapter does not define how to build or start the modified target (Requirement 39). Its exact contents are set in design.md.
+- **Adapter**: An adaptation package for one specific software. The first version has only the linkding Adapter. It carries only what the Studio itself needs: the target identity and reference (the upstream repository and pinned commit for the source copy, and the unmodified baseline, identified as the official linkding container image pinned by digest plus its documented configuration), the fixed test data set, and the assessment checks. The Sandbox runs that unmodified baseline. The Adapter does not define how to build or start the modified target (Requirement 39). Its exact contents are set in design.md, section "Adapter contract"; the linkding values are in `reference-target-linkding.md`.
 - **Adapted_Repo**: A repository that has an Adapter; in the first version only linkding.
 - **Other_Repo**: Any other public GitHub repository; analysis and documents only.
 - **Repo_Reader**: The Studio component that downloads and reads a repository read-only.
-- **Sandbox**: The isolated environment that runs unmodified linkding for the baseline experience (flow steps F4 and F5): the official linkding container image pinned by digest, with its documented configuration, as identified by the Adapter.
+- **Sandbox**: The isolated environment that runs the unmodified target baseline (linkding in the first version) for flow steps F4 and F5: the target's container image pinned by digest, with its documented configuration, as identified by the Adapter.
+- **Evidence_Gathering**: The part of the flow before the meeting: reading the repository (F2) and, for an Adapted_Repo, the Sandbox start (F4) and the Browser_Use experience (F5). During Evidence_Gathering the Studio narrates the work and asks the Judge no questions; Judge messages are accepted and delivered when the meeting starts.
 - **Browser_Use**: An Agent operating the sandboxed linkding web page through a browser like a human. Does not include controlling the whole desktop (computer use).
 - **Decision_Doc**: The decision document produced in flow step F6; once confirmed by the user it is frozen and is the stable baseline for everything after.
 - **Approach_Option**: One proposed way to make linkding AI-powered (independent agent, source change, UI change or a mix), proposed by the Agent_Roles and carried in the Decision_Doc together with its assessment.
@@ -220,14 +216,17 @@ Every step is labeled with a name and the requirement ids that cover it. Step id
 flowchart TD
     F1["F1 Home input of GitHub URL (R9)"] --> WS["Team workspace opens (R1-R8)<br/>presence, feed, artifacts, interjection"]
     WS --> F2["F2 Download and read repository read-only (R10, R34)<br/>show what is read and found"]
-    F2 --> F3["F3 Multi-role meeting analysis (R11, R18, R24)<br/>interaction with the user"]
-    F3 --> AD{"Adapter branch (R25)<br/>is it linkding?"}
+    F2 --> AD{"Adapter branch (R25)<br/>is it linkding?"}
     AD -- "No (Other_Repo)" --> O1["Skip sandbox and browser use<br/>label: Analysis only - not executed"]
     AD -- "Yes (linkding)" --> F4["F4 Run Sandbox (R13, R29)<br/>reset to fixed test data"]
     F4 --> F5["F5 Browser_Use experience (R14)<br/>experiencing is the demo"]
-    O1 --> F6
-    F5 --> F6["F6 Decide with user (R15, R17, R37)<br/>Agent_Roles and Judge decide the approach<br/>Decision_Doc draft with approach options,<br/>assessments, UI impact, acceptance checks"]
-    F5 -.-> PR["Optional Prototype (R41, Stretch)<br/>labeled Prototype, isolated worktree,<br/>never counted as success"]
+    O1 --> F3
+    F5 --> F3["F3 Multi-role meeting analysis (R11, R18, R24)<br/>starts with the gathered-evidence summary<br/>and the Judge messages queued during gathering;<br/>interaction with the user"]
+    F4 -. "Sandbox start fails:<br/>experience unavailable (R13)" .-> F3
+    F5 -. "Experience fails or times out:<br/>experience unavailable (R14)" .-> F3
+    SM["Judge: start the meeting now (R12, R14)<br/>ends F4 or F5 early;<br/>meeting labeled partial"] -.-> F3
+    F3 --> F6["F6 Decide with user (R15, R17, R37)<br/>Agent_Roles and Judge decide the approach<br/>Decision_Doc draft with approach options,<br/>assessments, UI impact, acceptance checks"]
+    F6 -.-> PR["Optional Prototype (R41, Stretch)<br/>labeled Prototype, isolated worktree,<br/>never counted as success"]
     PR -.-> F6
     F6 --> CF{"User confirms? (R15, R16, R37)<br/>exactly one approach confirmed"}
     CF -- "No: request changes" --> F6
@@ -237,7 +236,9 @@ flowchart TD
     F7 --> F8["F8 Document-first (R19, R20, R40)<br/>requirements, design, tasks, Task_Board,<br/>Feature_Contracts part of the backlog documents"]
     F8 --> AD2{"Adapter branch (R25)"}
     AD2 -- "No (Other_Repo)" --> O2(["Terminal: Docs only - not developed (R25, R36)"])
-    AD2 -- "Yes (linkding)" --> F10["F10 Develop and execute (R18, R21, R22, R38, R39)<br/>API-operation stories: Tech_Manager designs a Demo_Case,<br/>Studio code writes it to the Sandbox;<br/>source-change stories: Code_Agent edits a Task worktree in the Development_Sandbox<br/>(one container per Task, file writes confined to the worktree) and runs tests;<br/>modified app runs in the Run_Environment<br/>(start procedure analyzed by the Agent_Roles, only assessed by the Studio);<br/>one feature at a time;<br/>no decision power, only the story's Feature_Contract (R40)"]
+    AD2 -- "Yes (linkding)" --> TC{"Pre-execution target check (R13, R25, R29)<br/>can the target baseline start?"}
+    TC -. "No: label not executed (R13, R25)" .-> FL
+    TC -- "Yes" --> F10["F10 Develop and execute (R18, R21, R22, R38, R39)<br/>API-operation stories: Tech_Manager designs a Demo_Case,<br/>Studio code writes it to the Sandbox;<br/>source-change stories: Code_Agent edits a Task worktree in the Development_Sandbox<br/>(one container per Task, file writes confined to the worktree) and runs tests;<br/>modified app runs in the Run_Environment<br/>(start procedure analyzed by the Agent_Roles, only assessed by the Studio);<br/>one feature at a time;<br/>no decision power, only the story's Feature_Contract (R40)"]
     F10 -- "Code_Agent stops and asks:<br/>unclear requirement, conflict, more than the<br/>Feature_Contract, or retry limit reached (R40)" --> ASK{"Who answers? (R40)"}
     ASK -- "Technical question" --> TM
     ASK -- "Feature or requirement question" --> MOD["Moderator asks the Judge in feature words;<br/>Task shows waiting for answer (R2, R40)"]
@@ -266,14 +267,16 @@ flowchart TD
     TAO --> F11
     O2 --> F11["F11 Final demo and Replay view (R26, R27)<br/>Demo_Review_Notes, Retrospective (R20)<br/>label: Replay"]
 
-    USER["F9 User interjects any time (R5, R12)"] -.-> F2
+    USER["F9 User interjects any time (R5, R12)<br/>during F2, F4 and F5: accepted, recorded,<br/>delivered when F3 starts"] -.-> F2
     USER -.-> F3
+    USER -.-> F4
     USER -.-> F5
     USER -.-> F7
     USER -.-> F10
 
     F2 -. "events" .-> ES[("Event_Stream saved (R27)")]
     F3 -. "events" .-> ES
+    F4 -. "events" .-> ES
     F5 -. "events" .-> ES
     F10 -. "events" .-> ES
     VF -. "events" .-> ES
@@ -284,6 +287,9 @@ flowchart TD
 
 Flow chart notes:
 
+- F4 and F5 run before F3: evidence is gathered first so the meeting is not interrupted by waits. Evidence_Gathering is F2 and, for linkding, F4 and F5. During it the Workspace narrates the reading and the experience with live screenshots; Judge messages are accepted, acknowledged and recorded and are delivered to the roles when F3 starts; the Judge is not asked questions (R11, R12).
+- A Sandbox start failure (F4) or an experience failure or timeout (F5) is recorded honestly, labeled "experience unavailable", and the flow continues to F3 on the reading evidence (dotted edges); it does not end the Task. The Judge may end F4 or F5 early with "start the meeting now"; F3 then uses what was gathered so far, labeled partial (R13.4, R14.13, R14.14).
+- The pre-execution target check before F10 is the only point where an unavailable target baseline ends the Task: in `failed` with the label "not executed" (R13.4, R25.8, R29.5).
 - F9 "user interjects any time" runs through the whole flow and is drawn with dotted lines.
 - Demonstration runs through the whole flow: F5 is itself a demo, and F10 builds and demos one feature at a time.
 - Any step may fail; the chart shows the failure path at the verification stage as the representative case, and the same honest recording applies to all other steps (R23).
@@ -292,7 +298,7 @@ Flow chart notes:
 - The approach to make linkding AI-powered is decided at F6 by the Agent_Roles with the Judge; the Studio only assesses it (R37).
 - F7 and F8 produce the Feature_Contract of every story. In F10 every change is recorded, the Tech_Manager reviews the changed files against the Feature_Contract (an LLM judgment, not a guarantee), the Code_Agent stops and asks when it cannot resolve a problem, and a need to change the approach returns to F6 with a new Decision_Doc version. Development has no decision power (R40). Success is decided only by the Verifier's checks, which run after review and confirmation.
 - Diffs, review verdicts and rejected changes go to the Event_Stream and the collapsed Engineering details view; the Judge sees feature-level status, demos and confirm cards (UI principle "Feature-first").
-- The dashed Prototype activity between F5 and F6 is optional (Stretch, R41); it may also happen during F3 and F4 and never replaces the Decision_Doc confirmation.
+- The dashed Prototype activity off F6 is optional (Stretch, R41); it is requested during the requirement discussion (F3-F6), returns to F6, and never replaces the Decision_Doc confirmation.
 - F11 is a view of the saved Event_Stream after a Terminal_State; it is not a stage that changes the Task outcome.
 - The Event_Stream feeds the Workspace, so every presence and activity display comes from real events (R2).
 - The Event_Stream stores complete messages only; live streamed text is shown in the Workspace while it arrives and is not stored, and Replay animates typing from the stored complete message (R3, R26, R27).
@@ -303,16 +309,18 @@ Flow chart notes:
 |---|---|---|
 | Workspace | Team workspace screen | R1-R8 |
 | F1 | Home input | R9 |
-| F2 | Download and read | R10, R34 |
-| F3 | Meeting analysis | R11, R18, R24 |
-| Adapter branch | Adapted_Repo or Other_Repo | R25, R9 (labeling) |
-| F4 | Sandbox | R13, R29, R39 |
-| F5 | Browser_Use | R14 |
-| F3-F6 (optional) | Prototype during the requirement meeting | R41 (Stretch) |
+| F2 | Download and read (Evidence_Gathering) | R10, R34 |
+| Adapter branch | Adapted_Repo or Other_Repo, right after F2 | R25, R9 (labeling) |
+| F4 | Sandbox, before the meeting (Evidence_Gathering); a failure continues to F3 labeled "experience unavailable" | R13, R29, R39 |
+| F5 | Browser_Use, before the meeting (Evidence_Gathering); a failure or timeout continues to F3 labeled "experience unavailable"; the Judge may end it early | R14 |
+| Evidence_Gathering (F2, F4, F5) | Judge messages accepted, recorded and delivered when F3 starts; no questions to the Judge | R12 |
+| F3 | Meeting analysis after Evidence_Gathering, starting with the gathered-evidence summary (partial or "experience unavailable" where applicable) | R11, R18, R24 |
+| F6 (optional Prototype) | Prototype during the requirement discussion, drawn off F6 | R41 (Stretch) |
 | F6 | Decide, approach options and assessment, freeze, versions; decision made here, not in development | R15, R16, R17 (Case_Cards, Stretch), R37 |
 | F7 | Agile planning, Feature_Contract per story | R19, R20, R40 |
 | F8 | Document-first, Feature_Contract in backlog documents | R19, R20, R40 |
 | F9 | Interjection | R5, R12 |
+| Pre-execution target check | Before F10: can the target baseline start; failure ends in failed "not executed" | R13, R25, R29 |
 | F10 | Develop in a worktree inside the per-Task container against the Feature_Contract, Tech_Manager review, stop and ask, run (start procedure analyzed by the Agent_Roles), confirmation points and reminders; for API-operation stories, a Tech_Manager Demo_Case executed by Studio code against the Sandbox | R18, R21, R22, R38, R39, R40 |
 | Verification and failure | Verifier, honesty, Engineering details | R22, R23, R24, R38, R40 |
 | Terminal states and Flow_Graph | Stage machine, all stages | R36 (all flow steps), R25 (Analysis only, Docs only labels) |
@@ -525,7 +533,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 
 #### Acceptance Criteria
 
-1. WHEN reading finishes, THE Studio SHALL start a meeting and give a turn to each of the Moderator, Product, Architecture, Risk_and_Security and Verification Agent_Roles.
+1. WHEN evidence gathering finishes (reading, and for an Adapted_Repo the Sandbox start and the Browser_Use experience or their recorded failure, or the Judge ends gathering early), THE Studio SHALL start the meeting and give a turn to each of the Moderator, Product, Architecture, Risk_and_Security and Verification Agent_Roles.
 2. IF an Agent_Role does not produce a schema-valid statement in its turn, THEN THE Studio SHALL record that role's turn as failed (Requirement 23) and SHALL NOT present the role as having contributed.
 3. THE Studio SHALL display each statement with the speaking Agent_Role name.
 4. THE Agent_Roles SHOULD discuss the repository from their own role perspective, and the Moderator SHOULD ask the Judge at least one question before presenting a conclusion (best effort, measured, not guaranteed; Process Principle 5).
@@ -533,6 +541,8 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 6. IF a conclusion lacks an evidence reference or its evidence fails validation, THEN THE Studio SHALL mark it Unverified.
 7. THE Studio SHALL require each analyzed workflow to carry a purpose A or purpose B tag in the stage output schema; which tag the Agent_Roles choose is best effort and is confirmed by the Judge in the Decision_Doc.
 8. THE Studio SHALL record each statement and each Judge answer into the Event_Stream.
+9. WHEN the meeting starts, THE Studio SHALL first present a summary of the gathered evidence, labeled partial when the Judge ended gathering early and labeled "experience unavailable" when the Sandbox start or the Browser_Use experience failed.
+10. WHEN the meeting starts, THE Studio SHALL deliver to the Agent_Roles the Judge messages received during evidence gathering.
 
 ### Requirement 12: User interjects at any time
 
@@ -546,6 +556,8 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 2. WHEN a Judge message arrives, THE Studio SHALL display it in the Workspace and deliver it to the Agent_Roles before their next statement or action.
 3. THE Studio SHALL record each Judge message into the Event_Stream.
 4. WHEN a Judge message conflicts with a Frozen Decision_Doc, THE Studio SHALL tell the Judge that the change requires a new Decision_Doc version (Requirement 16). Detecting the conflict is an LLM judgment and is best effort (measured, not guaranteed); the Studio enforces only that a changed baseline needs a new Decision_Doc version (Requirement 16).
+5. WHILE evidence is being gathered, THE Studio SHALL accept, acknowledge and record Judge messages and SHALL deliver them when the meeting starts (Requirement 11.10).
+6. WHILE evidence is being gathered, THE Studio SHALL NOT ask the Judge questions.
 
 ### Requirement 13: Sandbox run (linkding only)
 
@@ -558,7 +570,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 1. WHERE the Task is Adapted_Repo, THE Studio SHALL start linkding in the Sandbox before the Browser_Use step.
 2. WHEN a Task starts a Sandbox, THE Studio SHALL reset linkding to the fixed test data set.
 3. THE Studio SHALL run only the linkding version identified by the Adapter's target reference and SHALL NOT run any other code taken from a submitted repository.
-4. IF the Sandbox fails to start, THEN THE Studio SHALL display the failure, record it in the Event_Stream, and end the Task in the Terminal_State `failed` with the label "not executed".
+4. IF the Sandbox fails to start, THEN THE Studio SHALL display and record the failure, label the experience "experience unavailable", and continue to the meeting; the Task SHALL end in the Terminal_State `failed` with the label "not executed" only if the target baseline still cannot start when an execution story needs it (pre-execution check).
 5. THE Studio SHALL keep Sandbox access limited to the Studio backend and SHALL NOT expose the linkding token to any Viewer or Judge view.
 6. THE Studio SHALL run the unmodified linkding version identified by the Adapter in the Sandbox for flow steps F4 and F5; the modified target software runs only in the Run_Environment (Requirement 39).
 
@@ -581,6 +593,9 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 9. WHERE the configured model does not accept image input, THE Studio SHALL use page-structure operation only.
 10. THE Studio SHALL keep desktop control (computer use) out of scope.
 11. WHERE an Acceptance_Check is a browser check, THE Verifier SHALL run it as a scripted Playwright check without an LLM (Requirement 22.9) against the Run_Environment and SHALL record its events in the Event_Stream; the LLM-driven Browser_Use operator is used only for the experience in flow step F5.
+12. WHERE the Task is Adapted_Repo, THE Studio SHALL run the Browser_Use experience before the meeting.
+13. IF the Browser_Use experience fails or times out, THEN THE Studio SHALL record the failure and continue to the meeting.
+14. WHEN the Judge ends the experience early ("start the meeting now"), THE Studio SHALL stop the experience and start the meeting with what was gathered.
 
 ### Requirement 15: Decision_Doc production, confirmation and freeze
 
@@ -590,7 +605,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 
 #### Acceptance Criteria
 
-1. WHEN the analysis and experience steps finish, THE Studio SHALL start an interactive decision step with the Judge.
+1. WHEN the meeting ends, THE Studio SHALL start the interactive decision step.
 2. THE Studio SHALL validate the Decision_Doc against its stage output schema and SHALL reject a draft that lacks a required section; the Agent_Roles draft the content (best effort), and the Judge confirms it. The Decision_Doc contains: purpose (A or B), selected workflows, in-scope items, out-of-scope items, acceptance criteria, approach options with their assessments (Requirement 37), the chosen approach, UI impact, executable acceptance checks, risks, evidence sources with file references, open questions, version number, content hash, and confirmation record (who, when).
 3. WHEN the Judge confirms a Decision_Doc version, THE Studio SHALL freeze it and SHALL record the version number, content hash, confirming person and confirmation time.
 4. WHILE no Decision_Doc version is confirmed, THE Studio SHALL block the planning, document-first and execution steps from starting.
@@ -843,7 +858,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 2. THE Studio SHALL provide an operation that restores linkding to the fixed test data set, and SHALL accept the restore operation only from the current operator (the queue lease holder, Requirement 28) or the admin.
 3. THE Studio SHALL keep only test data in linkding and SHALL keep real personal data out of it.
 4. WHEN a reset or restore finishes, THE Verifier SHALL confirm that the linkding data equals the fixed test data set.
-5. IF a reset or restore fails, THEN THE Studio SHALL display the failure, SHALL NOT start any Agent action on linkding, and SHALL end the Task in the Terminal_State `failed` with the label "not executed".
+5. IF a reset or restore fails, THEN THE Studio SHALL display the failure and SHALL NOT run any Agent action against the target baseline; at Task start the flow continues per Requirement 13.4.
 
 ### Requirement 30: LLM configuration and data egress
 
@@ -1092,6 +1107,7 @@ Note (hosting consequence, Open item 46): live execution (flow steps F4-F10) nee
 - Modified target code stored in the Studio repository (the Studio repository holds linkding only as an unmodified external dependency).
 - File writes by the Code_Agent outside the per-Task Worktree (kept from reaching the host by the container boundary).
 - Running arbitrary submitted repositories (only linkding is executed, including its source changes inside a Task Worktree).
+- Executing non-adapted repositories, and the vetting and stronger isolation that would require (future).
 
 ## Open Items
 
@@ -1144,9 +1160,10 @@ Nothing here may be assumed:
 45. TO BE CONFIRMED: How well deepseek-flash reads real page screenshots; only a solid-color image was tested (Requirement 14.8).
 46. RECORDED (hosting consequence), linked to items 20 and 21: live execution (flow steps F4-F10) needs the Docker engine on the developer's Windows PC. After the front end moves to the cluster, live execution is available only while the PC and its tunnel are up; otherwise Judges can use analysis (if the backend is hosted) and labeled Replays (Requirement 32).
 47. DONE (2026-11-21): A portable Node 24.22.3 was installed beside the system Node 22.14 on the developer PC (checksum verified; PATH unchanged). The Studio start script must call it explicitly. pi packages (engines node >=22.19.0) ran streaming, tool use and abort on it.
-48. TO BE DONE (not a requirement change): Docker Hub is not reachable from the PC; images are pulled on another machine, pinned by digest and transferred with docker save and docker load (see design).
+48. DONE (2026-11-21, task 1.3; not a requirement change): Docker Hub is not reachable from the PC; images are fetched by digest on another machine with a per-blob checksum check, transferred and loaded with docker load (see `reference-deployment.md`, section "Image transfer").
 49. TO BE CONFIRMED: whether the pi-coding-agent custom provider accepts a base address pointing at the LLM_Proxy; history: in the 2026-11-20 test a custom base address on the harness runtime returned HTTP 404 with an unknown cause (Requirement 30.16).
 50. DECIDED by the user (design Gap 5): for stories whose confirmed approach executes the workflow by operating linkding through its API, the Tech_Manager reads the relevant code and designs a Demo_Case: which endpoints, which test-data items, the expected outcome, why it is harmless, and how it is reversed. The Demo_Case doubles as a test case: its expected outcome becomes the Verifier's Acceptance_Checks (API read-back). Studio code executes the writes from the schema-validated Demo_Case; no LLM-facing write tool exists. The Verification Agent_Role does not design a second case (to save model calls); the non-LLM Verifier runs the checks. Studio guarantees (code): writes go only to the Sandbox linkding; only endpoints allowed by the Adapter; an item-count cap per Demo_Case (Item_Count_Cap, initial value 10, adjustable); reversibility comes from the Sandbox reset to the fixed test data set (Requirement 29) and the restore operation; a Demo_Case missing the harmlessness reason, the reversal statement or the expected outcome is rejected by schema validation. Best effort (LLM judgment, labeled "designed by Tech_Manager (LLM judgment)"): choosing a meaningful, understandable case and the harmlessness reasoning (Requirements 18.7-18.13, 40.18).
+51. RECORDED: Security of analyzed and executed repositories (future, not built): see design.md "Security of analyzed repositories".
 
 ## Design-Stage Discussion Items
 
@@ -1188,11 +1205,11 @@ Nothing here may be assumed:
 | 8 Accessibility | A | Reduced-motion check; keyboard-only operation test; status text present |
 | 9 Home page input | A, B | Example test for form input; property test for URL validation |
 | 10 Download and read | A, B | Read-only and no-execution check; example test for events |
-| 11 Meeting analysis | A, B, C | Schema validation of role statements and evidence marks; example test that a role turn without a valid statement is recorded as failed; participation and question quality are Best_Effort_Goals measured in the benchmark, not tested as guarantees |
-| 12 Interjection | A, B | Example test that interjections enter the Event_Stream |
-| 13 Sandbox | A, B | Integration test for start and reset; example test that a start failure ends the Task in `failed` with the label "not executed" |
-| 14 Browser use | A, B | End-to-end example; failure classification check; scripted Playwright browser check (no LLM) by the Verifier against the Run_Environment |
-| 15 Decision_Doc freeze | A, B, C | State machine check: blocks later steps while unconfirmed; rejects edits when Frozen; schema validation that approach options, assessments, chosen approach, UI impact and executable acceptance checks are present |
+| 11 Meeting analysis | A, B, C | Schema validation of role statements and evidence marks; example test that a role turn without a valid statement is recorded as failed; state machine check that the meeting starts only after evidence gathering (including after a recorded gathering failure or an early end by the Judge); example test that the meeting starts with the gathered-evidence summary, labeled partial after an early end and "experience unavailable" after a failed experience; example test that Judge messages received during gathering are delivered to the roles at the meeting start; participation and question quality are Best_Effort_Goals measured in the benchmark, not tested as guarantees |
+| 12 Interjection | A, B | Example test that interjections enter the Event_Stream; example test that a Judge message sent during gathering is acknowledged, recorded and delivered at the meeting start; check that no question card is opened during gathering |
+| 13 Sandbox | A, B | Integration test for start and reset; example test that a Sandbox start failure during gathering is recorded, labels the experience "experience unavailable" and continues to the meeting; example test that the pre-execution target check ends the Task in `failed` with the label "not executed" when the target baseline cannot start |
+| 14 Browser use | A, B | End-to-end example; failure classification check; example test that an experience failure or timeout is recorded and continues to the meeting; example test that "start the meeting now" ends the experience and the meeting starts with what was gathered; scripted Playwright browser check (no LLM) by the Verifier against the Run_Environment |
+| 15 Decision_Doc freeze | A, B, C | State machine check: the decision step starts when the meeting ends; blocks later steps while unconfirmed; rejects edits when Frozen; schema validation that approach options, assessments, chosen approach, UI impact and executable acceptance checks are present |
 | 16 Version changes | A, B, C | Property test for hash recomputation; example test for version chain |
 | 17 Case inspiration | A, B | Schema validation: card has source link and evidence boundary |
 | 18 Purpose A/B | A, B, C | Schema validation: every workflow has an A or B mark; stage machine check, for workflows executed by operating linkding through its API, that write operations run only in the write stages and that a B write stage needs a valid suggestion and Judge confirmation (for source or UI changes the stages are checked by the Acceptance_Checks); schema validation of the Demo_Case (endpoints, test-data items, expected outcome, harmlessness reason and reversal statement required; more items than the Item_Count_Cap rejected); property test: every executed write goes to the Sandbox origin and an Adapter-allowed endpoint, belongs to the validated Demo_Case, and the write count stays within the Item_Count_Cap; check that no LLM-facing write tool exists and that the "designed by Tech_Manager (LLM judgment)" label is shown; example test that reversal uses the Sandbox reset and restore; quality of path adherence and of the Demo_Case choice and harmlessness reasoning are Best_Effort_Goals measured in the benchmark |
@@ -1206,7 +1223,7 @@ Nothing here may be assumed:
 | 26 Final demo and Replay | A, B | UI check of the "Replay" label; property test that live and Replay rendering give the same UI state; example test that Replay types messages from the stored Complete_Message and states that typing speed is simulated and does not reflect real latency |
 | 27 Event stream | A | Property test: Event_Stream serialization round trip; Replay_File checks (schema version, sequence numbers, timestamps, no key or token, static serving); check that the Event_Stream holds only Complete_Messages, incomplete messages and message lifecycle events, and no chunk events |
 | 28 Queue and watching | A | Integration test for queue and read-only watching; server-side rejection of operations from queued persons; key-absence check |
-| 29 Data isolation and recovery | A, B | Verifier comparison test after reset; example test that restore is rejected unless requested by the lease holder or the admin; example test that a reset failure ends the Task in `failed` "not executed" |
+| 29 Data isolation and recovery | A, B | Verifier comparison test after reset; example test that restore is rejected unless requested by the lease holder or the admin; example test that a reset failure is shown, no Agent action runs against the target baseline, and at Task start the flow continues to the meeting (the pre-execution target check ends the Task in `failed` "not executed" if the baseline still cannot start) |
 | 30 LLM configuration | A, B | Example test that Judge-supplied LLM configuration is unavailable while its feature flag is off; property test for local validation of JSON and function-call output; secret scan; property test: for all events containing a secret value, the persisted and broadcast forms contain none; example test that the Development_Sandbox receives only the per-Task proxy credential and not the real LLM key; property test that the Judge base-address validation rejects loopback, private, link-local and cluster addresses; example test that a truncated finish reason is recorded as a failure and the output is not used; example test that max_tokens leaves room for thinking; capability facts verified by a live test on 2026-11-20 |
 | 31 Narration | A | Example tests for length and rate limits; degradation when unavailable |
 | 32 Portability | A | Smoke tests for environment configuration and container start |

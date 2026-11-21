@@ -6,9 +6,9 @@ The plan follows the schedule from today (2026-11-20 evening) to the real last w
 
 Conventions:
 
-- Each sub-task is sized for one focused session and names the design section it implements ("Design: ...").
+- Each sub-task is sized for one focused session and names the design section it implements ("Design: ..."). Target-specific details are in `reference-target-linkding.md` and deployment-specific details in `reference-deployment.md`; a task that needs them names the reference section after the design section.
 - Every feature milestone ends with a "Demo and verify" sub-task (layer A process note): what to show the user and how to check it.
-- Property-based tests use fast-check with vitest, at least 100 runs, tagged `// Feature: graftlab-ai, Property <n>: <property text>`. These property tests are required: Property 1 and 2 (Flow_Graph reachability and transition validity), Property 4 (live versus Replay reducer equality), Property 11 (Verifier tag inclusion and same-URL update), Property 12 (secret redaction) and Property 19 (Demo_Case write constraints). All other test sub-tasks are optional and marked with `*`.
+- Property-based tests use fast-check with vitest, at least 100 runs, tagged `// Feature: graftlab-ai, Property <n>: <property text>`. These property tests are required: Property 1 and 2 (Flow_Graph reachability and transition validity), Property 4 (live versus Replay reducer equality), Property 11 (the Adapter comparator agrees with a model of the target's write semantics), Property 12 (secret redaction) and Property 19 (Demo_Case write constraints). All other test sub-tasks are optional and marked with `*`.
 - Actions only the user can do (upgrading Node, pulling images on another machine, creating accounts, tunnel credentials, DNS, uploading the video, submitting on Devpost) are notes inside the relevant task, not tasks.
 - No real key, token, private IP, private hostname, account name or e-mail address is written into any committed file; `.env` files are never read or committed.
 
@@ -20,14 +20,14 @@ Conventions:
     - Pass: version >=22.19.0 and the smoke test completes. Fail: stop; there is no fallback (required)
     - Done 2026-11-21: Node v24.22.3 (portable, checksum verified against nodejs.org) installed under the project tools directory on the PC; the system Node and PATH were not changed; pi packages 1.5.2 ran streaming, an in-process tool call and abort against deepseek-flash (first delta 730 ms, abort stopped the run at 4.0 s). The backend start script must call this Node explicitly.
     - Record the result in `spike/results/S-node.md`
-    - Design: TO VERIFY list, Deployment and hosting
+    - Design: TO VERIFY list, Deployment model; reference-deployment.md (Node)
     - _Requirements: 32.6, 30.9_
   - [x] 1.2 Check package mirror reachability from the PC at image build time (TO VERIFY 13)
     - Done 2026-11-21 (`spike/results/S-mirrors.md`): apt, PyPI, npm, nodejs.org and GitHub are reachable during `docker build` on the PC. Docker Hub is not. Docker commands over SSH need an empty `DOCKER_CONFIG` and a minimal `PATH`, because the credential helper fails without a desktop logon session. Large `git clone` from GitHub is unreliable on the PC: fetch sources on the Mac and transfer them.
     - Throwaway Dockerfile in `spike/mirrors/` on `ubuntu:latest` that runs `apt-get update`, a `pip download`, an `npm view`, a fetch from nodejs.org and a `git ls-remote` against GitHub; separately run the Playwright Chromium download on the host
     - Pass: every source is reachable during `docker build`. Fail fallback: download on another machine and transfer, as for images
     - Record per-source results in `spike/results/S-mirrors.md`
-    - Design: Images, TO VERIFY list
+    - Design: Images, TO VERIFY list; reference-deployment.md (Network facts, Operational notes)
     - _Requirements: 39.2_
   - [x] 1.3 Verify linkding image transfer by docker save/load and digest check (Open item 48)
     - Done 2026-11-21 (`spike/results/S-linkding-image.md`): the official image is published on ghcr.io as well; index digest `sha256:e35cb50e0581178f245125ffaa909c565416c94c9f22ace305a7d234a4345522` (tag 1.47.0 = latest), linux/amd64 config `sha256:0f9a8582286a2efc50d51724869b48d845fed52032b8d0b45f02ee6ee649a9f3`, 392 MB. `docker pull` failed on both machines; `scripts/fetch-oci.mjs` (per-blob sha256 check) plus `scripts/make-docker-load-manifest.mjs`, a tar without xattrs, scp and `docker load` worked. Image ID on the PC equals the config digest. `/health` and `/login/` answer 200; idle memory 85 MiB.
@@ -35,7 +35,7 @@ Conventions:
     - Pass: digest matches and the image starts and answers on port 9090. Fail: re-transfer; no other fallback (the Sandbox depends on it)
     - Note: the user pulls with `--platform linux/amd64` and runs `docker save` on another machine
     - Record in `spike/results/S-linkding-image.md`
-    - Design: Images, Sandbox and test data
+    - Design: Images; reference-target-linkding.md (Version pin); reference-deployment.md (Image transfer)
     - _Requirements: 13.3, 25.6_
   - [x] 1.4 Spike B part 1: Docker Desktop internal network, published port and bind mount (TO VERIFY 4, 5)
     - Done 2026-11-21 (`spike/results/S-docker-network.md`): a container on an internal-only network cannot publish a port; the designed fallback works (relay container on both networks, host to relay to app 200), and the internal container has no internet or DNS. Bind mount works: writes visible on the host, LF preserved, 200 small writes in 329 ms, `git status` 1.1 s on 442 files. All files show as mode 755 in the container, so the Worktree manager must set `core.fileMode=false`.
@@ -43,21 +43,21 @@ Conventions:
     - Bind mount a host directory holding a linkding clone with `core.autocrlf=false` at `/work`; write from the container; check host visibility, file mode, LF line endings, and the time of `git status`
     - Pass: curl answers, internet blocked, writes visible with LF and acceptable speed. Fail fallback: LLM_Proxy container relays the app port; Worktree in a named volume with a helper container for diffs
     - Record in `spike/results/S-docker-network.md`
-    - Design: Containers, Worktree manager, TO VERIFY list
+    - Design: Network policy, Worktree manager, TO VERIFY list; reference-deployment.md (Docker Desktop facts)
     - _Requirements: 38.4, 39.6_
   - [x] 1.5 Spike C part 1: linkding API token creation and API allow-list paths (TO VERIFY 6)
     - Done 2026-11-21 (`spike/results/S-linkding-api.md`): only the `bookmarks.ApiToken` model works (`ApiToken.objects.create(user=..., name="graftlab")` in `manage.py shell`, workdir `/etc/linkding`); `authtoken.Token` returns 401. Wait for `/health` (34 s) before management commands, because the SQLite database is locked during startup migrations. Every allow-list endpoint answered as documented (`?disable_scraping` on create). Correction: a POST with an existing URL returns 201 with the same id and REPLACES title and tags; auto-tagging rules add their tag on create and keep it on a PATCH without `tag_names`.
     - Start the pinned image with a generated superuser password, create a token with a Django management shell command inside the container, then call `GET /api/bookmarks/`, `POST /api/bookmarks/`, `PATCH /api/bookmarks/{id}/`, `POST /api/bookmarks/{id}/archive/` and `GET /api/tags/`; confirm the same-URL update behavior and tag merging
     - Pass: token works and every allow-list endpoint answers as documented. Fail fallback: create the token through the settings page with Playwright; correct the allow-list to the observed paths
     - Record in `spike/results/S-linkding-api.md` (no token values)
-    - Design: Sandbox and test data, Adapter, Demo_Case and suggestion
+    - Design: Adapter contract; reference-target-linkding.md (Baseline run, Provisioning, API facts and the Adapter allow-list, Write semantics for the comparator)
     - _Requirements: 13.2, 18.10, 29.1_
   - [x] 1.6 Spike C part 2: run linkding from source in a dev-sandbox-like image (TO VERIFY 7, 8)
     - Done 2026-11-21 (`spike/results/S-linkding-source.md`): linkding 1.47.0 needs Python >=3.13, so the dev-sandbox prototype is built FROM the digest-pinned official image (Python 3.13.7, runtime deps incl. compiled uwsgi) plus git, Node 24, uv, the dev dependency group with `--require-hashes`, `npm ci` and `npm run build` (1.03 GB). Use mirrors.aliyun.com for apt and pypi.tuna for Python packages (official sources are about 0.01 MB/s from the PC). From source: migrate 29 s, `runserver` `/health` 200 after 2 s; `pytest -n 4 bookmarks/tests`: 1380 passed in 300 s under 768 MiB. The full suite is too slow for every story attempt: run targeted test files. Image tag and source tag are the same release.
     - Throwaway Dockerfile in `spike/dev-sandbox/` on `ubuntu:latest` with Python 3, Node and git; clone linkding at the commit of the pinned image tag; preinstall Python and Node dependencies; run migrations, the frontend build, the dev server with a health path, and the linkding test command
     - Pass: the app answers on its health path and the test command runs; the image tag and the commit are the same release. Fail fallback: pin a Python version linkding supports; choose a tag that exists for both
     - Record the working commands (they inform the Agent_Roles' `runEnvironment` analysis, not an Adapter recipe) in `spike/results/S-linkding-source.md`
-    - Design: Images, Run_Environment, TO VERIFY list
+    - Design: Images, TO VERIFY list; reference-target-linkding.md (Development_Sandbox for linkding, Running from source, Tests); reference-deployment.md (Network facts, Integrity rules)
     - _Requirements: 39.2, 39.9, 39.10_
   - [ ] 1.7 Spike A part 1: pi-coding-agent embedded runner in a container with read-only root, reaching the model through the LLM_Proxy (custom base address) (TO VERIFY 1, 2)
     - Put the pi packages (pinned versions, installed from the npm registry) and a first version of the runner into the spike image; run it with read-only root filesystem, tmpfs `/tmp` and the session and home directory, `/work` writable, on an internal network with a throwaway logging proxy that logs method, path and status only; define a custom provider and model entry whose base address is the proxy
@@ -77,13 +77,13 @@ Conventions:
     - Run the Sandbox, a Run_Environment from the 1.6 image, and the logging proxy together with the design's memory limits, then run the pi-coding-agent scenario from 1.7; sample `docker stats`
     - Pass: no container is OOM-killed and the peak stays under the WSL cap. Fail fallback: lower limits or stop the Sandbox earlier
     - Record peaks in `spike/results/S-memory.md`
-    - Design: Containers, Initial values
+    - Design: Containers, Initial values; reference-deployment.md (Docker Desktop and memory)
     - _Requirements: 38.3_
   - [ ] 1.10 Spike D part 1: ARIA snapshot quality on linkding and screenshot reading (TO VERIFY 9, Open item 45)
     - With Playwright against the 1.5 Sandbox, take ARIA snapshots of login, bookmark list, add form, tag view and settings; run one operator turn with `deepseek-flash` that adds a bookmark using snapshot targets; send one real screenshot and ask what is on the page
     - Pass: snapshots give usable role and name targets and the turn adds the bookmark. Fail fallback: screenshots as the main input where snapshots are poor
     - Record in `spike/results/S-aria.md`
-    - Design: Browser_Use
+    - Design: Browser_Use; reference-target-linkding.md (Browser_Use notes)
     - _Requirements: 14.7, 14.8, 14.9_
   - [ ] 1.11 Spike D part 2: pi-agent-core steer and followUp (TO VERIFY 10)
     - Extend `spike/pi/` with a run that calls `steer()` while a turn streams and `followUp()` after it ends
@@ -91,8 +91,9 @@ Conventions:
     - Record in `spike/results/S-pi-steer.md`
     - Design: PiRuntime
     - _Requirements: 12.2, 5.2_
-  - [ ] 1.12 Record spike outcomes in design.md
-    - Update the TO VERIFY list (status per item, chosen fallback) and the dependent design sections (Containers, PiCodeRuntime, Runtime selection, Adapter allow-list, Browser_Use); sanitize spike outputs (no local paths, machine names, account names or secrets)
+  - [ ] 1.12 Record spike outcomes in design.md and the references
+    - Update the TO VERIFY list (status per item with the recording reference section, chosen fallback) and the dependent design sections (Containers, PiCodeRuntime, Runtime selection, Adapter contract, Browser_Use); record target-specific results in `reference-target-linkding.md` and host-specific results in `reference-deployment.md`; sanitize spike outputs (no local paths, machine names, account names or secrets)
+    - Note: the results of 1.1-1.6 are already recorded there; 1.7-1.11 remain
     - Design: TO VERIFY list
     - _Requirements: 35.5_
   - [ ] 1.13 Demo and verify: spike results
@@ -109,8 +110,8 @@ Conventions:
     - Design: Kiro usage plan
     - _Requirements: 30.5, 33.4, 36.7_
   - [ ] 2.3 Scaffold the monorepo
-    - npm workspaces `apps/server` (Fastify), `apps/web` (React + Vite), `packages/shared`; directories `runtime-rules/` with `VERSION`, `adapters/linkding/` (`adapter.json` with the digest and commit from 1.3 and 1.6, the `api` allow-list from 1.5, `test-data.json`), `docker/dev-sandbox/`, `docker/llm-proxy/`; vitest and fast-check; `data/` in `.gitignore`; `.env.example` with variable names only
-    - Design: Repository layout, Adapter, Data directory
+    - npm workspaces `apps/server` (Fastify), `apps/web` (React + Vite), `packages/shared`; directories `runtime-rules/` with `VERSION`, `adapters/linkding/` (placeholder `adapter.json` with the digest and commit from 1.3 and 1.6 and the `api` allow-list from 1.5; the contract and hooks follow in 10.15), `docker/dev-sandbox/`, `docker/llm-proxy/`; vitest and fast-check; `data/` in `.gitignore`; `.env.example` with variable names only
+    - Design: Repository layout, Adapter contract, Data directory; reference-target-linkding.md (Adapter JSON example)
     - _Requirements: 32.1, 32.2, 32.3, 33.3, 33.4, 35.1, 35.2_
   - [ ]* 2.4 Write repository checks
     - LICENSE is Apache-2.0, `.kiro/` not ignored, no `.env` tracked, `.env.example` present, Adapter has no start procedure field, Verifier imports no LLM module, traceability mapping complete
@@ -128,7 +129,7 @@ Conventions:
     - Design: packages/shared, Web app
     - _Requirements: 26.7, 27.3, 27.14, 36.8_
   - [ ] 2.8 Implement Flow_Graph data and transition
-    - `packages/shared/src/flow/graph.ts`, `guards.ts`, `transition.ts`: all nodes of the main graph and the API-operation sub-path with kind, tool whitelist and timeout; guarded edges; global edges `timeout`, `unrecoverable_error`, `judge_abort`; `transition()` appends `node_entered` or `transition_rejected`
+    - `packages/shared/src/flow/graph.ts`, `guards.ts`, `transition.ts`: all nodes of the main graph (evidence gathering before `meeting`, the gathering edges to `meeting` with `experienceUnavailable` and `gatheringPartial`, `target_check`) and the API-operation sub-path with kind, tool whitelist and timeout; guarded edges; global edges `timeout`, `unrecoverable_error`, `judge_abort`; `transition()` appends `node_entered` or `transition_rejected`
     - Design: Flow_Graph (node table, rules)
     - _Requirements: 36.1, 36.2, 36.3, 36.4, 36.6, 36.9, 15.4, 15.5, 19.4_
   - [ ] 2.9 Write property test for terminal reachability
@@ -233,7 +234,7 @@ Conventions:
     - Show the user the linkding URL and one Other_Repo URL being read live, an invalid URL error and a private repository error; check that a second submit of the same commit reads from the cache and that every file read is in `events.jsonl`
     - _Requirements: 9.3, 9.4, 10.2, 34.2_
 
-- [ ] 6. F3: PiRuntime, meeting with streaming, thinking panel, interjection, question cards, evidence checker (target 2026-11-24)
+- [ ] 6. F3: PiRuntime, meeting after evidence gathering with streaming, thinking panel, interjection, question cards, evidence checker (target 2026-11-24)
   - [ ] 6.1 Implement LLM configuration
     - `apps/server/src/llm/`: server default base address and `deepseek-flash` from environment, max_tokens 16384 (`GL_MAX_TOKENS`), finish reason check, Judge-supplied configuration behind `GL_ALLOW_JUDGE_LLM` (off)
     - Design: LLM configuration and SSRF validation
@@ -264,13 +265,15 @@ Conventions:
     - Stream break keeps partial text and records the failure; truncation is discarded; blocked tool recorded as rejected by a safety rule; reasoning persisted with the complete message
     - _Requirements: 3.9, 3.12, 23.7, 30.13_
   - [ ] 6.9 Implement the reading skim and the meeting
-    - Architecture skim in `reading` (`read_file`, `search_repo`, `record_finding`); meeting rounds (fixed order, 2 rounds), `submit_statement` with findings, evidence and A/B/unclear workflows, Unverified marks, Moderator `ask_judge` with 120 s wait, `submit_meeting_summary` leading to `adapter_branch`
-    - Design: Meeting, Repo_Reader
-    - _Requirements: 10.2, 11.1, 11.3, 11.4, 11.5, 11.6, 11.7, 11.8, 18.1, 18.6_
+    - Architecture skim in `reading` (`read_file`, `search_repo`, `record_finding`, no `ask_judge`) leading to `adapter_branch`; the meeting starts after evidence gathering with the `evidence_summary` built by code (reading findings and skipped parts; experience notes, screenshots, "experience unavailable" and partial labels once milestone 11 adds them); meeting rounds (fixed order, 2 rounds), `submit_statement` with findings, evidence and A/B/unclear workflows, Unverified marks, Moderator `ask_judge` with 120 s wait, `submit_meeting_summary` leading to `deciding`
+    - Note: until milestone 11 wires `sandbox_start` and `browser_experience`, an Adapted_Repo Task records the experience as "experience unavailable (not built yet)" and goes from `adapter_branch` to `meeting`, so the label stays honest
+    - Design: Meeting, Repo_Reader, Flow_Graph
+    - _Requirements: 10.2, 11.1, 11.3, 11.4, 11.5, 11.6, 11.7, 11.8, 11.9, 15.1, 18.1, 18.6_
   - [ ] 6.10 Implement interjection delivery
     - `POST /api/tasks/:id/messages` acknowledges within 1 s (`GL_ACK_BOUND_MS`); `steer()` to the current speaker or prepend to the addressee's next turn; `judge_message` with `deliveredTo`; delivery failure next to the input; `propose_new_version` card
-    - Design: Meeting, HTTP API, PiRuntime
-    - _Requirements: 5.1, 5.2, 6.1, 6.2, 6.3, 6.4, 12.1, 12.2, 12.3, 12.4_
+    - During evidence gathering: the message is acknowledged and recorded with status `queued` ("received, delivered when the meeting starts"), and delivered at the meeting start with `judge_message_delivered`; no question card is opened during gathering
+    - Design: Meeting, HTTP API, PiRuntime, Flow_Graph (rules)
+    - _Requirements: 5.1, 5.2, 6.1, 6.2, 6.3, 6.4, 11.10, 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
   - [ ] 6.11 Build the live streaming text and the thinking panel
     - Live text with a "live" marker replaced by the complete message; collapsible "model-provided reasoning"; "thinking, N s" when no reasoning arrives; "waiting for LLM, N s"; incomplete mark with reason
     - Design: Web app
@@ -280,11 +283,11 @@ Conventions:
     - Design: HTTP API, Meeting
     - _Requirements: 5.3, 5.6, 6.5_
   - [ ]* 6.13 Write unit tests for interjection and question flows
-    - Message addressed to a role reaches that role first; interjection enters the Event_Stream; unanswered question recorded and the meeting continues
-    - _Requirements: 5.2, 11.4, 12.3_
+    - Message addressed to a role reaches that role first; interjection enters the Event_Stream; unanswered question recorded and the meeting continues; a message sent during reading is queued and delivered at the meeting start; no card is opened during reading
+    - _Requirements: 5.2, 11.4, 11.10, 12.3, 12.5, 12.6_
   - [ ] 6.14 Demo and verify: meeting
-    - Show the user a real meeting on linkding with `deepseek-flash`: streaming text, reasoning panel, an interjection mid-stream, an answered question card, an Unverified mark on a missing snippet, and a reload mid-stream that shows the buffer; check `events.jsonl` has complete messages only and no chunks
-    - _Requirements: 3.11, 11.6, 12.2, 27.7_
+    - Show the user a real meeting on linkding with `deepseek-flash`: the gathered-evidence summary at the start, a Judge message sent during reading and delivered at the meeting start, streaming text, reasoning panel, an interjection mid-stream, an answered question card, an Unverified mark on a missing snippet, and a reload mid-stream that shows the buffer; check `events.jsonl` has complete messages only and no chunks
+    - _Requirements: 3.11, 11.6, 11.9, 12.2, 12.5, 27.7_
 
 - [ ] 7. F6: decision step, Decision_Doc schema, versions, hash and freeze (target 2026-11-25)
   - [ ] 7.1 Implement the Decision_Doc schema, canonical hash and versions
@@ -350,48 +353,49 @@ Conventions:
     - Show the user the M1 Task replayed from its Replay_File with the backend stopped; check that the live and Replay final views match and that the Replay_File holds no key or token
     - _Requirements: 26.7, 27.12, 27.13_
 
-- [ ] 10. Containers: dev-sandbox image, LLM_Proxy, Sandbox with test data and reset, Worktree manager (target 2026-11-27)
+- [ ] 10. Containers: dev-sandbox image, LLM_Proxy, Sandbox with test data and reset, Worktree manager, Adapter contract (target 2026-11-27)
   - [ ] 10.1 Write the dev-sandbox Dockerfile
-    - `docker/dev-sandbox/Dockerfile` on `ubuntu:latest`: Python 3, git, Node (a Node 24 LTS Linux x64 tarball from nodejs.org with its checksum verified at build time), the pi packages installed from the npm registry at pinned versions, the Code_Agent runner copied from `docker/dev-sandbox/runner/` (task 10.13), linkding source at the pinned commit in `/opt/linkding-src`, Python dependencies in `/opt/venv`, Node dependencies cached; uses the results of 1.2 and 1.6
-    - Design: Images
+    - `docker/dev-sandbox/Dockerfile`: the generic layer (git, Node 24 LTS tarball with its checksum verified at build time, the pi packages at pinned versions, the Code_Agent runner copied from `docker/dev-sandbox/runner/`, task 10.13) on top of the Adapter's base image, built as `graftlab/dev-sandbox-<adapterId>`; package sources as build arguments; for linkding the base is the digest-pinned official image plus uv, the hash-checked dev dependency group, `npm ci` and `npm run build` (prototype: `spike/dev-sandbox/Dockerfile`); settle how the preinstalled Node modules and build output relate to the Worktree at `/work`
+    - Design: Images; reference-target-linkding.md (Development_Sandbox for linkding); reference-deployment.md (Network facts, Integrity rules)
     - _Requirements: 39.2, 25.6_
   - [ ] 10.2 Implement the Verifier `api_readback` check
-    - `apps/server/src/verifier/readback.ts`: all pages, URL normalization, tag inclusion, same-URL create compared as update against a pre-state snapshot, per-item results (also used for the reset equality check)
-    - Design: Verifier
+    - `apps/server/src/verifier/readback.ts`: reads all pages of the Adapter's read endpoints, applies the Adapter comparator from 10.15 (key matching, field rules, a create whose key existed in the pre-state snapshot compared as an update), per-item results (also used for the reset equality check)
+    - Design: Verifier, Adapter contract
     - _Requirements: 22.4, 22.5, 22.7, 22.9, 29.4_
   - [ ] 10.3 Implement the container manager
-    - `apps/server/src/containers/`: Docker Engine API wrapper, internal network, memory limits (`GL_MEM_*_MB`), read-only root and tmpfs, mounts, engine ping at server start, `GL_EXECUTION_ENABLED`
-    - Design: Containers, Where things run
+    - `apps/server/src/containers/`: Docker Engine API wrapper, internal-only network, the port relay hosted by the LLM_Proxy container, memory limits (`GL_MEM_*_MB`, values per deployment), read-only root and tmpfs, mounts, engine ping at server start, `GL_EXECUTION_ENABLED`
+    - Design: Containers, Network policy, Deployment model; reference-deployment.md (Docker Desktop facts, Docker Desktop and memory)
     - _Requirements: 38.2, 38.3, 38.4, 39.1, 39.6, 25.8_
-  - [ ] 10.4 Write property test for Verifier tag inclusion and same-URL update
-    - **Property 11: Verifier tag inclusion and same-URL update**
-    - In-memory linkding model with upsert by URL and generated auto-tag rules
+  - [ ] 10.4 Write property test for the Adapter comparator
+    - **Property 11: The Adapter comparator agrees with a model of the target's write semantics**
+    - Lives in `adapters/linkding/`; in-memory linkding model with upsert by normalized URL that replaces title and tags, and generated auto-tag rules (reference-target-linkding.md, Write semantics for the comparator)
     - **Validates: Requirements 22.4, 22.5**
   - [ ] 10.5 Implement the LLM_Proxy
     - `apps/server/src/proxy/` bundled to one file, run on the dev-sandbox image: per-Task bearer credential, allow-listed paths, real key swapped in, streaming passthrough, logs method, path and status only; credential registered with the redactor
     - Design: LLM_Proxy
     - _Requirements: 30.5, 30.16_
   - [ ] 10.6 Implement the Worktree manager
-    - `apps/server/src/worktree/`: bare mirror, `git clone --no-hardlinks`, branch `graftlab/<taskId>`, `core.autocrlf=false`, snapshots, diff with a temporary index, Patch_Artifact; created only for Adapted_Repo when first needed
-    - Design: Worktree manager
+    - `apps/server/src/worktree/`: one bare mirror per Adapter (`data/mirror/<adapterId>.git`), `git clone --no-hardlinks`, branch `graftlab/<taskId>`, `core.fileMode=false` and `core.autocrlf=false` on every clone, snapshots, diff with a temporary index, Patch_Artifact; created only for Adapted_Repo when first needed; no linked git worktrees
+    - Design: Worktree manager; reference-deployment.md (Docker Desktop facts)
     - _Requirements: 25.6, 38.1, 38.5, 38.6, 38.9_
   - [ ]* 10.7 Write integration tests for the LLM_Proxy
     - Wrong credential rejected; allowed path forwarded to a fake upstream with the real key; other paths refused
     - _Requirements: 30.16_
   - [ ] 10.8 Implement Sandbox start with test data and reset
-    - Fresh volume, per-Task generated password (registered with the redactor), readiness wait, token creation by the method from 1.5, load `test-data.json` with `disable_scraping`, reset equality by the Verifier; failure leads to `failed` "not executed"
-    - Design: Sandbox and test data
+    - Generic procedure over the Adapter contract: fresh volume, per-Task generated `secretEnv` values (registered with the redactor), readiness wait on the health path, the Adapter's `provision` hook, `testData.seed`, equality by the Verifier with `testData.equals`; a failure is returned as a recorded result, so the caller decides the edge: in `sandbox_start` "experience unavailable" and continue to the meeting (11.1), in `target_check` `failed` "not executed" (14.6)
+    - Design: Sandbox and test data, Adapter contract; reference-target-linkding.md (Baseline run, Provisioning, Fixed test data set, reset and restore)
     - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 29.1, 29.3, 29.4, 29.5_
   - [ ] 10.9 Implement the restore operation
-    - `POST /api/sandbox/restore` for the lease holder or the admin only; recreate container and volume, reload, Verifier equality
-    - Design: Sandbox and test data, HTTP API
+    - `POST /api/sandbox/restore` for the lease holder or the admin only; recreate container and volume, provision, seed, Verifier equality; a failed restore blocks Agent actions against the target baseline until a reset succeeds
+    - Design: Sandbox and test data, HTTP API; reference-target-linkding.md (Fixed test data set, reset and restore)
     - _Requirements: 29.2, 29.4, 18.13_
   - [ ]* 10.10 Write integration tests for the Development_Sandbox confinement
     - Write to `/work` reaches the host Worktree; write to `/etc` fails read-only; no host path outside the Worktree changes; internet request fails; LLM_Proxy reachable
     - _Requirements: 38.2, 38.4, 38.8_
   - [ ]* 10.11 Write integration tests for the Sandbox
-    - Start from the pinned digest, token, test data, Verifier equality, restore; restore rejected for a non-holder
-    - _Requirements: 13.2, 29.2, 29.4_
+    - Start from the pinned digest, provisioning, test data, Verifier equality, restore; restore rejected for a non-holder; a forced start failure is returned as a recorded failure
+    - Design: Testing Strategy (Integration tests)
+    - _Requirements: 13.2, 13.4, 29.2, 29.4_
   - [ ] 10.12 Demo and verify: containers
     - Show the user a Sandbox reset with the Verifier equality table, a restore, and a write attempt outside `/work` failing; check `docker stats` against the memory limits and that no container has the Docker socket
     - _Requirements: 29.4, 38.2, 38.8_
@@ -404,31 +408,40 @@ Conventions:
   - [ ] 10.14 Demo and verify: Code_Agent runner
     - Show the user the runner inside the built dev-sandbox image completing a small story on the toy repository through the LLM_Proxy, a question raised by `ask_question` and answered in the same process, and an abort; check that only `/work` and `/tmp` were written and that no real key is in the container environment
     - _Requirements: 30.16, 40.11, 40.13_
-- [ ] 11. F4-F5: Sandbox start and Browser_Use experience with live screenshots (target 2026-11-28)
+  - [ ] 10.15 Implement the Adapter contract and the linkding Adapter
+    - `packages/shared/src/adapter.ts`: the Adapter contract types and a zod schema for `adapter.json` (no start-procedure field for the modified target); `apps/server/src/adapters/`: loader and registry validated at server start, case-insensitive match used by 5.1
+    - `adapters/linkding/`: `adapter.json` with the real pins, the `api` allow-list (read and write endpoints, op ids, item cap, `itemFields` schema), the comparator (normalized-URL key, tag inclusion, same-URL create compared as an update that replaces title and tags, auto-tagging) with its tests, the provisioning hook (`bookmarks.ApiToken` in the management shell after `/health`, key registered with the redactor), `test-data.json` with seed, reset (fresh volume) and the equality check; `runtime-rules/adapters/linkding-checklist.md`
+    - Design: Adapter contract, Sandbox and test data, Verifier; reference-target-linkding.md (all sections)
+    - _Requirements: 9.5, 13.3, 13.5, 18.10, 18.11, 22.4, 22.5, 29.1, 29.3, 29.4, 39.10_
+  - [ ] 10.16 Demo and verify: Adapter contract and linkding Adapter
+    - Show the user `adapter.json` passing the contract schema, the comparator tests (including Property 11 from 10.4) passing, and a Sandbox started through the contract with provisioning, seed and a passing equality table, then a changed item failing the equality check and a reset passing it again; check that no credential appears in `events.jsonl` and that the repository check finds no start-procedure field
+    - _Requirements: 29.4, 39.10, 30.15_
+- [ ] 11. F4-F5: evidence gathering before the meeting: Sandbox start and Browser_Use experience with live screenshots (target 2026-11-28)
   - [ ] 11.1 Wire `sandbox_start` into the flow
-    - Node handler after `adapter_branch` for Adapted_Repo; Docker unavailable path to `failed` "not executed" after analysis
-    - Design: Flow_Graph, Sandbox and test data
-    - _Requirements: 13.1, 13.4, 25.8, 29.1_
+    - Node handler after `adapter_branch` for Adapted_Repo, after reading and before the meeting; a start, provisioning, reset or equality failure (including an unavailable container engine) is recorded, shown, labels the experience "experience unavailable" with the reason, and takes the edge to `meeting`; no Agent action runs against the target baseline in that state; the "not executed" end happens only at `target_check` (14.6)
+    - Design: Flow_Graph (rules), Sandbox and test data
+    - _Requirements: 13.1, 13.4, 25.8, 29.1, 29.5_
   - [ ] 11.2 Implement Browser_Use tools
     - `apps/server/src/browser/`: Playwright Chromium, route filter that aborts other origins, Studio login, operator tools, ARIA snapshot truncated to 8 KB, screenshots only when image-capable, JPEG after each action, `browser_action` and `browser_observation`, failure recorded before the next action, 40 actions and 5 consecutive failures limit
     - Design: Browser_Use
     - _Requirements: 14.2, 14.4, 14.5, 14.6, 14.7, 14.8, 14.9, 14.10_
-  - [ ] 11.3 Implement the `browser_experience` node
-    - Operator pi agent with `record_note`; analysis notes shown live; ends with the observed experience leading to `deciding`
-    - Design: Browser_Use, Flow_Graph
-    - _Requirements: 14.1, 14.3_
+  - [ ] 11.3 Implement the `browser_experience` node and the "start the meeting now" control
+    - Operator pi agent with `record_note` and no `ask_judge`; analysis notes and live screenshots shown; ends with the observed experience leading to `meeting`; a failure or timeout keeps the observations so far and leads to `meeting` with "experience unavailable"
+    - `POST /api/tasks/:id/gathering/end` and a Workspace control "start the meeting now", accepted only in `sandbox_start` and `browser_experience`: stops the running gathering work and leads to `meeting` with the partial label; the `evidence_summary` from 6.9 then includes the experience notes, screenshots and labels
+    - Design: Browser_Use, Flow_Graph (rules), Meeting, HTTP API
+    - _Requirements: 11.1, 11.9, 12.6, 14.1, 14.3, 14.12, 14.13, 14.14_
   - [ ] 11.4 Build the live browser view
     - Artifact_Area stream of screenshots with action and observation entries
     - Design: Web app, Browser_Use
     - _Requirements: 4.2, 14.2_
-  - [ ]* 11.5 Write unit tests for Browser_Use
-    - Route filter blocks another origin; a failed action is recorded before the next one; password never appears in events
-    - _Requirements: 14.5, 14.6, 13.5_
-  - [ ] 11.6 Demo and verify: experience
-    - Show the user a linkding Task going from meeting through Sandbox start to the operator using linkding with live screenshots; check that every action has an event and a screenshot and that the experience feeds the decision step
-    - _Requirements: 14.1, 14.2, 14.4_
+  - [ ]* 11.5 Write unit tests for Browser_Use and evidence gathering
+    - Route filter blocks another origin; a failed action is recorded before the next one; password never appears in events; an experience timeout and a Sandbox failure each continue to `meeting` with "experience unavailable"; "start the meeting now" gives a partial summary; a Judge message during the experience is queued and delivered at the meeting start; no card is opened during gathering
+    - _Requirements: 14.5, 14.6, 13.4, 13.5, 14.13, 14.14, 12.5, 12.6_
+  - [ ] 11.6 Demo and verify: evidence gathering and experience
+    - Show the user a linkding Task going from reading through Sandbox start to the operator using linkding with live screenshots, then the meeting starting with the gathered-evidence summary; a Judge message sent during the experience and delivered at the meeting start; "start the meeting now" giving a partial summary; a forced Sandbox failure continuing to the meeting with "experience unavailable"; check that every action has an event and a screenshot and that no card was opened during gathering
+    - _Requirements: 11.9, 12.5, 13.4, 14.1, 14.2, 14.4, 14.14_
 
-- [ ] 12. Checkpoint: linkding from URL through experience to frozen Decision_Doc (target 2026-11-28)
+- [ ] 12. Checkpoint: linkding from URL through evidence gathering and meeting to frozen Decision_Doc (target 2026-11-28)
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 13. F7-F8: planning and document-first (target 2026-11-29)
@@ -462,7 +475,7 @@ Conventions:
     - Show the user the backlog with Feature_Contracts and the `runEnvironment` section generated from the M1 Decision_Doc, and an Other_Repo ending as Docs only; check every document records the Frozen version and that a story without a Feature_Contract is rejected
     - _Requirements: 20.4, 20.9, 25.2_
 
-- [ ] 14. F10: PiCodeRuntime, development, Tech_Manager review, stop and ask, Run_Environment, checkpoints, Verifier and API-operation path (target 2026-11-30)
+- [ ] 14. F10: pre-execution target check, PiCodeRuntime, development, Tech_Manager review, stop and ask, Run_Environment, checkpoints, Verifier and API-operation path (target 2026-11-30)
   - [ ] 14.1 Implement the context builder and the development rules
     - `apps/server/src/dev/context.ts` writes only the story, its Feature_Contract and the referenced documents; Runtime_Rules rules "small scope per Agent" and "no decision power, stop and ask, reviewed by the Tech_Manager"
     - Design: Development stage
@@ -472,8 +485,8 @@ Conventions:
     - Design: PiCodeRuntime
     - _Requirements: 30.16, 38.3, 38.7, 38.8, 40.11, 40.13_
   - [ ] 14.3 Implement the Demo_Case schema, validator and check derivation
-    - `packages/shared` Demo_Case and suggestion schemas; `apps/server/src/apiops/validate.ts` (Item_Count_Cap from `GL_DEMO_CASE_MAX_ITEMS`, Adapter allow-list, Sandbox target); `deriveChecks`
-    - Design: Demo_Case and suggestion, Adapter
+    - `packages/shared` Demo_Case and suggestion schemas (generic keys and fields); `apps/server/src/apiops/validate.ts` (Item_Count_Cap as the lower of `GL_DEMO_CASE_MAX_ITEMS` and the Adapter's `itemCap`, Adapter allow-list and `itemFields`, Sandbox target); `deriveChecks`
+    - Design: Demo_Case and suggestion, Adapter contract; reference-target-linkding.md (Write semantics for the comparator)
     - _Requirements: 18.8, 18.10, 18.11, 18.12_
   - [ ]* 14.4 Write property test for small scope per Agent
     - **Property 16: Small scope per Agent**
@@ -481,10 +494,11 @@ Conventions:
   - [ ]* 14.5 Write unit tests for the PiCodeRuntime protocol parser
     - Sanitized runner event fixtures from 1.7 and 1.8 map to the expected Studio events; invalid lines counted
     - _Requirements: 38.7, 40.11_
-  - [ ] 14.6 Implement `story_develop` and change recording
-    - Start or resume the Development_Sandbox, run the Code_Agent, compute changed files and diff with a temporary index, append `code_change`, diff in Engineering details only, budget accounting
-    - Design: Development stage
-    - _Requirements: 38.1, 38.3, 38.5, 39.4, 40.5_
+  - [ ] 14.6 Implement `target_check`, `story_develop` and change recording
+    - `target_check` after `adapter_branch_2`, before the first execution story: engine ping, baseline image present by digest, and if an API-operation story remains the Sandbox started or reused after a fresh reset, provisioned and verified with the procedure from 10.8; failure ends the Task in `failed` with the label "not executed"
+    - `story_develop`: start or resume the Development_Sandbox, run the Code_Agent, compute changed files and diff with a temporary index, append `code_change`, diff in Engineering details only, budget accounting
+    - Design: Flow_Graph (rules), Sandbox and test data, Development stage
+    - _Requirements: 13.4, 25.8, 29.5, 38.1, 38.3, 38.5, 39.4, 40.5_
   - [ ]* 14.7 Write property test for change recording
     - **Property 18: Every Code_Agent change is recorded and reviewed**
     - **Validates: Requirements 40.5, 38.5**
@@ -500,7 +514,7 @@ Conventions:
     - Retry limit leads to a question; technical versus feature routing; a simulated unresolved problem ends in a question and not a widened scope; approach change returns to `deciding`; unanswered question blocks the story
     - _Requirements: 35.9, 40.4, 40.12, 40.13, 40.15, 40.17_
   - [ ] 14.11 Implement the Run_Environment
-    - Stop the Development_Sandbox, snapshot the Worktree, record `worktree_handoff`, start a fresh Run_Environment per attempt with the `runEnvironment` commands only inside it, 240 s health wait, failure to `failed`
+    - Stop the Development_Sandbox, snapshot the Worktree, record `worktree_handoff`, start a fresh Run_Environment per attempt with the `runEnvironment` commands only inside it, reached through the relay, 240 s health wait, failure to `failed`
     - Design: Development stage, Containers
     - _Requirements: 39.3, 39.4, 39.5, 39.6, 39.7, 39.9, 39.11_
   - [ ] 14.12 Implement checkpoints and reminders
@@ -514,11 +528,11 @@ Conventions:
     - No response gives Unconfirmed; next input triggers a reminder in feature terms recorded in the Event_Stream
     - _Requirements: 21.4, 21.8, 21.9_
   - [ ] 14.15 Complete the Verifier
-    - `test_suite` in a fresh test container with a read-only snapshot, scripted `browser_check` without an LLM, per-item results, disagreement display, success only from Verifier results, Retrospective at Task end
+    - `test_suite` running the test selection named in the check (targeted files by default, guided by the Adapter's test-selection hint) in a fresh test container with a read-only snapshot, scripted `browser_check` without an LLM, per-item results, disagreement display, success only from Verifier results, Retrospective at Task end
     - Design: Verifier
     - _Requirements: 14.11, 20.3, 22.1, 22.2, 22.3, 22.6, 22.7, 22.8, 22.9_
   - [ ] 14.16 Implement the API-operation path with the Demo_Case
-    - `api_read` Tech_Manager loop with `linkding_read`, `read_file`, `search_repo`, `submit_demo_case`; `api_plan` validation; `api_suggest` and `api_confirm` for purpose B; `apiops/writer.ts` as the only linkding write path (Sandbox origin, allow-list, per item, `api_write` events); `api_try_one`, `api_write_batch`, `api_read_back`; label "designed by Tech_Manager (LLM judgment)"; checkpoint shows the read-back table
+    - `api_read` Tech_Manager loop with `target_api_read` (read-only calls within the Adapter allow-list), `read_file`, `search_repo`, `submit_demo_case`; `api_plan` validation; `api_suggest` and `api_confirm` for purpose B; `apiops/writer.ts` as the only code path that writes to the target (Sandbox origin, allow-list, per item, `api_write` events); `api_try_one`, `api_write_batch`, `api_read_back`; label "designed by Tech_Manager (LLM judgment)"; checkpoint shows the read-back table
     - Design: Flow_Graph (API-operation sub-path), Development stage (per API-operation story)
     - _Requirements: 15.7, 18.2, 18.3, 18.4, 18.7, 18.9, 18.10, 18.13, 22.1, 40.18_
   - [ ]* 14.17 Write property test for success only from the Verifier
@@ -553,16 +567,16 @@ Conventions:
   - [ ] 17.1 Spike: SSE through the Cloudflare tunnel (TO VERIFY 14)
     - Stream a test Task through the tunnel for 10 minutes with 15 s heartbeats
     - Pass: events arrive without buffering and the stream survives idle periods. Fail fallback: long polling of `/api/tasks/:id/events?after=<seq>` (implement it in this task if the spike fails)
-    - Design: Deployment and hosting
+    - Design: Deployment model, TO VERIFY list; reference-deployment.md (Later deployment)
     - _Requirements: 32.5, 32.7_
   - [ ] 17.2 Write the front-end Pod manifests
     - k3s Deployment and Service that serve the static web build and the Replay_Files; routing of `/api` on the same hostname to the tunnel; no secrets in manifests
     - Note: the user creates the Cloudflare tunnel credentials and the DNS entry
-    - Design: Deployment and hosting
+    - Design: Deployment model; reference-deployment.md (Later deployment)
     - _Requirements: 32.2, 32.6, 32.7, 27.13_
   - [ ] 17.3 Add the tunnel configuration and the unreachable-backend handling
     - Tunnel configuration template without credentials; "backend unreachable" banner; SSE reconnect with `Last-Event-ID`; commands fail visibly next to the input
-    - Design: Deployment and hosting, Error Handling
+    - Design: Deployment model, Error Handling; reference-deployment.md (Later deployment)
     - _Requirements: 6.4, 32.7_
   - [ ] 17.4 Implement the Judge trial path chosen by the user (Open items 6 and 20)
     - Note: the user settles Open items 6 and 20 first (hosted capped key, a labeled Replay of a real recorded run, or both)
@@ -574,7 +588,7 @@ Conventions:
     - **Validates: Requirements 30.17**
   - [ ] 17.6 Write the static Replay_File upload script
     - Upload exported Replay_Files to the front-end Pod after the secret scan; list them on the home page with the "Replay" label
-    - Design: Deployment and hosting
+    - Design: Deployment model, Replay_File; reference-deployment.md (Later deployment)
     - _Requirements: 26.8, 27.13_
   - [ ] 17.7 Demo and verify: deployment
     - Show the user the public link with a live Task through the tunnel, a second browser queued, and a Replay that plays with the PC backend stopped; check the Judge-facing link is unchanged after restarting the backend
@@ -594,7 +608,7 @@ Conventions:
     - _Requirements: 4.1, 5.4, 21.2_
   - [ ] 18.4 Write the README
     - Run instructions, how Judges try the product, new-work statement, third-party notices: pi packages MIT, Playwright Apache-2.0, linkding MIT as an unmodified external dependency, the DeepSeek Harness runtime only if it was activated as the fallback (MIT with its THIRD_PARTY_NOTICES, to be verified), Remotion only if used; Kiroween rule facts kept as TO BE CONFIRMED
-    - Design: Kiro usage plan, Deployment and hosting
+    - Design: Kiro usage plan, Deployment model; reference-deployment.md (First deployment); reference-target-linkding.md (Identity and why linkding)
     - _Requirements: 33.1, 33.5, 33.6, 33.8, 27.5_
   - [ ] 18.5 Write the Kiro usage write-up
     - `docs/kiro-usage.md`: spec-driven build, steering, hooks, spike results feeding the design
@@ -645,7 +659,7 @@ Conventions:
 
 - Tasks marked with `*` are optional and can be skipped for a faster MVP; the required property tests (Properties 1, 2, 4, 11, 12, 19) are not marked.
 - The schedule follows the user's dates; the scope decision on 2026-12-01 may cut tasks from milestones 13-14 and 17-20, while the UI (R1-R8) and F1-F6 are protected first.
-- Spike results that change the design are written back to design.md in 1.12 before dependent tasks start.
+- Spike results that change the design are written back to design.md in 1.12 before dependent tasks start; target-specific and host-specific results go to `reference-target-linkding.md` and `reference-deployment.md`.
 - Each task references specific requirement criteria for traceability; Correctness Property numbers refer to design.md.
 
 ## Task Dependency Graph
@@ -703,13 +717,13 @@ Conventions:
     { "id": 47, "tasks": ["9.4", "9.5"] },
     { "id": 48, "tasks": ["9.6", "9.7"] },
     { "id": 49, "tasks": ["9.8"] },
-    { "id": 50, "tasks": ["10.1", "10.2", "10.13"] },
-    { "id": 51, "tasks": ["10.3", "10.4"] },
+    { "id": 50, "tasks": ["10.1", "10.13", "10.15"] },
+    { "id": 51, "tasks": ["10.2", "10.3", "10.4"] },
     { "id": 52, "tasks": ["10.5", "10.6"] },
     { "id": 53, "tasks": ["10.7", "10.8"] },
     { "id": 54, "tasks": ["10.9", "10.10"] },
     { "id": 55, "tasks": ["10.11"] },
-    { "id": 56, "tasks": ["10.12", "10.14"] },
+    { "id": 56, "tasks": ["10.12", "10.14", "10.16"] },
     { "id": 57, "tasks": ["11.1", "11.2"] },
     { "id": 58, "tasks": ["11.3", "11.4"] },
     { "id": 59, "tasks": ["11.5"] },
