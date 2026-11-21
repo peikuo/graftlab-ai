@@ -22,20 +22,23 @@ Conventions:
     - Record the result in `spike/results/S-node.md`
     - Design: TO VERIFY list, Deployment and hosting
     - _Requirements: 32.6, 30.9_
-  - [ ] 1.2 Check package mirror reachability from the PC at image build time (TO VERIFY 13)
+  - [x] 1.2 Check package mirror reachability from the PC at image build time (TO VERIFY 13)
+    - Done 2026-11-21 (`spike/results/S-mirrors.md`): apt, PyPI, npm, nodejs.org and GitHub are reachable during `docker build` on the PC. Docker Hub is not. Docker commands over SSH need an empty `DOCKER_CONFIG` and a minimal `PATH`, because the credential helper fails without a desktop logon session. Large `git clone` from GitHub is unreliable on the PC: fetch sources on the Mac and transfer them.
     - Throwaway Dockerfile in `spike/mirrors/` on `ubuntu:latest` that runs `apt-get update`, a `pip download`, an `npm view`, a fetch from nodejs.org and a `git ls-remote` against GitHub; separately run the Playwright Chromium download on the host
     - Pass: every source is reachable during `docker build`. Fail fallback: download on another machine and transfer, as for images
     - Record per-source results in `spike/results/S-mirrors.md`
     - Design: Images, TO VERIFY list
     - _Requirements: 39.2_
-  - [ ] 1.3 Verify linkding image transfer by docker save/load and digest check (Open item 48)
+  - [x] 1.3 Verify linkding image transfer by docker save/load and digest check (Open item 48)
+    - Done 2026-11-21 (`spike/results/S-linkding-image.md`): the official image is published on ghcr.io as well; index digest `sha256:e35cb50e0581178f245125ffaa909c565416c94c9f22ace305a7d234a4345522` (tag 1.47.0 = latest), linux/amd64 config `sha256:0f9a8582286a2efc50d51724869b48d845fed52032b8d0b45f02ee6ee649a9f3`, 392 MB. `docker pull` failed on both machines; `scripts/fetch-oci.mjs` (per-blob sha256 check) plus `scripts/make-docker-load-manifest.mjs`, a tar without xattrs, scp and `docker load` worked. Image ID on the PC equals the config digest. `/health` and `/login/` answer 200; idle memory 85 MiB.
     - Load the transferred tar with `docker load`; compare `docker image inspect` RepoDigests with the digest recorded on the other machine; record digest, version tag and platform for `adapters/linkding/adapter.json`
     - Pass: digest matches and the image starts and answers on port 9090. Fail: re-transfer; no other fallback (the Sandbox depends on it)
     - Note: the user pulls with `--platform linux/amd64` and runs `docker save` on another machine
     - Record in `spike/results/S-linkding-image.md`
     - Design: Images, Sandbox and test data
     - _Requirements: 13.3, 25.6_
-  - [ ] 1.4 Spike B part 1: Docker Desktop internal network, published port and bind mount (TO VERIFY 4, 5)
+  - [x] 1.4 Spike B part 1: Docker Desktop internal network, published port and bind mount (TO VERIFY 4, 5)
+    - Done 2026-11-21 (`spike/results/S-docker-network.md`): a container on an internal-only network cannot publish a port; the designed fallback works (relay container on both networks, host to relay to app 200), and the internal container has no internet or DNS. Bind mount works: writes visible on the host, LF preserved, 200 small writes in 329 ms, `git status` 1.1 s on 442 files. All files show as mode 755 in the container, so the Worktree manager must set `core.fileMode=false`.
     - Create a network with `internal: true`, start a test container on it only with a port published to `127.0.0.1`, curl it from the host; check that the container cannot reach the internet
     - Bind mount a host directory holding a linkding clone with `core.autocrlf=false` at `/work`; write from the container; check host visibility, file mode, LF line endings, and the time of `git status`
     - Pass: curl answers, internet blocked, writes visible with LF and acceptable speed. Fail fallback: LLM_Proxy container relays the app port; Worktree in a named volume with a helper container for diffs

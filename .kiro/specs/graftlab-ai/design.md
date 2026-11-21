@@ -1196,3 +1196,12 @@ Each item is verified by an early spike task in `tasks.md` (task group 1; item 1
 | 14 | SSE through the Cloudflare tunnel (buffering, idle timeout) | Deployment task | Long polling of `/api/tasks/:id/events?after=<seq>` |
 | 15 | Steer and abort through stdin commands reach the running pi-coding-agent session, and abort ends the exec within a few seconds | Spike A part 2 | Kill the exec on abort; interjections only between turns |
 | 16 | The Code_Agent follows the rule "report contradictions by asking, never special-case code to satisfy tests" on the toy-trap fixture in `spike/bench` (the result is recorded, not treated as a guarantee) | Spike A part 2 | Rely on the Tech_Manager review and the Verifier; harness runtime fallback if the real-document comparison shows it is clearly better |
+
+
+### Spike results recorded on 2026-11-21
+
+- TO VERIFY 4 (internal network plus published port): a container attached only to an internal network cannot publish a port on Docker Desktop for Windows. The fallback is adopted: a relay container on the internal and the default network publishes the port (the LLM_Proxy container can host this relay).
+- TO VERIFY 5 (bind mount): works. LF preserved, writes visible on the host, acceptable speed. Every file appears as mode 755 inside the container, so every clone used as a Worktree sets `core.fileMode=false`.
+- TO VERIFY 13 (package sources at image build time): apt, PyPI, npm, nodejs.org and GitHub are reachable from `docker build` on the PC; Docker Hub is not; large git clones from GitHub on the PC are unreliable, so source mirrors are fetched on another machine and transferred.
+- Open item 48 (images): the official linkding image is also published on ghcr.io. `docker pull` did not complete on either machine; the repository scripts `scripts/fetch-oci.mjs` and `scripts/make-docker-load-manifest.mjs` download it by digest with a sha256 check per blob and produce a tar that `docker load` accepts. Pinned: ghcr.io/sissbruecker/linkding index digest `sha256:e35cb50e0581178f245125ffaa909c565416c94c9f22ace305a7d234a4345522` (version 1.47.0), linux/amd64 config digest `sha256:0f9a8582286a2efc50d51724869b48d845fed52032b8d0b45f02ee6ee649a9f3`, source tag v1.47.0 at commit `24b5ad6cc9bde497b5d1b1e86aed5a2fb7d25c2f`. Idle memory of the Sandbox: about 85 MiB.
+- Operational: Docker commands from an SSH session need an empty `DOCKER_CONFIG` and a minimal `PATH`; the backend running in the desktop session is not affected.
