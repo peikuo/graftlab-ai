@@ -660,6 +660,18 @@ How agents use it (tools over the download only, no execution, R10.3):
 - A memo is an LLM description and never evidence: findings, assessments and decision items still need a quoted snippet that the evidence checker finds in the file (R24).
 - Token budget per agent turn: the runner counts the tokens of tool results in the turn; near the budget (initial value 60% of the model context window) further `read_file` calls return "budget reached, record what you have", so the agent submits instead of failing late.
 
+### Prompt caching (DeepSeek context caching; decided with the user 2026-11-23)
+
+DeepSeek caches prompt prefixes on disk by default (api-docs.deepseek.com/guides/kv_cache, read 2026-11-23). A request hits the cache only where it fully matches a persisted prefix unit: the end of an earlier request's input or output, a common prefix seen in several requests, or fixed token intervals in long inputs. Hit tokens are reported as `prompt_cache_hit_tokens` and `prompt_cache_miss_tokens`. The cache is best effort and cleared after hours to days. So the Studio builds every prompt to share long, byte-identical prefixes:
+
+- Order of every request: shared behavior rules, then the stable Task context (Repo_Map summary, root memo, evidence summary), then the role or batch instructions, then the variable part. Nothing that changes per call (timestamps, Task ids, counters, random ids) appears before the variable part.
+- Tool definitions are listed in one fixed order per node, so the tool block is identical across calls of the same node.
+- Conversations are append-only: earlier messages are never edited, reordered or trimmed in place, so each turn extends the previous request (the "A + B, then A + B + C" case). Interjections and Judge answers are appended, never inserted earlier.
+- Repo_Memo batches: all file-memo calls share the same rules, instructions and output schema, with only the batch of files at the end; the shared part is detected as a common prefix after the first two calls and hit afterwards. Directory rollups share their own fixed prefix the same way.
+- Meeting: every Meeting_Perspective and the Facilitator get the same shared prefix (rules, Task context, transcript so far) and their own role text after it; a role's next turn extends its previous request.
+- Measured, not assumed: `message_completed.usage` records the cache-hit and cache-miss input tokens when the provider reports them, and Engineering_Details shows the hit rate per node. Whether pi-ai passes DeepSeek's cache fields through is TO VERIFY at the start of milestone 6; if it does not, the Studio reads them from the raw usage object.
+- Our own cache is separate and deterministic: the Repo_Map and the Repo_Memo are cached per commit (R10.9), so a repeated Task makes no memo calls at all.
+
 ### Evidence checker (R24)
 
 - Input: an evidence reference `{ path, line?, snippet }` and the downloaded file set.
@@ -869,7 +881,7 @@ Event types and payloads:
 | `memo_written` | path, level (file, directory, root), fromCache, mapOnly; the memo text is an artifact | R10.7, R10.8 |
 | `message_started` | messageId, roleId, purpose (statement, review, operator, code_agent_step) | R27.10 |
 | `message_progress` | messageId, phase (waiting, thinking, speaking, tool_call), textChars, reasoningChars | R2.4, R2.8 (see Gaps found) |
-| `message_completed` | messageId, text, reasoning, finishReason, usage | R3.8, R27.7 |
+| `message_completed` | messageId, text, reasoning, finishReason, usage (input, output, reasoning, cache-hit and cache-miss input tokens) | R3.8, R27.7 |
 | `message_incomplete` | messageId, partialText, reason | R3.9 |
 | `tool_started` / `tool_finished` | callId, tool, input summary, ok, output summary | R4.7 |
 | `judge_message` | clientMsgId, to (all or roleId), text, status (delivered or queued during gathering), deliveredTo | R5.2, R12.3, R12.5 |

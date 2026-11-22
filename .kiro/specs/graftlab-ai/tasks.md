@@ -266,6 +266,7 @@ Conventions:
     - Design: Evidence checker
     - _Requirements: 24.1, 24.2, 24.3, 24.5, 24.6_
   - [ ] 6.4 Implement the AgentRuntime interface and PiRuntime
+    - Prompt caching per design "Prompt caching": fixed prompt order (shared rules, Task context, role text, variable part), fixed tool order, append-only transcripts; verify that pi-ai reports DeepSeek's cache-hit tokens and record them in `usage`
     - `packages/shared/src/runtime.ts` types; `apps/server/src/runtime/pi.ts`: event mapping table, `message_progress` every 5 s and at the first delta, deltas as SSE frames only, `message_incomplete` plus `failure` on a break, non-streaming fallback note, `beforeToolCall` whitelist, abort
     - Design: AgentRuntime interface, PiRuntime
     - _Requirements: 3.6, 3.7, 3.8, 3.9, 3.11, 27.7, 27.10, 30.9, 30.10, 23.7_
