@@ -226,11 +226,12 @@ export class TaskRunner {
       ...(canSkip ? [{ id: "skip_story", label: "Skip this story" }] : []),
       { id: "end_task", label: "End the Task" },
     ];
+    const notBuilt = !!f && /is not built yet in this version/.test(f.detail);
     const a = await ctx.askJudge(
       {
         kind: "confirm",
-        title: "Something went wrong. What should happen next?",
-        body: f ? `The step "${f.node}" failed: ${f.detail}` : "A step failed.",
+        title: notBuilt ? "The next step is not built yet. What should happen?" : "Something went wrong. What should happen next?",
+        body: notBuilt ? `"${f!.node}" comes in a later version of the Studio. Ending the Task keeps everything read so far.` : f ? `The step "${f.node}" failed: ${f.detail}` : "A step failed.",
         options,
         allowFreeText: false,
       },

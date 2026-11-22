@@ -193,7 +193,9 @@ function LineRow({ entry, event }: { entry: FeedEntry; event: StudioEvent | unde
   let badge: string | null = null;
   if (event?.type === "failure") {
     text = event.payload.detail.charAt(0).toUpperCase() + event.payload.detail.slice(1);
-    badge = `${FAILURE_PLAIN[event.payload.failureClass] ?? ""} · ${event.payload.failureClass}`;
+    // A step that does not exist yet in this version is not a failed call; say so plainly.
+    const notBuilt = /is not built yet in this version/.test(event.payload.detail);
+    badge = notBuilt ? "not built yet" : `${FAILURE_PLAIN[event.payload.failureClass] ?? ""} · ${event.payload.failureClass}`;
   }
   // Long notes (for example a skipped-files list) are cut at the first ":" or at 90 characters.
   const colon = text.indexOf(":");
