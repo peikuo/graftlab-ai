@@ -24,6 +24,18 @@ describe("SecretRegistry", () => {
     expect(r.redactText("xxabcdefghyy").value).toBe("[REDACTED:long_one]");
   });
 
+  it("terminates on circular and non-plain objects", () => {
+    const r = new SecretRegistry();
+    r.register("llm_key", "sk-test-0123456789");
+    const a: Record<string, unknown> = { s: "sk-test-0123456789" };
+    a.self = a;
+    const d = new Date(0);
+    const { value, hits } = r.redact<unknown>({ a, d });
+    expect(hits).toEqual(["llm_key"]);
+    expect(value).toEqual({ a: { s: "[REDACTED:llm_key]", self: "[Circular]" }, d });
+    expect((value as { d: Date }).d).toBe(d);
+  });
+
   it("returns the input unchanged and no hits when nothing matches", () => {
     const r = new SecretRegistry();
     r.register("llm_key", "sk-test-0123456789");

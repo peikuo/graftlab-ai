@@ -36,20 +36,18 @@ export function createStudio(opts: StudioOptions): Studio {
   const { secrets } = opts;
   const lease = opts.lease ?? new Lease();
 
-  const app = Fastify({
-    // First guard: no headers, bodies or environment in logs (default serializers log method, url and status only).
-    // Second guard: every log argument passes the redactor.
-    logger: opts.logger
-      ? {
-          hooks: {
-            logMethod(args, method) {
-              const clean = args.map((a) => secrets.redact(a).value) as Parameters<typeof method>;
-              method.apply(this, clean);
-            },
-          },
-        }
-      : false,
-  });
+  // First guard: no headers, bodies or environment in logs (Fastify's default serializers log method, url and
+  // status only). Second guard: every finished log line passes the redactor before it is written; a hit is a
+  // defect and is reported like a leaked delta.
+  let reportLeak: (names: string[], where: string) => void = () => {};
+  const logStream = {
+    write(line: string) {
+      const { value, hits } = secrets.redactText(line);
+      if (hits.length > 0) reportLeak(hits, "a server log line");
+      process.stdout.write(value);
+    },
+  };
+  const app = Fastify({ logger: opts.logger ? { stream: logStream } : false });
 
   const studio: Studio = {
     app,
@@ -58,16 +56,7 @@ export function createStudio(opts: StudioOptions): Studio {
       secrets,
       ...(opts.heartbeatMs === undefined ? {} : { heartbeatMs: opts.heartbeatMs }),
       queueView: (sid) => lease.view(sid),
-      onLeak: (names, where) => {
-        const store = studio.current;
-        if (!store) return;
-        void store.append({
-          type: "failure",
-          node: store.events().at(-1)?.node ?? "reading",
-          actor: { kind: "system" },
-          payload: { failureClass: "rejected_by_safety_rule", source: "persistence", detail: `secret found in ${where} and redacted: ${names.join(", ")}` },
-        });
-      },
+      onLeak: (names, where) => reportLeak(names, where),
     }),
     current: null,
     setCurrent(store) {
@@ -76,6 +65,16 @@ export function createStudio(opts: StudioOptions): Studio {
     },
   };
   lease.onChange(() => studio.hub.queueChanged());
+  reportLeak = (names, where) => {
+    const store = studio.current;
+    if (!store) return;
+    void store.append({
+      type: "failure",
+      node: store.events().at(-1)?.node ?? "reading",
+      actor: { kind: "system" },
+      payload: { failureClass: "rejected_by_safety_rule", source: "persistence", detail: `secret found in ${where} and redacted: ${names.join(", ")}` },
+    });
+  };
 
   // Command guard: same origin and operator lease (R28.6).
   const command = async (req: FastifyRequest) => {
