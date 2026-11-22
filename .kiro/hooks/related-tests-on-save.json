@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Run related tests on save",
+      "trigger": "PostFileSave",
+      "description": "Runs the vitest tests related to a saved TypeScript file (tasks.md 2.2). The script skips spike/ and node_modules.",
+      "matcher": "\\.(ts|tsx)$",
+      "action": {
+        "type": "command",
+        "command": "node scripts/hooks/related-tests.mjs",
+        "timeout": 180
+      }
+    }
+  ]
+}

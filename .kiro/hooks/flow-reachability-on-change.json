@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Flow_Graph reachability check",
+      "trigger": "PostFileSave",
+      "description": "Runs the Flow_Graph reachability property test when the graph changes (R36.7).",
+      "matcher": "packages/shared/src/flow/",
+      "action": {
+        "type": "command",
+        "command": "npm run flow:check",
+        "timeout": 120
+      }
+    }
+  ]
+}

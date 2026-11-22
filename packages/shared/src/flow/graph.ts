@@ -1,0 +1,207 @@
+// Flow_Graph as data (R36.1; design.md, "Flow_Graph"). transition() in transition.ts is the only way to change task.node.
+import {
+  and,
+  atRetryLimit,
+  belowRetryLimit,
+  currentKindIs,
+  currentPurposeIs,
+  demoCaseRetryLeft,
+  isAdapted,
+  isFrozen,
+  isOther,
+  nextKindIs,
+  noNextStory,
+  not,
+  othersVerified,
+  outcomeIs,
+  reviewAllAccepted,
+  reviewSendBack,
+  type Guard,
+} from "./guards.ts";
+import { GATHERING_NODES, NODE_IDS, type NodeId } from "./ids.ts";
+
+export type NodeKind = "auto" | "agent_loop" | "wait_user" | "terminal";
+
+export interface FlowNode {
+  id: NodeId;
+  kind: NodeKind;
+  tools: readonly string[];
+  /** Node timeout in seconds; null means only the Task timeout applies. */
+  timeoutS: number | null;
+  requirements: string;
+}
+
+export interface FlowEdge {
+  id: string;
+  from: NodeId;
+  to: NodeId;
+  guard: Guard;
+  label: string;
+  global?: true;
+}
+
+const min = (m: number) => m * 60;
+
+export const NODES: Record<NodeId, FlowNode> = {
+  reading: { id: "reading", kind: "agent_loop", tools: ["read_file", "search_repo", "record_finding"], timeoutS: min(10), requirements: "R10, R34" },
+  adapter_branch: { id: "adapter_branch", kind: "auto", tools: [], timeoutS: 5, requirements: "R25" },
+  sandbox_start: { id: "sandbox_start", kind: "auto", tools: [], timeoutS: min(3), requirements: "R13, R29" },
+  browser_experience: {
+    id: "browser_experience",
+    kind: "agent_loop",
+    tools: ["browser_open", "browser_click", "browser_fill", "browser_press", "browser_snapshot", "browser_screenshot", "record_note"],
+    timeoutS: min(10),
+    requirements: "R14",
+  },
+  meeting: {
+    id: "meeting",
+    kind: "agent_loop",
+    tools: ["read_file", "search_repo", "record_finding", "submit_statement", "ask_judge", "submit_meeting_summary"],
+    timeoutS: min(25),
+    requirements: "R11, R12, R24",
+  },
+  prototype: { id: "prototype", kind: "agent_loop", tools: ["code_agent"], timeoutS: min(15), requirements: "R41 (Stretch)" },
+  deciding: { id: "deciding", kind: "agent_loop", tools: ["read_file", "search_repo", "ask_judge", "submit_decision_draft"], timeoutS: min(20), requirements: "R15, R37" },
+  awaiting_confirmation: { id: "awaiting_confirmation", kind: "wait_user", tools: [], timeoutS: null, requirements: "R5.7, R15.3, R15.4" },
+  frozen: { id: "frozen", kind: "auto", tools: [], timeoutS: 5, requirements: "R15.3, R16" },
+  planning: { id: "planning", kind: "agent_loop", tools: ["submit_backlog", "submit_sprint_plan", "submit_definition_of_done"], timeoutS: min(15), requirements: "R19, R20, R40.1" },
+  documenting: {
+    id: "documenting",
+    kind: "agent_loop",
+    tools: ["submit_requirements_doc", "submit_design_doc", "submit_tasks_doc", "submit_task_board"],
+    timeoutS: min(15),
+    requirements: "R19.2, R20",
+  },
+  adapter_branch_2: { id: "adapter_branch_2", kind: "auto", tools: [], timeoutS: 5, requirements: "R25" },
+  target_check: { id: "target_check", kind: "auto", tools: [], timeoutS: min(3), requirements: "R13.4, R25.8, R29.5" },
+  story_develop: { id: "story_develop", kind: "agent_loop", tools: ["code_agent"], timeoutS: null, requirements: "R38, R40" },
+  story_review: { id: "story_review", kind: "agent_loop", tools: ["read_changed_file", "read_diff", "submit_review_verdict"], timeoutS: min(5), requirements: "R40.6-R40.10" },
+  story_ask: { id: "story_ask", kind: "wait_user", tools: ["answer_question"], timeoutS: 300, requirements: "R40.11-R40.14" },
+  story_run: { id: "story_run", kind: "auto", tools: [], timeoutS: 240, requirements: "R39.9-R39.11" },
+  story_checkpoint: { id: "story_checkpoint", kind: "wait_user", tools: [], timeoutS: 120, requirements: "R21" },
+  verifying: { id: "verifying", kind: "auto", tools: [], timeoutS: min(10), requirements: "R22" },
+  api_read: { id: "api_read", kind: "agent_loop", tools: ["target_api_read", "read_file", "search_repo", "submit_demo_case"], timeoutS: min(8), requirements: "R18.2, R18.7, R40.18" },
+  api_plan: { id: "api_plan", kind: "auto", tools: [], timeoutS: 5, requirements: "R18.2, R18.8, R18.10-R18.12" },
+  api_suggest: { id: "api_suggest", kind: "agent_loop", tools: ["target_api_read", "read_file", "submit_suggestion"], timeoutS: min(5), requirements: "R18.3" },
+  api_confirm: { id: "api_confirm", kind: "wait_user", tools: [], timeoutS: 120, requirements: "R18.4, R15.7" },
+  api_try_one: { id: "api_try_one", kind: "auto", tools: [], timeoutS: min(2), requirements: "R18.2, R18.9, R18.10" },
+  api_write_batch: { id: "api_write_batch", kind: "auto", tools: [], timeoutS: min(5), requirements: "R18.2, R18.9, R18.10" },
+  api_read_back: { id: "api_read_back", kind: "auto", tools: [], timeoutS: min(3), requirements: "R18.2" },
+  success: { id: "success", kind: "terminal", tools: [], timeoutS: null, requirements: "R36.5" },
+  failed: { id: "failed", kind: "terminal", tools: [], timeoutS: null, requirements: "R36.5" },
+  aborted: { id: "aborted", kind: "terminal", tools: [], timeoutS: null, requirements: "R36.5" },
+  analysis_only: { id: "analysis_only", kind: "terminal", tools: [], timeoutS: null, requirements: "R36.5, R25" },
+  docs_only: { id: "docs_only", kind: "terminal", tools: [], timeoutS: null, requirements: "R36.5, R25" },
+};
+
+const gatheringFailed = outcomeIs("failed", "node_timeout");
+const unansweredNext = (kind: "source_change" | "api_operation") => and(outcomeIs("unanswered"), nextKindIs(kind));
+const unansweredLast = and(outcomeIs("unanswered"), noNextStory);
+
+const e = (id: string, from: NodeId, to: NodeId, guard: Guard, label: string): FlowEdge => ({ id, from, to, guard, label });
+
+/** Non-global edges. Edge ids are unique across the graph. */
+export const EDGES: readonly FlowEdge[] = [
+  // evidence gathering
+  e("reading_done", "reading", "adapter_branch", outcomeIs("done"), "F2 download and skim done"),
+  e("reading_failed", "reading", "failed", outcomeIs("failed"), "download failed"),
+  e("adapted_repo", "adapter_branch", "sandbox_start", isAdapted, "Adapted_Repo"),
+  e("other_repo", "adapter_branch", "meeting", isOther, "Other_Repo, Analysis only label"),
+  e("sandbox_ready", "sandbox_start", "browser_experience", outcomeIs("done"), "F4 baseline ready, reset verified"),
+  e("sandbox_unavailable", "sandbox_start", "meeting", gatheringFailed, "start or reset failed or timed out, experienceUnavailable"),
+  e("sandbox_judge_end", "sandbox_start", "meeting", outcomeIs("judge_end"), "Judge starts the meeting now, gatheringPartial"),
+  e("experience_done", "browser_experience", "meeting", outcomeIs("done"), "F5 experience done"),
+  e("experience_unavailable", "browser_experience", "meeting", gatheringFailed, "experience failed or timed out, experienceUnavailable"),
+  e("experience_judge_end", "browser_experience", "meeting", outcomeIs("judge_end"), "Judge starts the meeting now, gatheringPartial"),
+  // meeting and decision
+  e("meeting_summary_valid", "meeting", "deciding", outcomeIs("done"), "F3 meeting summary valid"),
+  e("prototype_requested", "deciding", "prototype", (t) => t.flags.prototypeEnabled && t.outcome === "prototype_requested", "Stretch flag on and Prototype requested"),
+  e("prototype_finished", "prototype", "deciding", outcomeIs("done", "failed"), "Prototype done or failed"),
+  e("draft_valid", "deciding", "awaiting_confirmation", outcomeIs("done"), "F6 draft schema-valid"),
+  e("send_back", "awaiting_confirmation", "deciding", and(outcomeIs("send_back"), reviewSendBack), "every item reviewed, at least one rejected"),
+  e("freeze", "awaiting_confirmation", "frozen", and(outcomeIs("confirmed"), reviewAllAccepted, isFrozen), "every item accepted, exactly one approach"),
+  e("end_before_freeze", "awaiting_confirmation", "analysis_only", and(isOther, outcomeIs("judge_end")), "Other_Repo, Judge ends before freeze"),
+  // planning and documents
+  e("frozen_recorded", "frozen", "planning", isFrozen, "version, hash, who, when recorded"),
+  e("backlog_valid", "planning", "documenting", and(outcomeIs("done"), (t) => t.backlogValid), "F7 backlog valid"),
+  e("docs_complete", "documenting", "adapter_branch_2", and(outcomeIs("done"), (t) => t.docsComplete), "F8 Output_Docs complete"),
+  e("other_docs_only", "adapter_branch_2", "docs_only", isOther, "Other_Repo"),
+  e("adapted_execute", "adapter_branch_2", "target_check", isAdapted, "Adapted_Repo"),
+  e("check_passed_source", "target_check", "story_develop", and(outcomeIs("done"), (t) => t.targetCheckPassed, nextKindIs("source_change")), "baseline check passed, next story is source change"),
+  e("check_passed_api", "target_check", "api_read", and(outcomeIs("done"), (t) => t.targetCheckPassed, nextKindIs("api_operation")), "baseline ready and reset verified, next story is API operation"),
+  e("target_unavailable", "target_check", "failed", outcomeIs("failed", "node_timeout"), "target baseline cannot start, not executed"),
+  // source-change stories
+  e("attempt_finished", "story_develop", "story_review", outcomeIs("done"), "F10 attempt finished, change recorded"),
+  e("develop_ask", "story_develop", "story_ask", outcomeIs("question", "retry_limit"), "question, or retry limit reached"),
+  e("develop_failed", "story_develop", "failed", outcomeIs("failed"), "story budget exceeded or Code_Agent failure"),
+  e("approve", "story_review", "story_run", outcomeIs("approve"), "approve"),
+  e("request_changes", "story_review", "story_develop", and(outcomeIs("request_changes"), belowRetryLimit), "request changes, below retry limit"),
+  e("escalate", "story_review", "story_ask", (t) => t.outcome === "escalate" || (t.outcome === "request_changes" && atRetryLimit(t)), "escalate, or request changes at retry limit"),
+  e("approach_change", "story_review", "deciding", outcomeIs("approach_change"), "approach must change, new version"),
+  e("answered", "story_ask", "story_develop", and(outcomeIs("answered"), belowRetryLimit), "answer received, below retry limit"),
+  e("answered_at_limit", "story_ask", "story_develop", and(outcomeIs("answered"), atRetryLimit, nextKindIs("source_change")), "answer received at retry limit, story blocked, next story is source change"),
+  e("answered_at_limit_api", "story_ask", "api_read", and(outcomeIs("answered"), atRetryLimit, nextKindIs("api_operation")), "answer received at retry limit, story blocked, next story is API operation"),
+  e("answered_at_limit_last", "story_ask", "failed", and(outcomeIs("answered"), atRetryLimit, noNextStory), "answer received at retry limit, story blocked, no next story"),
+  e("unanswered_next", "story_ask", "story_develop", unansweredNext("source_change"), "unanswered, story blocked, next story is source change"),
+  e("unanswered_next_api", "story_ask", "api_read", unansweredNext("api_operation"), "unanswered, story blocked, next story is API operation"),
+  e("unanswered_last", "story_ask", "failed", unansweredLast, "unanswered, story blocked, no next story"),
+  e("run_healthy", "story_run", "story_checkpoint", outcomeIs("done"), "Run_Environment healthy"),
+  e("run_failed", "story_run", "failed", outcomeIs("failed", "node_timeout"), "modified target failed to start"),
+  e("checkpoint_feedback", "story_checkpoint", "story_develop", and(outcomeIs("feedback"), currentKindIs("source_change"), belowRetryLimit), "Judge feedback, below retry limit"),
+  e("checkpoint_feedback_at_limit", "story_checkpoint", "story_ask", and(outcomeIs("feedback"), currentKindIs("source_change"), atRetryLimit), "Judge feedback at retry limit"),
+  e("checkpoint_feedback_api", "story_checkpoint", "api_read", and(outcomeIs("feedback"), currentKindIs("api_operation"), (t) => demoCaseRetryLeft(t)), "Judge feedback, Demo_Case redesigned"),
+  e("checkpoint_feedback_api_final", "story_checkpoint", "failed", and(outcomeIs("feedback"), currentKindIs("api_operation"), not(demoCaseRetryLeft)), "Judge feedback, no Demo_Case retry left"),
+  e("checkpoint_done", "story_checkpoint", "verifying", outcomeIs("confirmed", "unconfirmed"), "confirmed, or no response marked Unconfirmed"),
+  e("verified_next_source", "verifying", "story_develop", and(outcomeIs("passed"), nextKindIs("source_change")), "all checks pass, next story is source change"),
+  e("verified_next_api", "verifying", "api_read", and(outcomeIs("passed"), nextKindIs("api_operation")), "all checks pass, next story is API operation"),
+  e("verified_last", "verifying", "success", and(outcomeIs("passed"), noNextStory, othersVerified), "all checks pass, last story, every story verified"),
+  e("verified_last_partial", "verifying", "failed", and(outcomeIs("passed"), noNextStory, not(othersVerified)), "all checks pass, last story, an earlier story not verified"),
+  e("verify_failed", "verifying", "failed", outcomeIs("failed"), "mismatch or check failure"),
+  // API-operation stories
+  e("demo_case_submitted", "api_read", "api_plan", outcomeIs("done"), "Demo_Case submitted"),
+  e("no_demo_case", "api_read", "failed", outcomeIs("failed"), "no Demo_Case submitted after one visible retry"),
+  e("demo_case_retry", "api_plan", "api_read", and(outcomeIs("rejected"), demoCaseRetryLeft), "Demo_Case rejected, one visible retry left"),
+  e("demo_case_rejected_final", "api_plan", "failed", and(outcomeIs("rejected"), not(demoCaseRetryLeft)), "Demo_Case rejected, no retry left"),
+  e("plan_valid_a", "api_plan", "api_try_one", and(outcomeIs("done"), currentPurposeIs("A")), "purpose A, Demo_Case valid"),
+  e("plan_valid_b", "api_plan", "api_suggest", and(outcomeIs("done"), currentPurposeIs("B")), "purpose B, Demo_Case valid"),
+  e("suggestion_valid", "api_suggest", "api_confirm", outcomeIs("done"), "suggestion valid with evidence"),
+  e("suggestion_failed", "api_suggest", "failed", outcomeIs("failed"), "no valid suggestion"),
+  e("judge_confirmed", "api_confirm", "api_try_one", outcomeIs("confirmed"), "Judge confirmed"),
+  e("judge_rejected", "api_confirm", "api_read", and(outcomeIs("rejected"), demoCaseRetryLeft), "Judge rejected with feedback, Demo_Case redesigned"),
+  e("judge_rejected_final", "api_confirm", "failed", and(outcomeIs("rejected"), not(demoCaseRetryLeft)), "Judge rejected, no Demo_Case retry left"),
+  e("confirm_unanswered_next", "api_confirm", "story_develop", unansweredNext("source_change"), "no response, write not allowed, story blocked, next story is source change"),
+  e("confirm_unanswered_next_api", "api_confirm", "api_read", unansweredNext("api_operation"), "no response, write not allowed, story blocked, next story is API operation"),
+  e("confirm_unanswered_last", "api_confirm", "failed", unansweredLast, "no response, write not allowed, story blocked, no next story"),
+  e("one_written", "api_try_one", "api_write_batch", outcomeIs("done"), "one item written and read back"),
+  e("try_one_failed", "api_try_one", "failed", outcomeIs("failed"), "write failed or read-back mismatch"),
+  e("batch_written", "api_write_batch", "api_read_back", outcomeIs("done"), "batch written"),
+  e("batch_failed", "api_write_batch", "failed", outcomeIs("failed"), "write failed"),
+  e("read_back_recorded", "api_read_back", "story_checkpoint", outcomeIs("done"), "read-back recorded"),
+  e("read_back_failed", "api_read_back", "failed", outcomeIs("failed"), "read-back failed"),
+];
+
+const isGathering = (n: NodeId) => (GATHERING_NODES as readonly NodeId[]).includes(n);
+
+/** Global edges for every non-terminal node (R36.6). Gathering nodes handle their own node timeout. */
+export const GLOBAL_EDGES: readonly FlowEdge[] = NODE_IDS.filter((n) => NODES[n].kind !== "terminal").flatMap((n) => [
+  {
+    id: "timeout",
+    from: n,
+    to: "failed" as NodeId,
+    guard: (t) => t.outcome === "task_timeout" || (t.outcome === "node_timeout" && !isGathering(n)),
+    label: "timeout",
+    global: true as const,
+  },
+  { id: "unrecoverable_error", from: n, to: "failed" as NodeId, guard: outcomeIs("unrecoverable_error"), label: "unrecoverable error", global: true as const },
+  { id: "judge_abort", from: n, to: "aborted" as NodeId, guard: outcomeIs("judge_abort"), label: "Judge aborts", global: true as const },
+]);
+
+export const ALL_EDGES: readonly FlowEdge[] = [...EDGES, ...GLOBAL_EDGES];
+
+export function edgesFrom(node: NodeId, opts: { includeGlobal: boolean } = { includeGlobal: true }): FlowEdge[] {
+  return (opts.includeGlobal ? ALL_EDGES : EDGES).filter((x) => x.from === node);
+}
+
+export function findEdge(from: NodeId, edgeId: string): FlowEdge | undefined {
+  return ALL_EDGES.find((x) => x.from === from && x.id === edgeId);
+}

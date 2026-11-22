@@ -108,42 +108,43 @@ Conventions:
     - _Requirements: 23.1, 33.4_
 
 - [ ] 2. Foundations (target 2026-11-21)
-  - [ ] 2.1 Create the steering files
+  - [x] 2.1 Create the steering files
     - `.kiro/steering/product.md` (purpose, honesty rules, UI priority, Studio guarantees versus best effort), `tech.md` (stack, versions, commands, testing rules, fast-check tag format), `structure.md` (repository layout, three document layers)
     - Design: Kiro usage plan, Repository layout
     - _Requirements: 35.1, 35.5, 35.10_
-  - [ ] 2.2 Create the Kiro hooks
+  - [x] 2.2 Create the Kiro hooks
     - `.kiro/hooks/`: run related vitest tests on save of TypeScript files; run the secret scan on save and before commits; run the Flow_Graph reachability test when `packages/shared/src/flow/` changes
     - Design: Kiro usage plan
     - _Requirements: 30.5, 33.4, 36.7_
-  - [ ] 2.3 Scaffold the monorepo
+  - [x] 2.3 Scaffold the monorepo
     - npm workspaces `apps/server` (Fastify), `apps/web` (React + Vite), `packages/shared`; directories `runtime-rules/` with `VERSION`, `adapters/linkding/` (placeholder `adapter.json` with the digest and commit from 1.3 and 1.6 and the `api` allow-list from 1.5; the contract and hooks follow in 10.15), `docker/dev-sandbox/`, `docker/llm-proxy/`; vitest and fast-check; `data/` in `.gitignore`; `.env.example` with variable names only
     - Design: Repository layout, Adapter contract, Data directory; reference-target-linkding.md (Adapter JSON example)
     - _Requirements: 32.1, 32.2, 32.3, 33.3, 33.4, 35.1, 35.2_
-  - [ ]* 2.4 Write repository checks
+  - [x]* 2.4 Write repository checks
     - LICENSE is Apache-2.0, `.kiro/` not ignored, no `.env` tracked, `.env.example` present, Adapter has no start procedure field, Verifier imports no LLM module, traceability mapping complete
     - Design: Testing Strategy (Repository checks)
     - _Requirements: 33.2, 33.3, 33.4, 35.5, 39.10, 22.9_
-  - [ ] 2.5 Define the shared event schema
+  - [x] 2.5 Define the shared event schema
     - `packages/shared/src/events.ts`: envelope and every payload type of the Data Models table (including `message_progress`, `demo_case_validated`, `api_write`) as a zod discriminated union; Failure_Class enum; `parseEvent`, `serializeEvent`
     - Design: Event envelope, Data Models
     - _Requirements: 27.1, 27.4, 27.9, 27.10, 23.2_
-  - [ ]* 2.6 Write property test for event serialization round trip
+  - [x]* 2.6 Write property test for event serialization round trip
+    - Done for serialization; the event-store append part (seq from 1, no gaps) is added with the event store (task 3)
     - **Property 7: Event serialization round trip**
     - **Validates: Requirements 27.4, 27.9**
-  - [ ] 2.7 Implement the reducer skeleton
+  - [x] 2.7 Implement the reducer skeleton
     - `packages/shared/src/reducer.ts`: `reduce`, `foldEvents`, UI state shape (presence, feed, artifacts, cards, current node, failure counts), ignoring events with `seq` at or below the last applied seq
     - Design: packages/shared, Web app
     - _Requirements: 26.7, 27.3, 27.14, 36.8_
-  - [ ] 2.8 Implement Flow_Graph data and transition
+  - [x] 2.8 Implement Flow_Graph data and transition
     - `packages/shared/src/flow/graph.ts`, `guards.ts`, `transition.ts`: all nodes of the main graph (evidence gathering before `meeting`, the gathering edges to `meeting` with `experienceUnavailable` and `gatheringPartial`, `target_check`) and the API-operation sub-path with kind, tool whitelist and timeout; guarded edges; global edges `timeout`, `unrecoverable_error`, `judge_abort`; `transition()` appends `node_entered` or `transition_rejected`
     - Design: Flow_Graph (node table, rules)
     - _Requirements: 36.1, 36.2, 36.3, 36.4, 36.6, 36.9, 15.4, 15.5, 19.4_
-  - [ ] 2.9 Write property test for terminal reachability
+  - [x] 2.9 Write property test for terminal reachability
     - **Property 1: A terminal is reachable from every node, and terminals are absorbing**
     - Exhaustive over the graph plus 100 random walks; also wired as the build-time check used by the hook
     - **Validates: Requirements 36.5, 36.7**
-  - [ ] 2.10 Write property test for transition validity
+  - [x] 2.10 Write property test for transition validity
     - **Property 2: Transitions happen only along edges whose guard holds**
     - **Validates: Requirements 36.2, 36.3, 36.4, 36.9, 15.4, 15.5, 15.7, 18.2, 18.3, 18.4, 19.4, 21.1, 25.3, 40.12**
   - [ ] 2.11 Demo and verify: foundations

@@ -1,0 +1,22 @@
+{
+  "name": "graftlab-ai",
+  "private": true,
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "workspaces": ["packages/shared", "apps/server", "apps/web"],
+  "scripts": {
+    "test": "vitest --run",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "flow:check": "vitest --run packages/shared/src/flow/graph.property.test.ts",
+    "flow:print": "node scripts/flow-print.ts",
+    "secret-scan": "node scripts/secret-scan.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "fast-check": "^4.10.3",
+    "typescript": "^5.9.0",
+    "vitest": "^5.1.1"
+  }
+}

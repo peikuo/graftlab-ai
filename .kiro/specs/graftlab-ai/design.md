@@ -250,16 +250,19 @@ stateDiagram-v2
     story_review --> story_develop: request changes, below retry limit
     story_review --> story_ask: escalate, or request changes at retry limit
     story_review --> deciding: approach must change, new version
-    story_ask --> story_develop: answer received
-    story_ask --> story_develop: unanswered, story blocked, next story exists
-    story_ask --> failed: unanswered, story blocked, no next story
+    story_ask --> story_develop: answer received, below retry limit
+    story_ask --> story_develop: unanswered or answered at retry limit, story blocked, next story is source change
+    story_ask --> api_read: unanswered or answered at retry limit, story blocked, next story is API operation
+    story_ask --> failed: unanswered or answered at retry limit, story blocked, no next story
     story_run --> story_checkpoint: Run_Environment healthy
     story_run --> failed: modified target failed to start
-    story_checkpoint --> story_develop: Judge feedback
+    story_checkpoint --> story_develop: Judge feedback, below retry limit
+    story_checkpoint --> story_ask: Judge feedback at retry limit
     story_checkpoint --> verifying: confirmed, or no response marked Unconfirmed
     verifying --> story_develop: all checks pass, next story is source change
     verifying --> api_read: all checks pass, next story is API operation
-    verifying --> success: all checks pass, last story
+    verifying --> success: all checks pass, last story, every story verified
+    verifying --> failed: all checks pass, last story, an earlier story not verified (partial)
     verifying --> failed: mismatch or check failure
     success --> [*]
     failed --> [*]
@@ -281,14 +284,19 @@ stateDiagram-v2
     api_plan --> api_suggest: purpose B, Demo_Case valid
     api_suggest --> api_confirm: suggestion valid with evidence
     api_confirm --> api_try_one: Judge confirmed
-    api_confirm --> api_read: Judge rejected with feedback, Demo_Case redesigned
+    api_confirm --> api_read: Judge rejected with feedback, Demo_Case redesigned, one retry left
+    api_confirm --> failed: Judge rejected, no Demo_Case retry left
     api_confirm --> story_blocked: no response, write not allowed
+    api_suggest --> failed: no valid suggestion
     api_try_one --> api_write_batch: one item written and read back
     api_try_one --> failed: write failed or read-back mismatch
     api_write_batch --> api_read_back: batch written
     api_write_batch --> failed: write failed
     api_read_back --> story_checkpoint: read-back recorded
+    api_read_back --> failed: read-back failed
     story_checkpoint --> verifying
+    story_checkpoint --> api_read: Judge feedback, Demo_Case redesigned, one retry left
+    story_checkpoint --> failed: Judge feedback, no Demo_Case retry left
     story_blocked --> [*]
     failed --> [*]
 ```
@@ -337,6 +345,13 @@ Rules that keep the graph honest:
 - The pre-execution check `target_check` runs once, after `adapter_branch_2` and before the first execution story of an Adapted_Repo. It is the only place where an unavailable target baseline ends the Task: its failure edge leads to `failed` with the label "not executed" (R13.4, R25.8, R29.5).
 - A build-time test computes reachability over the graph data and fails the build if any node cannot reach a terminal through non-global edges (R36.7). The gathering nodes reach a terminal through `meeting`, so the test also covers the path where every gathering step failed.
 - Guards on `frozen` and later nodes require `task.frozenVersion != null` (R15.4, R15.5); `adapter_branch_2` to `target_check` also requires all Output_Docs present and valid (R19.4); `target_check` to a story node requires the check to have passed.
+
+Implementation notes (task 2.8, 2026-11-22; `packages/shared/src/flow/`):
+
+- Node outcome: the runner records the validated result of the current node's work in `task.outcome` (for example `done`, `failed`, `node_timeout`, `judge_end`, `confirmed`, `send_back`, `approve`, `request_changes`, `answered`, `unanswered`, `passed`) and then asks for an edge. Guards read the outcome and the other TaskState fields; `transition()` clears the outcome on every accepted transition. The outcome is set by code from validated output, never from free model text (R36.2).
+- Entry invariants: besides the edge guard, `transition()` checks invariants of the target node for every edge into it: nodes from `frozen` onward need a frozen version; `documenting` needs a valid Product_Backlog; `adapter_branch_2`, `target_check`, `docs_only` and all story nodes need complete Output_Docs; story nodes and `verifying` need an Adapted_Repo and a passed `target_check`; `api_try_one` for purpose B needs a confirmed suggestion. The invariants keep the honest-flow rules true whichever edge is used.
+- Edges found missing in the first chart and added above: an answer at the retry limit blocks the story and continues like an unanswered question; Judge feedback at a checkpoint at the retry limit goes to `story_ask`; for an API-operation story, checkpoint feedback and an `api_confirm` rejection redesign the Demo_Case only while a Demo_Case retry is left (one retry, the same budget as R23.5), otherwise `failed`; `api_suggest` and `api_read_back` have failure edges; an unanswered question or confirmation continues to `api_read` when the next story is an API-operation story; `verifying` reaches `success` only when every story is verified, otherwise the last pass ends in `failed` with the summary label "partial" (Property 3).
+- Edge ids are unique across the graph; the global edges `timeout`, `unrecoverable_error` and `judge_abort` exist on every non-terminal node. `npm run flow:print` prints the node list with each node's edges.
 
 ## Components and Interfaces
 
@@ -830,12 +845,17 @@ interface TaskState {
   repoKind: "adapted" | "other";
   node: NodeId;
   terminal?: TerminalId;
+  outcome?: NodeOutcome;                   // validated result of the current node's work; cleared on every transition
   runtimeRulesVersion: string;
   decisionDocs: DecisionDocVersion[];      // all versions, immutable once frozen
   frozenVersion: number | null;
+  review?: { total: number; accepted: number; rejected: number; approachComplete: boolean };  // current draft (R5.7)
   backlog?: ProductBacklog;
+  backlogValid: boolean;
   docsComplete: boolean;
-  stories: StoryProgress[];                // { storyId, kind, attempts, codeAgentMs, status, unconfirmed, blocked }
+  stories: StoryProgress[];                // { storyId, kind, purpose, attempts, codeAgentMs, status, unconfirmed,
+                                           //   demoCaseRejections, suggestionConfirmed }
+  limits: { storyAttempts: number; demoCaseRetries: number };  // GL_STORY_ATTEMPTS, one Demo_Case retry
   currentStoryId?: string;
   openCards: CardRef[];
   pendingUnconfirmed: string[];            // storyIds

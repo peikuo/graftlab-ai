@@ -1,0 +1,19 @@
+{
+  "name": "@graftlab/server",
+  "private": true,
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "start": "tsx src/main.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15"
+  },
+  "dependencies": {
+    "@graftlab/shared": "*",
+    "fastify": "^5.12.8",
+    "zod": "^4.6.7"
+  }
+}
