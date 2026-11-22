@@ -220,7 +220,7 @@ Conventions:
   - Done 2026-11-22: all tests pass; the user tried the demo and accepted the current UI ("keep it as it is for now"). Open from milestone 3: 3.2 (real fixtures, needs the PC files), to be done before milestone 6
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. F1-F2: home input, URL validation, Repo_Reader and immersive reading view (target 2026-11-23)
+- [x] 5. F1-F2: home input, URL validation, Repo_Reader and immersive reading view (target 2026-11-23)
   - [x] 5.1 Implement GitHub URL parsing and Adapter matching
     - `packages/shared/src/url.ts`: accepted forms (with or without scheme, `www.`, trailing slash, `.git`), normalization, case-insensitive Adapter match
     - Design: packages/shared
