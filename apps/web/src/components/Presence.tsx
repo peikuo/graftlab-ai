@@ -1,14 +1,13 @@
 // Team panel (R1.2, R2.1-R2.10, R8.4). Status is always text; the activity effect (soft colored row and a
 // pulsing dot) appears only for a working status, which roleStatus() derives from a recent event (R1.7, R2.9).
-// Meeting_Perspectives are listed only while the meeting or the decision runs; otherwise they fold into one line.
-import { roleStatus, type NodeId, type UiState } from "@graftlab/shared";
+// Cards appear only once they are useful (R1.9): an agent with its first event, the Meeting_Perspectives
+// when the meeting starts. The panel itself appears with its first card.
+import { roleStatus, type UiState } from "@graftlab/shared";
 import { ROLE_CARDS, type RoleCard } from "../roles.ts";
-
-const MEETING_NODES: readonly NodeId[] = ["meeting", "prototype", "deciding", "awaiting_confirmation"];
 
 function verifierSummary(state: UiState): string {
   const items = state.verifierResults.flatMap((r) => r.items);
-  if (items.length === 0) return "no checks yet";
+  if (items.length === 0) return "checking…";
   return `${items.filter((i) => i.pass).length} of ${items.length} checks passed`;
 }
 
@@ -54,37 +53,39 @@ export function PresenceCard({ card, state, now }: { card: RoleCard; state: UiSt
   );
 }
 
+/**
+ * Cards shown now (R1.2, R1.9): an agent appears with its first event; the Meeting_Perspectives appear
+ * together when the meeting starts. Nothing is shown in advance.
+ */
+export function visibleCards(state: UiState): RoleCard[] {
+  const started = (c: RoleCard) => state.lastEventByActor[c.key] !== undefined;
+  const meetingStarted = state.visitedNodes.includes("meeting") || ROLE_CARDS.some((c) => c.group === "meeting" && started(c));
+  return ROLE_CARDS.filter((c) => (c.group === "meeting" ? meetingStarted : started(c)));
+}
+
 export function PresenceColumn({ state, now }: { state: UiState; now: number }) {
-  const inMeeting = state.node !== null && MEETING_NODES.includes(state.node);
-  const work = ROLE_CARDS.filter((c) => c.group === "work");
-  const meeting = ROLE_CARDS.filter((c) => c.group === "meeting");
-  const checker = ROLE_CARDS.filter((c) => c.group === "checker");
+  const shown = visibleCards(state);
+  if (shown.length === 0) return null;
+  const groups: { title: string | null; cards: RoleCard[] }[] = [
+    { title: null, cards: shown.filter((c) => c.group === "work") },
+    { title: "In the meeting", cards: shown.filter((c) => c.group === "meeting") },
+    { title: "Checker", cards: shown.filter((c) => c.group === "checker") },
+  ];
   return (
     <section className="panel team" aria-label="Team">
       <h2 className="panel-title">Team</h2>
-      <ul className="agents">
-        {work.map((c) => (
-          <PresenceCard key={c.key} card={c} state={state} now={now} />
+      {groups
+        .filter((g) => g.cards.length > 0)
+        .map((g) => (
+          <div key={g.title ?? "work"}>
+            {g.title && <h3 className="group-title">{g.title}</h3>}
+            <ul className="agents">
+              {g.cards.map((c) => (
+                <PresenceCard key={c.key} card={c} state={state} now={now} />
+              ))}
+            </ul>
+          </div>
         ))}
-      </ul>
-      <h3 className="group-title">In the meeting</h3>
-      {inMeeting ? (
-        <ul className="agents">
-          {meeting.map((c) => (
-            <PresenceCard key={c.key} card={c} state={state} now={now} />
-          ))}
-        </ul>
-      ) : (
-        <p className="group-folded">
-          <span aria-hidden="true">{meeting.map((c) => c.avatar).join(" ")}</span> {meeting.map((c) => c.name).join(", ")} join when the meeting starts
-        </p>
-      )}
-      <h3 className="group-title">Checker</h3>
-      <ul className="agents">
-        {checker.map((c) => (
-          <PresenceCard key={c.key} card={c} state={state} now={now} />
-        ))}
-      </ul>
     </section>
   );
 }

@@ -41,23 +41,29 @@ export function ArtifactArea({ state, events }: { state: UiState; events: Studio
   const findings = events.filter((e) => e.type === "finding_recorded");
   const browser = events.filter((e) => e.type === "browser_action" || e.type === "browser_observation");
   const docs = events.filter((e) => e.type === "artifact_updated");
-  const tools = events.filter((e) => e.type === "tool_started" || e.type === "tool_finished" || e.type === "node_entered" || e.type === "code_change" || e.type === "review_verdict");
+  const tools = events.filter((e) => e.type === "tool_started" || e.type === "tool_finished" || e.type === "code_change" || e.type === "review_verdict");
+  const summary = events.find((e) => e.type === "evidence_summary");
+  const unavailable = summary?.type === "evidence_summary" ? summary.payload.experienceUnavailable : undefined;
+
+  // A tab exists only once it has content (R1.9); the app trial also when it was due but failed (R4.6).
+  const tabs = (["found", "app", "decision"] as const).filter((t) =>
+    t === "found" ? files.length + findings.length > 0 : t === "app" ? browser.length > 0 || unavailable !== undefined : state.decisionDocs.length + docs.length > 0,
+  );
+  const active: Tab | undefined = tabs.includes(tab) ? tab : tabs[0];
+  if (!active) return null;
 
   return (
     <section className="panel details" aria-label="Details">
       <div className="segmented" role="tablist" aria-label="Details">
-        {(["found", "app", "decision"] as const).map((t) => (
-          <button key={t} role="tab" type="button" aria-selected={tab === t} onClick={() => select(t)} className={tab === t ? "active" : ""}>
+        {tabs.map((t) => (
+          <button key={t} role="tab" type="button" aria-selected={active === t} onClick={() => select(t)} className={active === t ? "active" : ""}>
             {LABEL[t]}
             {unseen.has(t) && <span className="new-dot" aria-label="new" />}
           </button>
         ))}
       </div>
       <div className="details-body" role="tabpanel">
-        {tab === "found" &&
-          (files.length === 0 && findings.length === 0 ? (
-            <p className="empty">Nothing found yet. The Reader starts after the repository is downloaded.</p>
-          ) : (
+        {active === "found" && (
             <>
               {findings.length > 0 && (
                 <>
@@ -78,17 +84,19 @@ export function ArtifactArea({ state, events }: { state: UiState; events: Studio
                   <p className="muted small">✓ means Studio code found the quoted text in that file.</p>
                 </>
               )}
-              <details className="fold">
-                <summary>Files read ({files.length})</summary>
-                <ul className="clean mono small">
-                  {files.map((e) => (e.type === "file_read" ? <li key={e.seq}>{e.payload.path}</li> : null))}
-                </ul>
-              </details>
+              {files.length > 0 && (
+                <details className="fold">
+                  <summary>Files read ({files.length})</summary>
+                  <ul className="clean mono small">
+                    {files.map((e) => (e.type === "file_read" ? <li key={e.seq}>{e.payload.path}</li> : null))}
+                  </ul>
+                </details>
+              )}
             </>
-          ))}
-        {tab === "app" &&
+          )}
+        {active === "app" &&
           (browser.length === 0 ? (
-            <p className="empty">{state.repo?.repoKind === "other" ? "This repository is analysis only, so the app is not run." : "The Explorer has not tried the app yet."}</p>
+            <p className="empty">The app could not be tried: {unavailable}</p>
           ) : (
             <ol className="trial">
               {browser.map((e) =>
@@ -109,10 +117,7 @@ export function ArtifactArea({ state, events }: { state: UiState; events: Studio
               )}
             </ol>
           ))}
-        {tab === "decision" &&
-          (state.decisionDocs.length === 0 && docs.length === 0 ? (
-            <p className="empty">No decision yet. It is written after the meeting.</p>
-          ) : (
+        {active === "decision" && (
             <ul className="clean">
               {state.decisionDocs.map((d) => (
                 <li key={d.version} className="doc-row">
@@ -128,13 +133,13 @@ export function ArtifactArea({ state, events }: { state: UiState; events: Studio
                 ) : null,
               )}
             </ul>
-          ))}
+          )}
       </div>
+      {tools.length > 0 && (
       <details className="engineering" open={engOpen} onToggle={(e) => setEngOpen((e.currentTarget as HTMLDetailsElement).open)}>
         <summary>Engineering_Details</summary>
         {engOpen && (
           <ul className="clean mono small">
-            {tools.length === 0 && <li>Nothing yet.</li>}
             {tools.map((e) =>
               e.type === "tool_started" ? (
                 <li key={e.seq}>→ {e.payload.tool} {e.payload.inputSummary}</li>
@@ -142,8 +147,6 @@ export function ArtifactArea({ state, events }: { state: UiState; events: Studio
                 <li key={e.seq} className={e.payload.ok ? "" : "failure-text"}>
                   ← {e.payload.tool} {e.payload.ok ? "ok" : "failed"} {e.payload.outputSummary}
                 </li>
-              ) : e.type === "node_entered" ? (
-                <li key={e.seq} className="muted">node {e.payload.to} ({e.payload.edgeId})</li>
               ) : e.type === "code_change" ? (
                 <li key={e.seq}>changed {e.payload.changedFiles.join(", ")}</li>
               ) : e.type === "review_verdict" ? (
@@ -153,6 +156,7 @@ export function ArtifactArea({ state, events }: { state: UiState; events: Studio
           </ul>
         )}
       </details>
+      )}
     </section>
   );
 }

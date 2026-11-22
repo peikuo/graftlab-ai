@@ -737,6 +737,7 @@ The first dark mocks were replaced after the user tried the clickable demo: too 
 
 Principles:
 
+- Show things only when they are useful (R1.9, decided by the user 2026-11-22). An agent card appears with the agent's first event; the Meeting_Perspectives appear when the meeting starts; the Verifier card appears when the Verifier starts; a Details tab appears with its first item; the Details panel appears with its first tab (until then the timeline takes the space); Engineering_Details appears with the first tool call. Nothing is shown in advance as an empty placeholder or as "joins later". Shown in advance only: the stepper (orientation, R7) and the composer (R5.1).
 - Plain language first. Steps are named for people ("Read the code", "Try the app", "Meeting", "Decide", "Plan", "Build and check", "Result"); flow node ids appear only in small muted text and in Engineering_Details.
 - One place says what is happening now and whether the Judge must act ("Now" bar; it turns into "Your turn" with a "Go there" button when a card or the decision review waits).
 - Low density. Consecutive steps of the same kind by the same agent fold into one expandable line ("Read 6 files"). A step change is a section divider, not a feed line. Timestamps show on hover. Descriptions of agents show on hover; status text is always visible.
@@ -749,9 +750,9 @@ Team panel:
 
 | Group | Agents (avatar) | Shown |
 |---|---|---|
-| Working on this Task | Reader 🦇, Explorer 🕷, Facilitator 🧙, Planner 📜, Code_Agent 🧪, Reviewer 🐈 | Always |
-| Meeting | User_Value 🎃, Feasibility 🧟, Risk 💀 | While the meeting and the decision run; otherwise one collapsed line |
-| Checker | Verifier ⚖ | Always; different style: slate outline, monospace, label "code, no AI", no reasoning, a list of checks with per-item state |
+| Working on this Task | Reader 🦇, Explorer 🕷, Facilitator 🧙, Planner 📜, Code_Agent 🧪, Reviewer 🐈 | Each from its first event on |
+| Meeting | User_Value 🎃, Feasibility 🧟, Risk 💀 | From the start of the meeting on (the group heading appears with them) |
+| Checker | Verifier ⚖ | From its first event on; different style: slate outline, label "code, no AI", no reasoning, a list of checks with per-item state |
 
 Theme tokens (light; text always accompanies color, R8):
 

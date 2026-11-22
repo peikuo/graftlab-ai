@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { foldEvents, type StudioEvent } from "@graftlab/shared";
 import { ArtifactArea } from "./components/Artifacts.tsx";
 import { ActivityFeed } from "./components/Feed.tsx";
-import { PresenceColumn } from "./components/Presence.tsx";
+import { PresenceColumn, visibleCards } from "./components/Presence.tsx";
 import { ROLE_CARDS } from "./roles.ts";
 
 afterEach(cleanup);
@@ -44,12 +44,39 @@ describe("Workspace skeleton", () => {
     render(<Workspace />);
     const team = screen.getByRole("region", { name: "Team" });
     const cards = within(team).getAllByRole("listitem").filter((li) => li.classList.contains("agent"));
-    expect(cards).toHaveLength(ROLE_CARDS.length);
+    expect(cards).toHaveLength(visibleCards(state).length);
     for (const c of cards) {
       expect(c.getAttribute("aria-label")).toMatch(/^.+: .+$/);
       expect(c.querySelector(".agent-status")?.textContent?.trim().length).toBeGreaterThan(0);
     }
-    expect(within(team).getByText("code, no AI")).toBeTruthy();
+  });
+
+  it("shows an agent only after its first event, and the meeting group when the meeting starts (R1.2, R1.9)", () => {
+    render(<Workspace />);
+    const team = screen.getByRole("region", { name: "Team" });
+    const shown = new Set(within(team).getAllByRole("listitem").filter((li) => li.classList.contains("agent")).map((li) => li.getAttribute("aria-label")!.split(":")[0]));
+    for (const c of ROLE_CARDS) {
+      const started = state.lastEventByActor[c.key] !== undefined;
+      if (c.group === "meeting") expect(shown.has(c.name)).toBe(state.visitedNodes.includes("meeting") || started);
+      else expect(shown.has(c.name)).toBe(started);
+    }
+    expect(shown.has("Verifier")).toBe(false); // no Verifier event in the fixture
+    expect(shown.has("Code_Agent")).toBe(false);
+  });
+
+  it("shows nothing but the timeline before the first event", () => {
+    const empty = foldEvents([]);
+    render(
+      <main>
+        <PresenceColumn state={empty} now={end} />
+        <ActivityFeed state={empty} events={[]} buffers={{}} onAnswer={async () => ({ ok: true })} />
+        <ArtifactArea state={empty} events={[]} />
+      </main>,
+    );
+    expect(screen.queryByRole("region", { name: "Team" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Details" })).toBeNull();
+    expect(screen.queryByText("Engineering_Details")).toBeNull();
+    expect(screen.getByRole("region", { name: "Activity" })).toBeTruthy();
   });
 
   it("keeps Engineering_Details closed until the Judge opens it", () => {

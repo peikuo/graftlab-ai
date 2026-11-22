@@ -119,8 +119,13 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .result-bar { background: var(--working-soft); color: #166534; font-weight: 600; }
 
 /* ---- Workspace ---- */
-.workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 260px minmax(0, 1fr) 380px; gap: 16px; padding: 16px 24px 20px; }
-.center { display: flex; flex-direction: column; min-height: 0; gap: 10px; }
+/* Flex, so a panel that is not shown yet leaves no gap (R1.9): the timeline takes its space. */
+.workspace { flex: 1; min-height: 0; display: flex; gap: 16px; padding: 16px 24px 20px; }
+.workspace > .team { flex: 0 0 260px; }
+.workspace > .details { flex: 0 0 380px; animation: appear 0.35s ease-out; }
+.center { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; gap: 10px; }
+.agent, .agents > li, .segmented button { animation: appear 0.35s ease-out; }
+@keyframes appear { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); min-height: 0; }
 .panel-title { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
 .empty { color: var(--muted); padding: 24px 8px; text-align: center; }

@@ -376,8 +376,9 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 #### Acceptance Criteria
 
 1. WHEN a Task is created, THE Studio SHALL open the Workspace for that Task.
-2. THE Workspace SHALL display one Presence_Card per Agent_Role, each showing the role avatar, the role name, the role description and the current Role_Status.
-3. THE Workspace SHALL provide an Activity_Feed area, an Artifact_Area, an Interjection_Input and an Interaction_Card area on one screen.
+2. WHEN an Agent_Role (or the Verifier) has its first event in the Task, THE Workspace SHALL display its Presence_Card from then on, showing the avatar, the name, a short description and the current Role_Status; THE Workspace SHALL NOT display a Presence_Card for an agent that has not yet started in the Task.
+3. THE Workspace SHALL provide an Activity_Feed area, an Artifact_Area, an Interjection_Input and an Interaction_Card area on one screen; THE Interjection_Input SHALL be shown at all times (Requirement 5.1), while the Artifact_Area, each of its tabs and each Interaction_Card SHALL appear only when they first have content.
+9. THE Workspace SHALL show an element only when it first becomes useful (progressive disclosure, decided by the user 2026-11-22): no empty placeholders for agents, tabs, panels or controls that have nothing yet; the progress indicator of Requirement 7 and the Interjection_Input are the only elements shown in advance.
 4. WHEN a Role_Status changes, THE Workspace SHALL update the corresponding Presence_Card.
 5. WHERE the Task is a Replay, THE Workspace SHALL use the same layout as a live Task.
 6. THE Studio SHALL give each Agent_Role an avatar.
@@ -438,8 +439,8 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 3. WHEN a new work product appears, THE Artifact_Area SHALL show a notification that identifies it without taking focus away from the Judge's current selection.
 4. WHILE a file is being read, THE Artifact_Area SHALL display the file path and the content portion read so far.
 5. THE Artifact_Area SHALL display the Decision_Doc draft with its version number and its Unverified marks.
-6. IF a work product is unavailable, THEN THE Artifact_Area SHALL display the reason.
-7. THE Artifact_Area SHALL provide a collapsed "Engineering details" view, closed by default, that shows on demand the diffs, Review_Verdicts, rejected changes and tool calls of the development stage.
+6. IF a work product that the flow was going to produce is unavailable (for example the browser experience after a failed Sandbox start), THEN THE Artifact_Area SHALL display the reason; a work product that is simply not due yet is not shown at all (Requirement 1.9).
+7. WHEN the first tool call, diff, Review_Verdict or rejected change exists, THE Artifact_Area SHALL provide a collapsed "Engineering details" view, closed by default, that shows on demand the diffs, Review_Verdicts, rejected changes and tool calls of the development stage.
 8. THE Studio SHALL NOT push diffs, Review_Verdicts or rejected changes into the Judge's main view and SHALL NOT open the Engineering details view without a Judge action.
 
 ### Requirement 5: Interjection, questions and confirmation cards
@@ -1203,7 +1204,7 @@ Nothing here may be assumed:
 
 | Requirement | Layer | Verification summary |
 |---|---|---|
-| 1 Live team workspace | A, B | UI example tests: all areas present per Task; layout equal for live and Replay; every role has an avatar |
+| 1 Live team workspace | A, B | UI example tests: the Interjection_Input is always present; an agent card, a tab or the Artifact_Area appears only after its first content and not before; layout equal for live and Replay; every role has an avatar |
 | 2 Event-backed presence | A, B | Property test: every working status and every avatar activity effect has an event inside the Recency_Window; example test for idle and waiting-for-LLM display |
 | 3 Activity feed and streaming | A, B | Property test: every feed entry maps to an Event_Stream event; example tests for stream complete (Complete_Message persisted), stream broken (partial text kept and persisted as incomplete, failure recorded) and non-streaming fallback note; check that no streamed text chunk is stored; example tests for reasoning display (collapsible, labeled model-provided) and for the "thinking" state with elapsed time when no reasoning text is returned |
 | 4 Artifact area | A, B | Example tests for each artifact kind and the unavailable reason; example test that the Engineering details view is collapsed by default and that diffs, Review_Verdicts and rejected changes are not in the main view |
