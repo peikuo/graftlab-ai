@@ -85,7 +85,8 @@ What can go wrong in the same story, and what the Judge sees instead:
 | Item_Count_Cap per Demo_Case | 10 items | `GL_DEMO_CASE_MAX_ITEMS` | R18.11, Open item 50 |
 | Task timeout | 90 minutes | `GL_TASK_TIMEOUT_MIN` | R36.6, Open item 28 |
 | Read-volume limit | 500 files or 4 MB of text, whichever comes first (raised from 300 files and 2 MB on 2026-11-23: linkding has 421 readable files, 2.1 MB) | `GL_READ_MAX_FILES`, `GL_READ_MAX_BYTES` | R34.3, Open item 16 |
-| Repo_Memo batching and concurrency | 48 KB of source per file-memo call, 4 calls at a time | `GL_MEMO_BATCH_KB`, `GL_MEMO_CONCURRENCY` | R10.7 |
+| Repo_Memo batching and concurrency | 48 KB of source per file-memo call, 4 calls at a time in the foreground, 2 in the background index | `GL_MEMO_BATCH_KB`, `GL_MEMO_CONCURRENCY`, `GL_INDEX_CONCURRENCY` | R10.7, R10.12 |
+| Reading plan caps | 30 files, 160 KB of source | `GL_BRIEF_FILES`, `GL_BRIEF_KB` | R10.10 |
 | `read_file` result size | 400 lines or 16 KB per call | `GL_READ_FILE_MAX_LINES`, `GL_READ_FILE_MAX_KB` | R10.7 |
 | Tool-result token budget per agent turn | 60 % of the model context window | `GL_TURN_TOOL_BUDGET_PCT` | R10.7, R30.12 |
 | max_tokens for role turns | 16384, finish reason checked | `GL_MAX_TOKENS` | R30.12, R30.13 |
@@ -334,7 +335,7 @@ Node table:
 
 | Node | Kind | Allowed tools (enforced by `beforeToolCall` or by not exposing a tool) | Timeout | Requirements |
 |---|---|---|---|---|
-| reading | agent_loop (evidence gathering) | Studio download and Repo_Map (code); Reader builds the Repo_Memo and records findings: `read_file` (line ranges), `search_repo`, `read_memo`, `search_memo`, `submit_memos`, `record_finding`; no `ask_judge` | 15 min (raised from 10 for the Repo_Memo) | R10, R34 |
+| reading | agent_loop (evidence gathering) | Studio download and Repo_Map (code); Reader submits a reading plan, file memos and the Repo_Brief, then the Repo_Index continues in the background; tools `read_file` (line ranges), `search_repo`, `read_memo`, `search_memo`, `submit_reading_plan`, `submit_file_memos`, `submit_repo_brief`, `record_finding`; no `ask_judge`; leaving needs a valid Repo_Brief | 15 min (raised from 10 for the Repo_Memo) | R10, R34 |
 | adapter_branch | auto | none | 5 s | R25 |
 | sandbox_start | auto (gathering) | none (Studio code: baseline start, provisioning, reset, equality check) | 3 min; timeout or failure takes the edge to `meeting` with `experienceUnavailable` | R13, R29 |
 | browser_experience | agent_loop (gathering) | `browser_open`, `browser_click`, `browser_fill`, `browser_press`, `browser_snapshot`, `browser_screenshot`, `record_note`; no `ask_judge` | 10 min, 40 actions; timeout or failure takes the edge to `meeting` with `experienceUnavailable` | R14 |
@@ -623,31 +624,50 @@ Second guard, the redactor (a safety net, not the mechanism):
 ### Repo_Reader (R10, R34)
 
 - GitHub REST API with the read-only token held server-side (R34.1): repository metadata (existence, visibility, default branch; R9.4), the commit SHA of the default branch, the recursive git tree, then raw file contents.
-- Prioritized reading order: README, docs, OpenAPI or schema files, route and URL definitions, models, then the rest by path depth. Reading stops at the read-volume limit (500 files or 4 MB of text); skipped parts are listed in a `finding_recorded` event of kind `skipped` and shown in the Artifact_Area (R10.6).
+- Prioritized download order: README, docs, OpenAPI or schema files, route and URL definitions, models, then the rest by path depth. Reading stops at the read-volume limit (500 files or 4 MB of text); skipped parts are listed in a `finding_recorded` event of kind `skipped` and shown in the Artifact_Area (R10.6).
 - Binary files and files above 200 KB are skipped and listed.
 - Cache: `data/cache/github/<owner>/<repo>/<sha>/` holds the tree and file contents; a repeated request for the same SHA reads only from the cache (R34.2).
 - Rate limit responses (`403` or `429` with rate limit headers) produce a `failure` with the limit state and stop the Task honestly (R34.4). The anonymous rate limit value is not assumed (R34.5).
 - Files are treated as text only and never executed (R10.3). Each file read appends `file_read` with path, size and an artifact reference to the cached content (R10.4, R4.4).
-- After the download, the Reader builds the Repo_Memo (next section) and records findings with `record_finding` (best effort, R10.2).
+- After the download, the Reader builds the Repo_Brief and starts the background Repo_Index (next section) and records findings with `record_finding` (best effort, R10.2).
 
-### Repo_Memo: tree-shaped reading (R10.7-R10.9; decided by the user 2026-11-23)
+### Repo_Memo: brief first, index in the background (R10.7-R10.12; decided by the user 2026-11-23, revised the same day)
 
-A repository does not fit into a context window (linkding: 421 readable files, 2.1 MB, about 550k tokens), and reading files one by one with `read_file` leaves nothing behind for later agents. The Reader therefore builds a tree of memos, bottom-up, and every later agent navigates it top-down. The idea follows public "repo map" and "layered summary" practice; the implementation is our own.
+A repository does not fit into a context window (linkding: 421 readable files, 2.1 MB, about 550k tokens), and the meeting does not need the content of every class. The first live run of a full bottom-up memo on linkding (300 files) took 388 s before the meeting could start. Public practice reads strategically instead: README and manifests first, a code-built ranked map, then targeted reads (agentic search in coding agents, PageRank repo maps, outline-then-seed-files wiki generators, codebase onboarding skills; ideas only, the implementation is our own). The Reader therefore works in two parts.
 
-Three layers, from cheap to expensive:
+Foreground, the meeting waits for it (target about 2 minutes, measured):
 
-1. Repo_Map (Studio code, no LLM): for every downloaded file the path, size, line count, language and the top-level symbols found by per-language regular expressions (classes, functions, routes, exported names). Built in seconds. Files of low value for understanding get only this map entry, no LLM memo: tests (`test/`, `tests/`, `*_test.*`, `test_*`), vendored and generated code (`vendor/`, `static/vendor/`, `*.min.*`, lock files, migrations). For linkding this removes about 1 MB of tests alone.
-2. File memos (LLM, Reader agent): the remaining files of one directory are summarized together in one call when they fit a batch (initial value 48 KB of source per call, `GL_MEMO_BATCH_KB`); larger files are cut at line boundaries. Each file memo is `{ path, purpose (one sentence), keySymbols[], relatesTo[] (paths), notes? }`, validated by zod; a file the model leaves out gets a visible "no memo" mark, never an invented one.
-3. Directory memos, then the root memo (LLM): each directory memo is written from its children's memos and map entries only, never from raw source, so a rollup stays small: `{ path, purpose, contains[] (child and one line each), entryPoints[], featuresHere[] }`. The root memo adds the software's purpose, users, main workflows and where each workflow lives. It is the input of the repository introduction (Open item 54) and the first page every later agent reads.
+1. Repo_Map (Studio code, no LLM): for every downloaded file the path, size, line count, language, top-level symbols (per-language regular expressions) and resolved imports. Tests, vendored and generated files are map only. Code ranks the files: README and manifests first, then entry points and routes, then by how many files import them (in-degree), then the rest. Code also builds a docs outline: for every Markdown or reStructuredText page under a docs directory its title and first paragraph.
+2. Reading plan (LLM, one call): the Reader gets the ranked map, the README in full, the manifests and the docs outline, and submits `submit_reading_plan { files: [{ path, why }] }`, at most 30 files and 160 KB (`GL_BRIEF_FILES`, `GL_BRIEF_KB`). Code checks that every path is in the map and not map only, and enforces the caps. User docs that explain features and setup are read before source files (reader rule). The plan and each reason are an event `reading_planned { files: [{ path, why }], byCode, dropped }` shown in the Workspace, so the Judge sees why a file is read. Every Reader call stops after 3 rejected tool calls (argument validation included), so a model cannot loop. If the call fails, the failure is shown and the top of the code ranking is used instead, labeled "plan by code".
+3. Reading (LLM): the planned files get file memos in batches (48 KB per call, 4 calls at a time; one file memo is `{ path, purpose (one sentence), keySymbols[], relatesTo[], features[], notes? }`). Files the model leaves out are retried once, together in one smaller batch of only those files, after a visible `failure` that names them; if it is still missing it gets a visible "no memo" mark, never an invented one. A call that ends without a valid submission is a visible `failure`.
+4. Repo_Brief (LLM, one call): from the README, the read docs, the file memos and the map. The format is the same for every repository (next subsection). Leaving the reading node needs a valid Repo_Brief (guard).
 
-Order and budget:
+Background, the meeting does not wait (Repo_Index):
 
-- Directories are processed deepest first, with up to 4 LLM calls at a time (`GL_MEMO_CONCURRENCY`). For linkding the estimate is about 125 calls (77 file batches, 48 directory rollups) before skipping tests and vendored code, and far fewer after.
-- The Reader's reading node keeps its timeout; when time runs short, the remaining directories get code-built rollups from the map (labeled "map only") and the root memo is still written, so the meeting always gets a complete tree, some of it honestly marked as shallow.
-- Each memo is an event `memo_written` `{ path, level: file | directory | root, fromCache, mapOnly }` and the memo text is an artifact; the Workspace shows them folded per directory ("Summarized bookmarks/api/ · 6 files"), so the long reading step is visibly busy.
-- Cache: `data/cache/memo/<owner>/<repo>/<sha>/`, keyed by the commit and the prompt version of `runtime-rules/`; a second Task on the same commit loads it instantly (R10.9).
+- After the brief, the remaining non-map-only files get file memos, then directory memos are written from their children only, deepest first, with up to 2 calls at a time (`GL_INDEX_CONCURRENCY`) so the meeting keeps priority. Files already memoized in the foreground are reused.
+- The Workspace shows "Background index N/M files" backed by `memo_written` events; a stop at Task end or abort is recorded. Agents never wait for the index: `read_memo` and `search_memo` return what exists, and `read_file` and `search_repo` always work on the download.
+
+Repo_Brief format (one generic format, zod-validated; every claim carries `sources` paths that must exist in the map):
+
+| Field | Content | Written by |
+|---|---|---|
+| `what` | One or two plain sentences and a `kind`: web_app, service, library, cli, desktop_app, mobile_app, framework, other | LLM |
+| `users` | Who uses it and the jobs they do, as user actions (for a library: what developers do with it) | LLM |
+| `howItRuns` | Stack, parts (for example web, API, worker, database) with their role and paths, entry points | LLM |
+| `concepts` | Core concepts or data, with a meaning and paths | LLM |
+| `features` | Feature name, the user action, paths (used by agents to locate code) | LLM |
+| `extensionPoints` | Where new behavior could attach, with paths; labeled "LLM assessment, not a guarantee" | LLM |
+| `unknowns` | Open questions with why they matter; input of the repository introduction (Open item 54) | LLM |
+| `coverage` | Files read in full, with a memo, map only, not downloaded; counts and paths | Code, never the LLM |
+
+Rules for the text: plain language in the user-facing fields, no file lists there; a field that does not apply says so; what is not known is listed under `unknowns`, not guessed. A source path that is not in the map is dropped and the drop is counted.
+
+Storage and display:
+
+- Each memo is an event `memo_written` `{ path, level: file | directory | brief, fromCache, mapOnly }` with the memo text as an artifact; the Workspace shows them folded per directory ("Summarized bookmarks/api/ · 6 files").
+- Cache: `data/cache/memo/<owner>/<repo>/<sha>/`, keyed by the commit and the prompt version of `runtime-rules/`; a second Task on the same commit loads the brief and the index instantly (R10.9).
 - The downloaded repository tree (`data/cache/github/.../files/`) is never written to after the download: the Repo_Map, the Repo_Memo and every Output_Doc live in the Studio's own directories, so the analyzed code stays exactly as GitHub returned it (decided by the user 2026-11-23).
-- Formats: JSON is the stored form, Markdown is the read form. Each memo is one zod-validated JSON record (`memo.json` with all records keyed by path, plus `map.json` for the Repo_Map); code checks coverage and `search_memo` works on its fields. For agents, a memo is rendered by one deterministic function into compact Markdown (a heading with the path, one line per child), which costs fewer tokens than JSON and keeps prompt prefixes byte-identical for caching. The same rendering is shown in the Workspace and exported as one `REPO_MEMO.md` per Task in `data/tasks/<id>/docs/` (root first, then each directory), which is also an Output_Doc (layer C).
+- Formats: JSON is the stored form, Markdown is the read form. Records are zod-validated (`memo.json` keyed by path, `brief.json`, `map.json`); one deterministic function renders compact Markdown for agents (byte-identical prefixes for caching), for the Workspace and for the Output_Doc `REPO_MEMO.md` in `data/tasks/<id>/docs/` (brief first, then each directory).
 
 How agents use it (tools over the download only, no execution, R10.3):
 
@@ -659,7 +679,7 @@ How agents use it (tools over the download only, no execution, R10.3):
 | `read_file(path, fromLine?, toLine?)` | The requested lines of a file | 400 lines or 16 KB per call; the result says how many lines remain |
 | `record_finding` | Records a finding; evidence must quote the file (R24) | |
 
-- Every agent context starts with the root memo, not with files. Agents open files only when a decision needs exact code, which is also when they cite evidence.
+- Every agent context starts with the Repo_Brief, not with files. Agents open files only when a decision needs exact code, which is also when they cite evidence.
 - A memo is an LLM description and never evidence: findings, assessments and decision items still need a quoted snippet that the evidence checker finds in the file (R24).
 - Token budget per agent turn: the runner counts the tokens of tool results in the turn; near the budget (initial value 60% of the model context window) further `read_file` calls return "budget reached, record what you have", so the agent submits instead of failing late.
 
@@ -670,7 +690,7 @@ DeepSeek caches prompt prefixes on disk by default (api-docs.deepseek.com/guides
 - Order of every request: shared behavior rules, then the stable Task context (Repo_Map summary, root memo, evidence summary), then the role or batch instructions, then the variable part. Nothing that changes per call (timestamps, Task ids, counters, random ids) appears before the variable part.
 - Tool definitions are listed in one fixed order per node, so the tool block is identical across calls of the same node.
 - Conversations are append-only: earlier messages are never edited, reordered or trimmed in place, so each turn extends the previous request (the "A + B, then A + B + C" case). Interjections and Judge answers are appended, never inserted earlier.
-- Repo_Memo batches: all file-memo calls share the same rules, instructions and output schema, with only the batch of files at the end; the shared part is detected as a common prefix after the first two calls and hit afterwards. Directory rollups share their own fixed prefix the same way.
+- Repo_Memo batches: all Reader calls share the same rules, instructions and output schema, with only the batch of files at the end; the shared part is detected as a common prefix after the first two calls and hit afterwards. Directory rollups share their own fixed prefix the same way.
 - Meeting: every Meeting_Perspective and the Facilitator get the same shared prefix (rules, Task context, transcript so far) and their own role text after it; a role's next turn extends its previous request.
 - Measured, not assumed: `message_completed.usage` records the cache-hit input tokens when the provider reports them (DeepSeek: `prompt_cache_hit_tokens`; OpenAI-style providers: `prompt_tokens_details.cached_tokens`), and Engineering_Details shows the hit rate per node. A live test on 2026-11-23 with an OpenAI-style endpoint showed a hit on 5184 of 5196 prompt tokens from the second identical-prefix request on. Verified 2026-11-23 in the pi-ai 1.6.0 source: its OpenAI-completions adapter maps both formats (and a top-level `cached_tokens`) to `usage.cacheRead`, so the Studio reads `usage.cacheRead`. The backend uses pi-ai and pi-agent-core 1.6.0 (MIT); the Code_Agent runner moves from 1.5.2 to the same version when the dev-sandbox image is built (milestone 10), so the shared pi event mapping serves one version.
 - Reasoning parameter (live tests 2026-11-23, one OpenAI-compatible endpoint): cache hits were inconsistent. In one series a request with an explicit "thinking enabled" parameter never hit while the same request without it hit 2368 of 2430 tokens; in a second series of six identical prompts, both of those variants missed and a "thinking disabled" request hit 2816 of 2822 on its second call. The cache appears to be kept per thinking mode and is best effort; the cause is not known and is not assumed. The model reasoned about as much without the parameter (187-343 reasoning tokens) as with it (107-279), and almost not at all with "disabled" (11-28). Each LLM profile has an optional `LLM_<NAME>_REASONING_PARAM` = `send` (default) or `omit` (no reasoning parameter; pi-ai sees the model as not reasoning-configurable; returned reasoning text is still shown). The default stays `send`; the measured hit rate per node decides whether a paid profile should use `omit`. A controlled test (byte-identical requests built by hand, without pi, 15 s apart) ruled out a Studio or pi bug: four requests with the thinking parameter hit 0 tokens each; three without it hit 2752, 0 and 0. The endpoint reports hits only in `prompt_tokens_details.cached_tokens`, which is read correctly. Caching is therefore provider behavior that the Studio cannot control; the Studio keeps prefixes byte-identical and measures.

@@ -98,7 +98,7 @@ export const initialUiState: UiState = {
 export const ALWAYS_NARRATED: ReadonlySet<StudioEvent["type"]> = new Set([
   "task_created", "node_entered", "transition_rejected", "file_read", "finding_recorded", "message_completed",
   "message_incomplete", "tool_started", "judge_message", "card_opened", "card_answered", "decision_doc_frozen",
-  "decision_item_reviewed", "browser_action", "code_change", "memo_written", "review_verdict", "question_opened", "question_answered",
+  "decision_item_reviewed", "browser_action", "code_change", "memo_written", "reading_planned", "review_verdict", "question_opened", "question_answered",
   "verifier_result", "failure", "terminal_reached",
 ]);
 
@@ -131,7 +131,10 @@ export function narrate(e: StudioEvent): { text: string; path?: string; failure?
       const path = e.payload.evidence[0]?.path;
       return path === undefined ? { text: e.payload.text } : { text: e.payload.text, path };
     }
+    case "reading_planned":
+      return { text: `Planned to read ${e.payload.files.length} files${e.payload.byCode ? " (plan by code)" : ""}` };
     case "memo_written": {
+      if (e.payload.level === "brief") return { text: "Wrote the repo brief" };
       const where = e.payload.path === "" ? "the whole repository" : e.payload.path;
       const how = e.payload.mapOnly ? " (map only)" : e.payload.fromCache ? " (from the cache)" : "";
       return { text: `Summarized ${where}${how}`, ...(e.payload.path ? { path: e.payload.path } : {}) };

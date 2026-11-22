@@ -29,6 +29,8 @@ export interface TurnOptions {
   idPrefix: string;
   /** message_progress at most this often while streaming (GL_PROGRESS_INTERVAL_S, default 5 s), and at each phase change. */
   progressEveryMs?: number;
+  /** Stop the turn after this many rejected tool calls (including argument validation by pi), so a model cannot loop. */
+  maxToolErrors?: number;
   now?: () => number;
 }
 
@@ -61,6 +63,8 @@ export async function runAgentTurn(o: TurnOptions): Promise<TurnResult> {
   const allowed = new Set(o.tools.map((t) => t.name));
   const result: TurnResult = { stopReason: "none", text: "", toolCalls: 0, truncated: false };
   let seq = 0;
+  let toolErrors = 0;
+  let gaveUp: string | undefined;
   let current: { id: string; phase: string; lastProgress: number; text: number; reasoning: number } | null = null;
 
   const agent = new Agent({
@@ -111,7 +115,7 @@ export async function runAgentTurn(o: TurnOptions): Promise<TurnResult> {
         current = null;
         result.stopReason = m.stopReason;
         if (m.stopReason === "error" || m.stopReason === "aborted") {
-          const reason = m.stopReason === "aborted" ? "stopped" : summarize(m.errorMessage ?? "the model call failed", 300);
+          const reason = m.stopReason === "aborted" ? (gaveUp ?? "stopped") : summarize(m.errorMessage ?? "the model call failed", 300);
           result.error = reason;
           await o.emit({ type: "message_incomplete", actor, payload: { messageId: id, partialText: textOf(m), reason } });
           if (m.stopReason === "error") await o.emit({ type: "failure", actor, payload: { failureClass: "interface_call_failure", source: "llm", detail: `the model call failed: ${reason}` } });
@@ -148,6 +152,10 @@ export async function runAgentTurn(o: TurnOptions): Promise<TurnResult> {
         const ok = !(e as { isError?: boolean }).isError;
         const out = (e.result as { content?: { type: string; text?: string }[] } | undefined)?.content?.find((c) => c.type === "text")?.text ?? "";
         await o.emit({ type: "tool_finished", actor, payload: { callId: e.toolCallId, tool: e.toolName, ok, outputSummary: summarize(out) } });
+        if (!ok && o.maxToolErrors !== undefined && ++toolErrors >= o.maxToolErrors && !gaveUp) {
+          gaveUp = `gave up after ${toolErrors} rejected tool calls`;
+          agent.abort();
+        }
         return;
       }
       default:
@@ -164,5 +172,6 @@ export async function runAgentTurn(o: TurnOptions): Promise<TurnResult> {
   } finally {
     o.signal?.removeEventListener("abort", onAbort);
   }
+  if (gaveUp) return { ...result, stopReason: "aborted", error: gaveUp };
   return result;
 }

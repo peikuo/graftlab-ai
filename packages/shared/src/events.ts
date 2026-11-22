@@ -116,11 +116,17 @@ export const PAYLOADS = {
   // One Repo_Memo record written (design.md, "Repo_Memo"; R10.7, R10.8). The memo text is in the memo artifact.
   memo_written: z.object({
     path: z.string(),
-    level: z.enum(["file", "directory", "root"]),
+    level: z.enum(["file", "directory", "root", "brief"]),
     purpose: z.string(),
     files: count,
     fromCache: z.boolean(),
     mapOnly: z.boolean(),
+  }),
+  // R10.10: the Reader's reading plan (or the code ranking when the plan was not usable), with a reason per file.
+  reading_planned: z.object({
+    files: z.array(z.object({ path: nonEmpty, why: z.string() })),
+    byCode: z.boolean(),
+    dropped: count,
   }),
   message_incomplete: z.object({ messageId: id, partialText: z.string(), reason: nonEmpty }),
   tool_started: z.object({ callId: id, tool: nonEmpty, inputSummary: z.string() }),

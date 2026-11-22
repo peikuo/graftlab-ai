@@ -1,5 +1,6 @@
-// Repo_Memo builder (design.md, "Repo_Memo"; R10.7-R10.9). Bottom-up: file memos in batches per directory, then
-// directory memos from their children only, then the root memo. The LLM calls sit behind MemoWriter, so this
+// Repo_Memo builder (design.md, "Repo_Memo"; R10.7-R10.12). File memos in batches per directory (shared by the
+// foreground Repo_Brief and the background Repo_Index), then directory memos from their children only, then
+// optionally a root memo (the Repo_Brief replaces it in the Task flow). The LLM calls sit behind MemoWriter, so this
 // module is plain code: batching, order, concurrency, the time-short fallback, coverage marks, cache, rendering.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -9,7 +10,7 @@ import { dirsDeepestFirst, type MapEntry, type RepoMap } from "./map.ts";
 const short = z.string().trim().min(1).max(400);
 const list = (max: number) => z.array(z.string().trim().min(1).max(200)).max(max);
 
-export const FileMemoSchema = z.object({ path: z.string().min(1), purpose: short, keySymbols: list(8), relatesTo: list(12), notes: z.string().max(400).optional() });
+export const FileMemoSchema = z.object({ path: z.string().min(1), purpose: short, keySymbols: list(8), relatesTo: list(12), features: list(4).optional(), notes: z.string().max(400).optional() });
 export const DirMemoSchema = z.object({ purpose: short, contains: list(60), entryPoints: list(4), featuresHere: list(6) });
 export const RootMemoSchema = DirMemoSchema.extend({ workflows: z.array(z.object({ name: short, paths: list(8) })).max(8) });
 
@@ -24,6 +25,8 @@ export interface MemoTree {
   commit: string;
   promptVersion: string;
   records: Record<string, MemoRecord>; // file memos by path; directory memos by "dir:<path>"; root by "dir:"
+  /** The Repo_Brief (brief.ts), written before the meeting. */
+  brief?: unknown;
 }
 
 export const dirKey = (path: string) => `dir:${path}`;
@@ -51,6 +54,8 @@ export interface MemoWriter {
 
 export interface MemoEvents {
   written(r: MemoRecord, info: { files: number; fromCache: boolean }): Promise<void>;
+  /** A visible failure of the Reader's output (for example files left out of a batch), before a retry or a mark. */
+  failure?(detail: string): Promise<void>;
 }
 
 export interface BuildOptions {
@@ -66,6 +71,10 @@ export interface BuildOptions {
   /** When now() passes this, remaining work falls back to map-only memos; the root is always written. */
   deadline?: number;
   now?: () => number;
+  /** Records written earlier (the foreground memos); LLM file memos among them are reused, not written again. */
+  reuse?: Record<string, MemoRecord>;
+  /** Write the root memo (default true). The Task flow writes the Repo_Brief instead. */
+  withRoot?: boolean;
 }
 
 /** Splits a directory's memo-worthy files into batches of at most batchBytes; a large file is cut alone. */
@@ -136,10 +145,42 @@ async function pool<T>(items: T[], limit: number, fn: (t: T) => Promise<void>): 
   await Promise.all(workers);
 }
 
+type Put = (key: string, r: MemoRecord, files: number) => Promise<void>;
+/**
+ * One batch of file memos. Files the model leaves out are retried once, as a visible retry, in one smaller batch
+ * of only those files; a file still missing gets a visible "no memo" mark, never an invented memo.
+ */
+export async function memoizeBatch(o: { map: RepoMap; writer: MemoWriter; events: MemoEvents; signal: AbortSignal }, dir: string, batch: BatchFile[], put: Put): Promise<void> {
+  const wanted = new Set(batch.map((f) => f.path));
+  const take = async (files: BatchFile[]) => {
+    let got: FileMemoInput[] = [];
+    try {
+      got = await o.writer.files(dir, files, o.signal);
+    } catch {
+      got = []; // the writer records the failure as an event
+    }
+    for (const m of got) {
+      const parsed = FileMemoSchema.safeParse(m);
+      if (!parsed.success || !wanted.has(parsed.data.path)) continue; // a memo for a file that is not asked for is dropped
+      wanted.delete(parsed.data.path);
+      await put(parsed.data.path, { level: "file", source: "llm", ...parsed.data, relatesTo: parsed.data.relatesTo.filter((p) => o.map.byPath.has(p)) }, 1);
+    }
+  };
+  await take(batch);
+  if (wanted.size > 0 && !o.signal.aborted) {
+    await o.events.failure?.(`the Reader left out ${wanted.size} of ${batch.length} files (${[...wanted].slice(0, 6).join(", ")}${wanted.size > 6 ? ", …" : ""}); retrying them once`);
+    await take(batch.filter((f) => wanted.has(f.path)));
+  }
+  for (const p of wanted) {
+    const e = o.map.byPath.get(p)!;
+    await put(p, { level: "file", source: "missing", path: p, purpose: "No memo: the model did not describe this file.", keySymbols: e.symbols.slice(0, 8), relatesTo: e.imports.slice(0, 12) }, 1);
+  }
+}
 export async function buildMemo(o: BuildOptions): Promise<MemoTree> {
   const now = o.now ?? Date.now;
   const timeLeft = () => o.deadline === undefined || now() < o.deadline;
   const records: Record<string, MemoRecord> = {};
+  for (const [k, r] of Object.entries(o.reuse ?? {})) if (r.level === "file" && r.source === "llm") records[k] = r;
   const put = async (key: string, r: MemoRecord, files: number) => {
     records[key] = r;
     await o.events.written(r, { files, fromCache: false });
@@ -150,7 +191,7 @@ export async function buildMemo(o: BuildOptions): Promise<MemoTree> {
   for (const dir of dirsDeepestFirst(o.map)) {
     const entries = o.map.dirs.get(dir)!.files.map((p) => o.map.byPath.get(p)!);
     for (const e of entries.filter((x) => x.mapOnly)) await put(e.path, mapFileMemo(e, e.mapOnlyReason ?? "map only"), 1);
-    for (const batch of batchesFor(entries.filter((x) => !x.mapOnly), o.files, o.batchBytes ?? 48 * 1024)) llmBatches.push({ dir, batch });
+    for (const batch of batchesFor(entries.filter((x) => !x.mapOnly && !records[x.path]), o.files, o.batchBytes ?? 48 * 1024)) llmBatches.push({ dir, batch });
   }
   await pool(llmBatches, o.concurrency ?? 4, async ({ dir, batch }) => {
     if (o.signal.aborted) return;
@@ -158,26 +199,8 @@ export async function buildMemo(o: BuildOptions): Promise<MemoTree> {
       for (const f of batch) await put(f.path, mapFileMemo(f.map, "no time for a summary"), 1);
       return;
     }
-    let got: FileMemoInput[] = [];
-    try {
-      got = await o.writer.files(dir, batch, o.signal);
-    } catch {
-      got = []; // the writer records the failure; the files are marked below
-    }
-    const wanted = new Set(batch.map((f) => f.path));
-    for (const m of got) {
-      const parsed = FileMemoSchema.safeParse(m);
-      if (!parsed.success || !wanted.has(parsed.data.path)) continue; // a memo for a file that is not in the batch is dropped
-      wanted.delete(parsed.data.path);
-      await put(parsed.data.path, { level: "file", source: "llm", ...parsed.data, relatesTo: parsed.data.relatesTo.filter((p) => o.map.byPath.has(p)) }, 1);
-    }
-    // A file the model left out gets a visible mark, never an invented memo.
-    for (const p of wanted) {
-      const e = o.map.byPath.get(p)!;
-      await put(p, { level: "file", source: "missing", path: p, purpose: "No memo: the model did not describe this file.", keySymbols: e.symbols.slice(0, 8), relatesTo: e.imports.slice(0, 12) }, 1);
-    }
+    await memoizeBatch({ map: o.map, writer: o.writer, events: o.events, signal: o.signal }, dir, batch, put);
   });
-
   // 2. Directories, deepest first; one level at a time so every child memo exists before its parent.
   const order = dirsDeepestFirst(o.map).filter((d) => d !== "");
   const depth = (d: string) => d.split("/").length;
@@ -198,7 +221,7 @@ export async function buildMemo(o: BuildOptions): Promise<MemoTree> {
 
   // 3. The root memo is always written: from the LLM when possible, otherwise from the map.
   const rootFiles = o.map.entries.length;
-  if (!o.signal.aborted) {
+  if (!o.signal.aborted && o.withRoot !== false) {
     try {
       if (!timeLeft()) throw new Error("no time");
       const m = RootMemoSchema.parse(await o.writer.root(childLines(o.map, "", records), o.signal));
@@ -238,6 +261,7 @@ export function renderMemo(tree: MemoTree, key: string): string {
     const lines = [`## ${r.path}`, r.purpose];
     if (r.keySymbols.length) lines.push(`Key symbols: ${r.keySymbols.join(", ")}`);
     if (r.relatesTo.length) lines.push(`Works with: ${r.relatesTo.join(", ")}`);
+    if (r.features?.length) lines.push(`Features: ${r.features.join("; ")}`);
     if (r.notes) lines.push(`Note: ${r.notes}`);
     if (r.source !== "llm") lines.push(r.source === "map" ? "(map only)" : "(no memo)");
     return lines.join("\n");

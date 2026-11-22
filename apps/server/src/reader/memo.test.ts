@@ -125,3 +125,35 @@ describe("batching, cache and rendering", () => {
     expect(searchMemo(tree, "bookmark app")).toEqual([dirKey("")]);
   });
 });
+describe("buildMemo retry and reuse (R10.8, R10.12)", () => {
+  it("retries left-out files once in a smaller batch, with a visible failure first", async () => {
+    let left = false;
+    const seen: string[][] = [];
+    const w: MemoWriter = {
+      ...scriptedWriter().w,
+      async files(_dir, batch) {
+        seen.push(batch.map((f) => f.path));
+        // the first call with app/models.py leaves it out; the retry describes it
+        const skip = !left && batch.length > 1 && batch.some((f) => f.path === "app/models.py");
+        if (skip) left = true;
+        return batch.filter((f) => !skip || f.path !== "app/models.py").map((f) => ({ path: f.path, purpose: `P ${f.path}`, keySymbols: [], relatesTo: [] }));
+      },
+    };
+    const failures: string[] = [];
+    const tree = await buildMemo({ commit: "c", promptVersion: "v", map, files, writer: w, signal: new AbortController().signal, events: { written: async () => {}, failure: async (d) => void failures.push(d) } });
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain("app/models.py");
+    expect(seen.some((b) => b.length === 1 && b[0] === "app/models.py")).toBe(true);
+    expect(tree.records["app/models.py"]).toMatchObject({ source: "llm" });
+  });
+  it("reuses foreground memos and can skip the root", async () => {
+    const { w, calls } = scriptedWriter();
+    const reuse: Record<string, MemoRecord> = { "app/models.py": { level: "file", source: "llm", path: "app/models.py", purpose: "From the brief.", keySymbols: [], relatesTo: [] } };
+    const asked: string[] = [];
+    const tree = await buildMemo({ commit: "c", promptVersion: "v", map, files, writer: { ...w, files: async (d, b, s) => (asked.push(...b.map((f) => f.path)), w.files(d, b, s)) }, signal: new AbortController().signal, events: { written: async () => {} }, reuse, withRoot: false });
+    expect(asked).not.toContain("app/models.py");
+    expect(tree.records["app/models.py"]).toMatchObject({ purpose: "From the brief." });
+    expect(calls.root).toBe(0);
+    expect(tree.records[dirKey("")]).toBeUndefined();
+  });
+});
