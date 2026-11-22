@@ -646,6 +646,7 @@ Order and budget:
 - The Reader's reading node keeps its timeout; when time runs short, the remaining directories get code-built rollups from the map (labeled "map only") and the root memo is still written, so the meeting always gets a complete tree, some of it honestly marked as shallow.
 - Each memo is an event `memo_written` `{ path, level: file | directory | root, fromCache, mapOnly }` and the memo text is an artifact; the Workspace shows them folded per directory ("Summarized bookmarks/api/ · 6 files"), so the long reading step is visibly busy.
 - Cache: `data/cache/memo/<owner>/<repo>/<sha>/`, keyed by the commit and the prompt version of `runtime-rules/`; a second Task on the same commit loads it instantly (R10.9).
+- Formats: JSON is the stored form, Markdown is the read form. Each memo is one zod-validated JSON record (`memo.json` with all records keyed by path, plus `map.json` for the Repo_Map); code checks coverage and `search_memo` works on its fields. For agents, a memo is rendered by one deterministic function into compact Markdown (a heading with the path, one line per child), which costs fewer tokens than JSON and keeps prompt prefixes byte-identical for caching. The same rendering is shown in the Workspace and exported as one `REPO_MEMO.md` per Task in `data/tasks/<id>/docs/` (root first, then each directory), which is also an Output_Doc (layer C).
 
 How agents use it (tools over the download only, no execution, R10.3):
 
