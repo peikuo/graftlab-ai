@@ -221,33 +221,34 @@ Conventions:
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 5. F1-F2: home input, URL validation, Repo_Reader and immersive reading view (target 2026-11-23)
-  - [ ] 5.1 Implement GitHub URL parsing and Adapter matching
+  - [x] 5.1 Implement GitHub URL parsing and Adapter matching
     - `packages/shared/src/url.ts`: accepted forms (with or without scheme, `www.`, trailing slash, `.git`), normalization, case-insensitive Adapter match
     - Design: packages/shared
     - _Requirements: 9.2, 9.3, 9.5_
-  - [ ] 5.2 Implement the task runner skeleton
+  - [x] 5.2 Implement the task runner skeleton
     - `apps/server/src/tasks/runner.ts`: holds TaskState, runs node handlers, applies `transition`, node and Task timeouts with an injectable clock, abort endpoint, backend restart handling (`failure` "backend restarted" and `terminal_reached` failed)
     - Design: apps/server modules, Error Handling
     - _Requirements: 36.2, 36.5, 36.6, 36.8_
-  - [ ]* 5.3 Write property test for URL validation
+  - [x]* 5.3 Write property test for URL validation
     - **Property 14: Home URL validation round trip**
     - **Validates: Requirements 9.2, 9.3, 9.5**
-  - [ ] 5.4 Build the home page and Task creation
+  - [x] 5.4 Build the home page and Task creation
     - Single URL input; error naming the expected form; `POST /api/tasks` checks existence and visibility on GitHub and shows GitHub's reason; `task_created` with repoKind and Runtime_Rules version; the home page states when live execution is unavailable (no Docker engine)
     - Design: HTTP API, Web app
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 25.8, 35.3_
-  - [ ] 5.5 Implement the Repo_Reader
+  - [x] 5.5 Implement the Repo_Reader
     - `apps/server/src/reader/`: read-only token, metadata, commit SHA, recursive tree, prioritized reading order, limits 300 files or 2 MB (`GL_READ_MAX_FILES`, `GL_READ_MAX_BYTES`), skip binary and files above 200 KB, cache by SHA, rate limit failure, download failure stops the Task, `file_read` events
     - Design: Repo_Reader
     - _Requirements: 10.1, 10.3, 10.4, 10.5, 10.6, 34.1, 34.2, 34.3, 34.4, 34.5_
-  - [ ]* 5.6 Write unit tests for the Repo_Reader
+  - [x]* 5.6 Write unit tests for the Repo_Reader
     - Cache hit for the same SHA, skipped list at the limit, rate limit state shown without fabricated content, download failure recorded and Task stopped (fake GitHub server)
     - _Requirements: 10.5, 10.6, 34.2, 34.3, 34.4_
-  - [ ] 5.7 Build the immersive reading view
+  - [x] 5.7 Build the immersive reading view
     - Artifact_Area file view with the path and the portion read so far; feed narration of each file read; skipped parts list; progress as files read out of the planned count
     - Design: Web app, Repo_Reader
     - _Requirements: 4.4, 10.2, 10.6, 7.1_
-  - [ ] 5.8 Demo and verify: URL to reading
+  - [x] 5.8 Demo and verify: URL to reading
+    - Done 2026-11-23 against real GitHub with a browser walk (`scripts/live-walk-m5.mjs`): invalid URL and missing repository refused without a Task; linkding planned 300 files (limit) and 296 `file_read` events (4 binary after download); a second submit of the same commit read only from the cache; `sindresorhus/is` read as Other_Repo; no token in any `events.jsonl`. In milestone 5 the download is Studio code (shown as "Downloaded"); the Reader agent joins in milestone 6. Steps not built yet stop honestly in failure_review
     - Show the user the linkding URL and one Other_Repo URL being read live, an invalid URL error and a private repository error; check that a second submit of the same commit reads from the cache and that every file read is in `events.jsonl`
     - _Requirements: 9.3, 9.4, 10.2, 34.2_
 

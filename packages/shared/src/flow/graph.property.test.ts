@@ -98,5 +98,5 @@ describe("Flow_Graph structure", () => {
       }),
       { numRuns: 100 },
     );
-  });
+  }, 30_000); // 100 walks, each checked against every edge and outcome
 });

@@ -331,3 +331,14 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---- File preview (R4.4) ---- */
+.preview { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 10px; }
+.preview-head { padding: 6px 12px; background: var(--surface-2); border-bottom: 1px solid var(--border); color: var(--muted); }
+.preview-text { margin: 0; padding: 10px 12px; max-height: 260px; overflow: auto; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+.files { max-height: 220px; overflow: auto; }
+.file-link { background: none; border: none; padding: 0; color: var(--accent-ink); text-align: left; font: inherit; }
+.file-link:hover, .file-link.on { text-decoration: underline; }
+.home-note { margin: -28px 0 32px; font-size: 13px; color: var(--muted); }
+.home-error { color: var(--failure); }
+.stop-btn { color: var(--failure) !important; }

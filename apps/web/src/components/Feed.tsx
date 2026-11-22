@@ -13,8 +13,11 @@ const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-di
 const who = (actor: string) => ACTOR_LABEL[actor] ?? { name: actor, avatar: "•" };
 
 /** Entries of these kinds fold together when they follow each other with the same actor. */
-const FOLD: Partial<Record<StudioEvent["type"], { one: string; many: (n: number) => string }>> = {
+type FoldKey = StudioEvent["type"] | "file_download";
+const FOLD: Partial<Record<FoldKey, { one: string; many: (n: number) => string }>> = {
   file_read: { one: "Read a file", many: (n) => `Read ${n} files` },
+  // Studio code downloads files before any agent reads them (milestone 5); said plainly, not as an agent's reading.
+  file_download: { one: "Downloaded a file", many: (n) => `Downloaded ${n} files` },
   finding_recorded: { one: "Noted a finding", many: (n) => `Noted ${n} findings` },
   browser_action: { one: "Did a step in the app", many: (n) => `Did ${n} steps in the app` },
   tool_started: { one: "Ran a step", many: (n) => `Ran ${n} steps` },
@@ -35,7 +38,7 @@ type Row =
   | { kind: "message"; key: string; entry: FeedEntry }
   | { kind: "card"; key: string; entry: FeedEntry }
   | { kind: "judge"; key: string; entry: FeedEntry }
-  | { kind: "group"; key: string; actor: string; type: StudioEvent["type"]; entries: FeedEntry[] }
+  | { kind: "group"; key: string; actor: string; type: FoldKey; entries: FeedEntry[] }
   | { kind: "line"; key: string; entry: FeedEntry };
 
 function toRows(feed: FeedEntry[], events: StudioEvent[]): Row[] {
@@ -71,14 +74,16 @@ function toRows(feed: FeedEntry[], events: StudioEvent[]): Row[] {
       rows.push({ kind: "judge", key: `j${entry.seq}`, entry });
       continue;
     }
-    const fold = FOLD[entry.type];
+    // Studio notes (plan, skipped parts) stay single lines; Studio file reads are downloads.
+    const foldType: FoldKey = entry.type === "file_read" && entry.actor === "system" ? "file_download" : entry.type;
+    const fold = entry.type === "finding_recorded" && entry.actor === "system" ? undefined : FOLD[foldType];
     const last = rows.at(-1);
-    if (fold && !entry.failure && last?.kind === "group" && last.actor === entry.actor && last.type === entry.type) {
+    if (fold && !entry.failure && last?.kind === "group" && last.actor === entry.actor && last.type === foldType) {
       last.entries.push(entry);
       continue;
     }
     if (fold && !entry.failure) {
-      rows.push({ kind: "group", key: `g${entry.seq}`, actor: entry.actor, type: entry.type, entries: [entry] });
+      rows.push({ kind: "group", key: `g${entry.seq}`, actor: entry.actor, type: foldType, entries: [entry] });
       continue;
     }
     rows.push({ kind: "line", key: `l${entry.seq}`, entry });
@@ -145,7 +150,8 @@ function GroupRow({ row }: { row: Extract<Row, { kind: "group" }> }) {
   const n = row.entries.length;
   const first = row.entries[0]!;
   const plain = row.type === "tool_started" ? TOOL_PLAIN[first.text.split(" ")[0] ?? ""] ?? TOOL_PLAIN[first.text] : undefined;
-  const title = n === 1 ? (plain ?? first.text) : fold.many(n);
+  const single = row.type === "file_download" ? first.text.replace(/^Read /, "Downloaded ") : first.text;
+  const title = n === 1 ? (plain ?? single) : fold.many(n);
   return (
     <div className="step" title={time(first.ts)}>
       <span className="step-avatar" aria-hidden="true">{w.avatar}</span>
@@ -182,19 +188,29 @@ const FAILURE_PLAIN: Record<string, string> = {
 
 function LineRow({ entry, event }: { entry: FeedEntry; event: StudioEvent | undefined }) {
   const w = who(entry.actor);
+  const [open, setOpen] = useState(false);
   let text = entry.text;
   let badge: string | null = null;
   if (event?.type === "failure") {
     text = event.payload.detail.charAt(0).toUpperCase() + event.payload.detail.slice(1);
     badge = `${FAILURE_PLAIN[event.payload.failureClass] ?? ""} · ${event.payload.failureClass}`;
   }
+  // Long notes (for example a skipped-files list) are cut at the first ":" or at 90 characters.
+  const colon = text.indexOf(":");
+  const cut = colon > 0 && colon < 90 ? colon : 90;
+  const long = !entry.failure && text.length > 120;
   return (
     <div className={`step${entry.failure ? " step-fail" : ""}`} title={time(entry.ts)}>
       <span className="step-avatar" aria-hidden="true">{entry.failure ? "⚠" : w.avatar}</span>
       <div className="step-main">
         <span className="step-text">
           {entry.failure && <span className="sr-only">Failure: </span>}
-          <span className="step-who">{w.name}</span> {text}
+          <span className="step-who">{w.name}</span> {long && !open ? `${text.slice(0, cut)}…` : text}
+          {long && (
+            <button type="button" className="step-toggle step-caret" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+              {open ? "Hide" : "Show"}
+            </button>
+          )}
           {entry.path && <span className="mono muted"> · {entry.path}</span>}
           {badge && <span className="badge red fail-class">{badge}</span>}
         </span>

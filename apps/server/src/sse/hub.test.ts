@@ -39,6 +39,22 @@ describe("SseHub", () => {
     await store.close();
   });
 
+  it("a client connected before a new Task is attached receives that Task's earlier events", async () => {
+    const secrets = new SecretRegistry();
+    const dataDir = await mkdtemp(join(tmpdir(), "gl-hub-"));
+    dirs.push(dataDir);
+    const hub = new SseHub({ secrets, heartbeatMs: 60_000 });
+    const out: string[] = [];
+    hub.connect({ sessionId: undefined, write: (c) => out.push(c) }); // waiting on the home page, no Task yet
+    const store = await EventStore.open({ dataDir, taskId: "t2", secrets });
+    await store.append(started); // written before the store is attached
+    hub.attach(store);
+    await store.append({ ...started, payload: { ...started.payload, messageId: "m2" } });
+    expect(out.filter((c) => c.includes("event: event")).map((c) => /^id: (\d+)/.exec(c)?.[1])).toEqual(["1", "2"]);
+    hub.close();
+    await store.close();
+  });
+
   it("sends in-progress buffers on connect and drops them when the message completes", async () => {
     const { store, hub } = await setup();
     await store.append(started);

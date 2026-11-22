@@ -9,8 +9,21 @@ import { Lease } from "../queue/lease.ts";
 import { SseHub } from "../sse/hub.ts";
 import { ensureSession, readSession, sameOrigin, tokenEquals } from "./session.ts";
 
+/** The Task operations the HTTP layer needs (implemented by TaskService). */
+export interface TaskApi {
+  create(url: string): Promise<{ ok: true; taskId: string } | { ok: false; status: number; error: string }>;
+  /** null when the Task is not the runner's Task; false when the card is not open. */
+  answer(taskId: string, cardId: string, a: { optionId?: string; text?: string }): boolean | null;
+  abort(taskId: string): boolean;
+  endGathering(taskId: string): boolean;
+  fileText(taskId: string, path: string): Promise<string | null>;
+}
+
 export interface StudioOptions {
   secrets: SecretRegistry;
+  tasks?: TaskApi;
+  /** Whether live execution is possible (a container engine answered), for the home page (R25.8). */
+  liveExecution?: () => Promise<{ available: boolean; reason?: string }>;
   allowedOrigins?: string[];
   secureCookie?: boolean;
   adminToken?: string;
@@ -144,6 +157,9 @@ export function createStudio(opts: StudioOptions): Studio {
     if (!store || store.taskId !== req.params.id) return reply.code(404).send({ error: "no such Task" });
     const body = AnswerBody.safeParse(req.body ?? {});
     if (!body.success || (!body.data.optionId && !body.data.text)) return reply.code(400).send({ error: "an option or a text is required" });
+    const viaRunner = opts.tasks?.answer(req.params.id, req.params.cardId, body.data);
+    if (viaRunner === true) return { accepted: true };
+    if (viaRunner === false) return reply.code(409).send({ error: "the card is not open" });
     const events = store.events();
     const opened = events.find((e) => e.type === "card_opened" && e.payload.cardId === req.params.cardId);
     const answered = events.some((e) => e.type === "card_answered" && e.payload.cardId === req.params.cardId);
@@ -153,6 +169,45 @@ export function createStudio(opts: StudioOptions): Studio {
     if (body.data.text) payload.text = body.data.text;
     await store.append({ type: "card_answered", node: events.at(-1)!.node, actor: { kind: "judge" }, payload });
     return { accepted: true };
+  });
+
+  app.post("/api/tasks", async (req, reply) => {
+    const denied = await command(req);
+    if (denied) return reply.code(denied.status).send({ error: denied.error });
+    if (!opts.tasks) return reply.code(503).send({ error: "Task creation is not available on this server" });
+    const body = z.object({ url: z.string().max(400) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "a repository address is required" });
+    const r = await opts.tasks.create(body.data.url);
+    if (!r.ok) return reply.code(r.status).send({ error: r.error });
+    return { taskId: r.taskId };
+  });
+
+  app.post<{ Params: { id: string } }>("/api/tasks/:id/abort", async (req, reply) => {
+    const denied = await command(req);
+    if (denied) return reply.code(denied.status).send({ error: denied.error });
+    if (!opts.tasks?.abort(req.params.id)) return reply.code(409).send({ error: "no running Task with this id" });
+    return { accepted: true };
+  });
+
+  app.post<{ Params: { id: string } }>("/api/tasks/:id/gathering/end", async (req, reply) => {
+    const denied = await command(req);
+    if (denied) return reply.code(denied.status).send({ error: denied.error });
+    if (!opts.tasks?.endGathering(req.params.id)) return reply.code(409).send({ error: "the team is not trying the app right now" });
+    return { accepted: true };
+  });
+
+  // Read-only: the text of a downloaded file of the current Task (R4.4). Viewers may see it too (public repositories).
+  app.get<{ Params: { id: string }; Querystring: { path?: string } }>("/api/tasks/:id/files", async (req, reply) => {
+    const path = req.query.path ?? "";
+    if (!path || path.includes("..") || path.startsWith("/")) return reply.code(400).send({ error: "invalid path" });
+    const text = await opts.tasks?.fileText(req.params.id, path);
+    if (text == null) return reply.code(404).send({ error: "file not available" });
+    return { path, text: text.length > 60_000 ? text.slice(0, 60_000) : text, truncated: text.length > 60_000 };
+  });
+
+  app.get("/api/status", async () => {
+    const live = (await opts.liveExecution?.()) ?? { available: false, reason: "not checked" };
+    return { liveExecution: live.available, ...(live.reason ? { reason: live.reason } : {}), creating: !!opts.tasks };
   });
 
   app.post("/api/admin/queue", async (req, reply) => {

@@ -50,6 +50,9 @@ export class SseHub {
     this.#buffers.clear();
     this.#store = store;
     if (!store) return;
+    // Clients that were already connected (for example on the home page) get the new Task's events so far,
+    // so they never miss task_created when it was written before this store was attached.
+    for (const e of store.events()) this.#broadcast(frame("event", e, e.seq));
     this.#unsubscribe = store.subscribe((m) => {
       if (m.kind === "error") return this.#broadcast(frame("error", { message: m.message }));
       this.#onEvent(m.event);

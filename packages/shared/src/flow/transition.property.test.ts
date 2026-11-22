@@ -52,7 +52,7 @@ describe("transition", () => {
       return !samples.some((t) => transition(t, edge.id).ok);
     }).map((x) => `${x.from}:${x.id}`);
     expect(never).toEqual([]);
-  });
+  }, 30_000); // about 180 edges times 1000 samples
 
   it("changes the node iff the edge leaves the node and its guard and entry invariant hold", () => {
     fc.assert(

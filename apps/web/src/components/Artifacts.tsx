@@ -15,8 +15,28 @@ function tabOf(e: StudioEvent): Tab | null {
 
 const LABEL: Record<Tab, string> = { found: "Findings", app: "App trial", decision: "Decision" };
 
-export function ArtifactArea({ state, events }: { state: UiState; events: StudioEvent[] }) {
+/** File preview (R4.4): the latest file while reading, or a file the Judge picked. */
+function FilePreview({ path, load }: { path: string; load: (path: string) => Promise<string | null> }) {
+  const [text, setText] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    setText(undefined);
+    void load(path).then((t) => live && setText(t));
+    return () => {
+      live = false;
+    };
+  }, [path, load]);
+  return (
+    <div className="preview">
+      <div className="preview-head mono">{path}</div>
+      {text === undefined ? <p className="muted small">Loading…</p> : text === null ? <p className="muted small">This file is not available.</p> : <pre className="preview-text">{text.slice(0, 4000)}{text.length > 4000 ? "\n…" : ""}</pre>}
+    </div>
+  );
+}
+
+export function ArtifactArea({ state, events, loadFile }: { state: UiState; events: StudioEvent[]; loadFile?: (path: string) => Promise<string | null> }) {
   const [tab, setTab] = useState<Tab>("found");
+  const [picked, setPicked] = useState<string | null>(null);
   const [unseen, setUnseen] = useState<Set<Tab>>(new Set());
   const [engOpen, setEngOpen] = useState(false);
   const seen = useRef(0);
@@ -39,6 +59,9 @@ export function ArtifactArea({ state, events }: { state: UiState; events: Studio
 
   const files = events.filter((e) => e.type === "file_read");
   const findings = events.filter((e) => e.type === "finding_recorded");
+  // Studio notes about the download (plan, skipped parts) are not findings of the team.
+  const studioNotes = findings.filter((e) => e.actor.kind === "system");
+  const agentFindings = findings.filter((e) => e.actor.kind !== "system");
   const browser = events.filter((e) => e.type === "browser_action" || e.type === "browser_observation");
   const docs = events.filter((e) => e.type === "artifact_updated");
   const tools = events.filter((e) => e.type === "tool_started" || e.type === "tool_finished" || e.type === "code_change" || e.type === "review_verdict");
@@ -65,11 +88,19 @@ export function ArtifactArea({ state, events }: { state: UiState; events: Studio
       <div className="details-body" role="tabpanel">
         {active === "found" && (
             <>
-              {findings.length > 0 && (
+              {studioNotes.length > 0 && (
+                <>
+                  <h3>Download</h3>
+                  <ul className="clean small notes">
+                    {studioNotes.map((e) => (e.type === "finding_recorded" ? <li key={e.seq}>{e.payload.text}</li> : null))}
+                  </ul>
+                </>
+              )}
+              {agentFindings.length > 0 && (
                 <>
                   <h3>What the team found</h3>
                   <ul className="clean">
-                    {findings.map((e) =>
+                    {agentFindings.map((e) =>
                       e.type === "finding_recorded" ? (
                         <li key={e.seq} className={`finding ${e.payload.evidenceStatus}`}>
                           <span className="finding-mark" aria-hidden="true">{e.payload.evidenceStatus === "passed" ? "✓" : e.payload.evidenceStatus === "unverified" ? "!" : "•"}</span>
@@ -84,11 +115,28 @@ export function ArtifactArea({ state, events }: { state: UiState; events: Studio
                   <p className="muted small">✓ means Studio code found the quoted text in that file.</p>
                 </>
               )}
+              {loadFile && files.length > 0 && (() => {
+                const latest = files.at(-1);
+                const path = picked ?? (state.node === "reading" && latest?.type === "file_read" ? latest.payload.path : null);
+                return path ? <FilePreview path={path} load={loadFile} /> : null;
+              })()}
               {files.length > 0 && (
-                <details className="fold">
+                <details className="fold" open={!!loadFile}>
                   <summary>Files read ({files.length})</summary>
-                  <ul className="clean mono small">
-                    {files.map((e) => (e.type === "file_read" ? <li key={e.seq}>{e.payload.path}</li> : null))}
+                  <ul className="clean mono small files">
+                    {files.map((e) =>
+                      e.type === "file_read" ? (
+                        <li key={e.seq}>
+                          {loadFile ? (
+                            <button type="button" className={`file-link${picked === e.payload.path ? " on" : ""}`} onClick={() => setPicked(e.payload.path)}>
+                              {e.payload.path}
+                            </button>
+                          ) : (
+                            e.payload.path
+                          )}
+                        </li>
+                      ) : null,
+                    )}
                   </ul>
                 </details>
               )}

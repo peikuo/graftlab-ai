@@ -8,7 +8,7 @@ export const STEPS = [
   { id: "meet", label: "Meeting", nodes: ["meeting", "prototype"] },
   { id: "decide", label: "Decide", nodes: ["deciding", "awaiting_confirmation", "frozen"] },
   { id: "plan", label: "Plan", nodes: ["planning", "documenting", "adapter_branch_2", "target_check"] },
-  { id: "build", label: "Build and check", nodes: ["story_develop", "story_review", "story_ask", "story_run", "story_checkpoint", "verifying", "api_read", "api_plan", "api_suggest", "api_confirm", "api_try_one", "api_write_batch", "api_read_back", "failure_review"] },
+  { id: "build", label: "Build and check", nodes: ["story_develop", "story_review", "story_ask", "story_run", "story_checkpoint", "verifying", "api_read", "api_plan", "api_suggest", "api_confirm", "api_try_one", "api_write_batch", "api_read_back"] },
   { id: "result", label: "Result", nodes: ["success", "failed", "aborted", "analysis_only", "docs_only"] },
 ] as const satisfies readonly { id: string; label: string; nodes: readonly NodeId[] }[];
 
@@ -44,7 +44,8 @@ export function stepIndex(node: NodeId | null): number {
 }
 
 export function Stepper({ state }: { state: UiState }) {
-  const cur = stepIndex(state.node);
+  // While the Judge decides after a failure, the stepper stays on the step that failed.
+  const cur = stepIndex(state.node === "failure_review" ? state.previousNode : state.node);
   return (
     <nav className="stepper" aria-label="Progress">
       <ol>
@@ -83,8 +84,9 @@ const NOW: Partial<Record<NodeId, string>> = {
   aborted: "You stopped the Task.",
 };
 
-export function NowBar({ state, yourTurn, onGo }: { state: UiState; yourTurn: string | null; onGo?: () => void }) {
-  const text = state.node ? NOW[state.node] ?? `Working: ${state.node}` : "Nothing is running.";
+export function NowBar({ state, yourTurn, onGo, detail }: { state: UiState; yourTurn: string | null; onGo?: () => void; detail?: string | null }) {
+  const base = state.node ? NOW[state.node] ?? `Working: ${state.node}` : "Nothing is running.";
+  const text = detail ? `${base} ${detail}.` : base;
   return (
     <div className={`nowbar${yourTurn ? " turn" : ""}`} role="status" aria-live="polite">
       <span className="now-label">{yourTurn ? "Your turn" : "Now"}</span>

@@ -32,4 +32,24 @@ export const api = {
   answer: (taskId: string, cardId: string, answer: { optionId?: string; text?: string }) =>
     post<{ accepted: boolean }>(`/api/tasks/${encodeURIComponent(taskId)}/cards/${encodeURIComponent(cardId)}/answer`, answer),
   playFixture: (name: string, speed: number) => post<{ taskId: string }>("/api/dev/fixture", { name, speed }),
+  createTask: (url: string) => post<{ taskId: string }>("/api/tasks", { url }),
+  abort: (taskId: string) => post<{ accepted: boolean }>(`/api/tasks/${encodeURIComponent(taskId)}/abort`),
+  endGathering: (taskId: string) => post<{ accepted: boolean }>(`/api/tasks/${encodeURIComponent(taskId)}/gathering/end`),
+  async status(): Promise<{ liveExecution: boolean; reason?: string; creating: boolean } | null> {
+    try {
+      const r = await fetch("/api/status", { credentials: "same-origin" });
+      return r.ok ? await r.json() : null;
+    } catch {
+      return null;
+    }
+  },
+  async fileText(taskId: string, path: string): Promise<string | null> {
+    try {
+      const r = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/files?path=${encodeURIComponent(path)}`, { credentials: "same-origin" });
+      if (!r.ok) return null;
+      return ((await r.json()) as { text: string }).text;
+    } catch {
+      return null;
+    }
+  },
 };

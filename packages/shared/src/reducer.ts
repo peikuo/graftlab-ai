@@ -68,6 +68,8 @@ export interface UiState {
   verifierResults: { seq: number; storyId: string; checkId: string; pass: boolean; items: { item: string; pass: boolean; expected: string; actual: string }[] }[];
   /** Flow nodes entered so far, in first-entry order (for showing elements once their step has started). */
   visitedNodes: NodeId[];
+  /** The node left by the latest transition (for example the step that failed before failure_review). */
+  previousNode: NodeId | null;
 }
 
 export const initialUiState: UiState = {
@@ -88,6 +90,7 @@ export const initialUiState: UiState = {
   lastBrowserByActor: {},
   verifierResults: [],
   visitedNodes: [],
+  previousNode: null,
 };
 
 /** Event types that always produce exactly one Activity_Feed entry (Property 5). */
@@ -197,6 +200,7 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
     }
     case "node_entered":
       s.node = e.payload.to;
+      s.previousNode = e.payload.from;
       if (!state.visitedNodes.includes(e.payload.to)) s.visitedNodes = [...state.visitedNodes, e.payload.to];
       break;
     case "message_started":
