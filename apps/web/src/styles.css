@@ -357,3 +357,6 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .plan-dot.on { background: var(--working); }
 .src-toggle { background: none; border: none; padding: 0 0 0 4px; font: inherit; font-size: 11.5px; color: var(--muted); cursor: pointer; text-decoration: underline dotted; }
 .brief-src { display: flex; margin: 2px 0 0; }
+.stepper li.unavailable .num { background: var(--waiting-soft); color: #92400e; border-color: transparent; }
+.stepper li.unavailable { color: #92400e; }
+.step-note { display: block; font-size: 11px; color: var(--muted); }

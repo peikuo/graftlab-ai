@@ -1,4 +1,5 @@
 // GraftLab AI backend entry. Milestone 3: event store, SSE, queue lease and, in development, the fixture player.
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -7,6 +8,7 @@ import { resolveLlmConfig } from "./llm/config.ts";
 import { buildStudioModel } from "./llm/model.ts";
 import { piMemoWriter } from "./reader/memoWriter.ts";
 import { loadRuntimeRules } from "./roles/rules.ts";
+import { runAgentTurn } from "./runtime/pi.ts";
 import { Lease } from "./queue/lease.ts";
 import { GitHub } from "./reader/github.ts";
 import { DEFAULT_LIMITS, TaskService, loadAdapters } from "./tasks/service.ts";
@@ -37,7 +39,7 @@ const port = Number(process.env.GL_PORT ?? 8080);
 const host = process.env.GL_HOST ?? "127.0.0.1";
 
 const runtimeRulesVersion = (await readFile(join(root, "runtime-rules/VERSION"), "utf8")).trim();
-const rules = await loadRuntimeRules(join(root, "runtime-rules"), ["reader"]);
+const rules = await loadRuntimeRules(join(root, "runtime-rules"), ["reader", "facilitator", "user_value", "feasibility", "risk"]);
 // The Reader needs a key; without one the reading step stops honestly after the download.
 const model = llm.apiKey ? buildStudioModel(llm) : null;
 const envInt = (name: string) => (process.env[name] ? Number(process.env[name]) : undefined);
@@ -67,11 +69,17 @@ const tasks = new TaskService({
   ...(model
     ? {
         reader: {
-          promptVersion: rules.version,
+          // The memo cache depends only on the text the Reader sees, so meeting rule edits keep it valid.
+          promptVersion: `reader-${createHash("sha256").update(rules.shared).update("\0").update(rules.roles.reader ?? "").digest("hex").slice(0, 12)}`,
           makeWriter: (emit, idPrefix) => piMemoWriter({ model, rules, emit, idPrefix, ...(hub ? { hub } : {}) }),
           ...(envInt("GL_BRIEF_FILES") || envInt("GL_BRIEF_KB") ? { caps: { maxFiles: envInt("GL_BRIEF_FILES") ?? 30, maxBytes: (envInt("GL_BRIEF_KB") ?? 160) * 1024 } } : {}),
           ...(envInt("GL_MEMO_CONCURRENCY") ? { concurrency: envInt("GL_MEMO_CONCURRENCY")! } : {}),
           ...(envInt("GL_INDEX_CONCURRENCY") ? { indexConcurrency: envInt("GL_INDEX_CONCURRENCY")! } : {}),
+        },
+        meeting: {
+          rules,
+          runTurn: (o) => runAgentTurn({ ...o, model, ...(hub ? { hub } : {}), thinkingLevel: "low", maxToolErrors: 3 }),
+          ...(envInt("GL_MEETING_ROUNDS") ? { rounds: envInt("GL_MEETING_ROUNDS")! } : {}),
         },
       }
     : {}),

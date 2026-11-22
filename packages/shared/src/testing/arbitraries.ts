@@ -36,6 +36,13 @@ const evidence = fc.record(
   { requiredKeys: ["path", "snippet"] },
 );
 
+const workflow = fc.record({
+  name: ne,
+  purpose: fc.constantFrom("A" as const, "B" as const, "unclear" as const),
+  description: str,
+  evidence: fc.array(evidence, { maxLength: 2 }),
+  evidenceStatus: fc.constantFrom("passed" as const, "unverified" as const),
+});
 /** Drops keys whose value is undefined, as JSON serialization does. */
 function clean<T>(o: T): T {
   return JSON.parse(JSON.stringify(o)) as T;
@@ -81,6 +88,13 @@ const P: { [K in EventType]: fc.Arbitrary<PayloadOf<K>> } = {
   reading_planned: fc.record({ files: fc.array(fc.record({ path, why: str }), { maxLength: 4 }), byCode: fc.boolean(), dropped: fc.nat({ max: 5 }) }),
   repo_brief: fc.record({ content: fc.constant({}), fromCache: fc.boolean() }),
   index_progress: fc.record({ state: fc.constantFrom("started" as const, "finished" as const, "stopped" as const), done: fc.nat({ max: 50 }), total: fc.nat({ max: 50 }) }),
+  card_expired: fc.record({ cardId: idA, waitedS: fc.nat({ max: 200 }) }),
+  statement_submitted: fc.record({ roleId: fc.constantFrom("facilitator" as const, "user_value" as const, "feasibility" as const, "risk" as const), round: fc.nat({ max: 3 }), summary: ne, workflows: fc.array(workflow, { maxLength: 2 }) }),
+  meeting_summary: fc.record({
+    findings: fc.array(fc.record({ claim: ne, evidence: fc.array(evidence, { maxLength: 2 }), evidenceStatus: fc.constantFrom("passed" as const, "unverified" as const) }), { maxLength: 3 }),
+    workflows: fc.array(workflow, { maxLength: 2 }),
+    openQuestions: fc.array(str, { maxLength: 2 }),
+  }),
   memo_written: fc.record({
     path: fc.oneof(fc.constant(""), path),
     level: fc.constantFrom("file" as const, "directory" as const, "root" as const),

@@ -45,6 +45,8 @@ export interface NodeContext {
   fail(failureClass: FailureClass, source: PayloadOf<"failure">["source"], detail: string, actor?: Actor): Promise<void>;
   /** Opens a card and waits for the Judge's answer. */
   askJudge(card: Omit<PayloadOf<"card_opened">, "cardId">, actor?: Actor): Promise<JudgeAnswer>;
+  /** Opens a card and waits at most `waitMs`; without an answer the card expires (card_expired) and null is returned (R5.3, R11.4). */
+  askJudgeFor(card: Omit<PayloadOf<"card_opened">, "cardId">, waitMs: number, actor?: Actor): Promise<JudgeAnswer | null>;
 }
 
 /** A node handler does the node's work and returns its validated outcome. */
@@ -169,6 +171,28 @@ export class TaskRunner {
         const a = await Promise.race([answered, aborted]);
         await self.#append({ type: "card_answered", node: self.#task.node, actor: { kind: "judge" }, payload: { cardId, ...(a.optionId ? { optionId: a.optionId } : {}), ...(a.text ? { text: a.text } : {}) } });
         return a;
+      },
+      askJudgeFor: async (card, waitMs, actor = { kind: "role", roleId: "facilitator" }) => {
+        const cardId = `card-${++self.#cardSeq}`;
+        const answered = new Promise<JudgeAnswer>((resolve) => self.#cards.set(cardId, resolve));
+        await self.#append({ type: "card_opened", node: self.#task.node, actor, payload: { cardId, ...card } });
+        let cancel = () => {};
+        const expired = new Promise<null>((resolve) => {
+          cancel = self.#clock.setTimer(() => resolve(null), waitMs);
+        });
+        const aborted = new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
+        try {
+          const a = await Promise.race([answered, expired, aborted]);
+          if (a === null) {
+            self.#cards.delete(cardId);
+            await self.#append({ type: "card_expired", node: self.#task.node, actor: SYSTEM, payload: { cardId, waitedS: Math.round(waitMs / 1000) } });
+            return null;
+          }
+          await self.#append({ type: "card_answered", node: self.#task.node, actor: { kind: "judge" }, payload: { cardId, ...(a.optionId ? { optionId: a.optionId } : {}), ...(a.text ? { text: a.text } : {}) } });
+          return a;
+        } finally {
+          cancel();
+        }
       },
     };
   }

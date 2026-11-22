@@ -161,8 +161,8 @@ describe("reading step in a Task", () => {
     expect(events.find((e) => e.type === "repo_brief")?.payload).toMatchObject({ fromCache: false, content: { brief: { what: { text: "A small app." } }, coverage: { read: ["README.md", "src/models.py", "docs/guide.md"] } } });
     const briefSeq = events.find((e) => e.type === "repo_brief")!.seq;
     expect(events.find((e) => e.type === "node_entered" && e.payload.to === "adapter_branch")!.seq).toBeGreaterThan(briefSeq);
-    // The meeting is not built yet: an honest stop for the Judge.
-    expect(events.find((e) => e.type === "failure")?.payload).toMatchObject({ detail: 'the step "meeting" is not built yet in this version' });
+    // No meeting roles are configured in this test: an honest stop for the Judge, after the evidence summary.
+    expect(events.find((e) => e.type === "failure")?.payload).toMatchObject({ detail: "the meeting roles are not configured (no LLM profile)" });
     const file = await readFile(join(store().dir, "events.jsonl"), "utf8");
     expect(file.includes(TOKEN)).toBe(false);
     // REPO_MEMO.md lives in the Task's docs directory, starting with the brief.

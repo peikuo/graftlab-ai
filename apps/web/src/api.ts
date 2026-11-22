@@ -23,8 +23,20 @@ async function post<T>(url: string, body?: unknown): Promise<{ ok: true; data: T
   }
 }
 
+let sessionOnce: ReturnType<typeof post<{ ok: boolean; queue: QueueView }>> | null = null;
 export const api = {
-  session: () => post<{ ok: boolean; queue: QueueView }>("/api/session"),
+  // One request per page: two concurrent calls (React StrictMode runs effects twice in development) would create
+  // two sessions, and the stream could be tied to a different session than the cookie (seen 2026-11-24).
+  session: () => (sessionOnce ??= post<{ ok: boolean; queue: QueueView }>("/api/session").then(
+    (r) => {
+      if (!r.ok) sessionOnce = null; // a failed request may be tried again
+      return r;
+    },
+    (e: unknown) => {
+      sessionOnce = null;
+      throw e;
+    },
+  )),
   join: () => post<QueueView>("/api/queue/join"),
   heartbeat: () => post<QueueView>("/api/queue/heartbeat"),
   leave: () => post<QueueView>("/api/queue/leave"),

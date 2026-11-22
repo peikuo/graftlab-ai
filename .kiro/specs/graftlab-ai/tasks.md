@@ -261,7 +261,8 @@ Conventions:
     - `runtime-rules/roles/*.md` for the function agents (Reader, Explorer, Facilitator, Planner, Reviewer) and the Meeting_Perspectives (User_Value, Feasibility, Risk); shared behavior rules; `VERSION`; schema export script into `runtime-rules/schemas/`; loader records the version at Task start
     - Design: Repository layout, apps/server modules (`roles/`)
     - _Requirements: 35.2, 35.3, 35.4, 35.6, 35.10_
-  - [ ] 6.3 Implement the evidence checker
+  - [x] 6.3 Implement the evidence checker
+    - Done 2026-11-24: `apps/server/src/evidence/check.ts`; live meeting on linkding: 40 of 40 findings passed
     - `apps/server/src/evidence/`: whitespace-normalized snippet match with at least 8 non-whitespace characters, reasons `file_missing`, `not_downloaded`, `snippet_absent`, `snippet_too_short`
     - Design: Evidence checker
     - _Requirements: 24.1, 24.2, 24.3, 24.5, 24.6_
@@ -295,7 +296,8 @@ Conventions:
     - Done 2026-11-24: starts after the brief, concurrency 2, stopped at Task end, abort or a new Task (`index_progress`); the meeting does not wait
     - Remaining non-map-only files and directory rollups after the brief, concurrency 2, reuse of foreground memos, progress from `memo_written`, stop recorded at Task end or abort; the reading node does not wait for it
     - _Requirements: 10.8, 10.12_
-  - [ ]* 6.5 Write property test for evidence marks
+  - [x]* 6.5 Write property test for evidence marks
+    - Done 2026-11-24: `check.property.test.ts`, 300 runs
     - **Property 9: Evidence check marks**
     - **Validates: Requirements 24.2, 24.3, 24.4, 24.5, 11.5, 11.6, 37.6**
   - [ ] 6.6 Implement structured output through submit tools
@@ -309,6 +311,7 @@ Conventions:
     - Stream break keeps partial text and records the failure; truncation is discarded; blocked tool recorded as rejected by a safety rule; reasoning persisted with the complete message
     - _Requirements: 3.9, 3.12, 23.7, 30.13_
   - [ ] 6.9 Implement the reading skim and the meeting
+    - Progress 2026-11-24: `apps/server/src/meeting/meeting.ts` (fixed order, read budget, evidence check, one visible retry, `ask_judge` with `card_expired`, at most 2 questions), role rules, service wiring, `sandbox_start` placeholder (experience unavailable), meeting summary view, 9 tests. Live on linkding, 2 rounds: 0 failures, 40/40 findings passed, summary with A/B workflows; the meeting took about 18 min (240 s of it two unanswered cards), each turn 45-80 s. Open: meeting length for the demo (decided with the user)
     - Reader in `reading` builds the Repo_Brief (6.4d), starts the Repo_Index (6.4e) and records findings (`read_file`, `search_repo`, `record_finding`, no `ask_judge`) leading to `adapter_branch`; the meeting starts after evidence gathering with the `evidence_summary` built by code (reading findings and skipped parts; experience notes, screenshots, "experience unavailable" and partial labels once milestone 11 adds them); meeting rounds (fixed order, 2 rounds), `submit_statement` with findings, evidence and A/B/unclear workflows, Unverified marks, Facilitator `ask_judge` with 120 s wait, `submit_meeting_summary` leading to `deciding`
     - Note: until milestone 11 wires `sandbox_start` and `browser_experience`, an Adapted_Repo Task records the experience as "experience unavailable (not built yet)" and goes from `adapter_branch` to `meeting`, so the label stays honest
     - Design: Meeting, Repo_Reader, Flow_Graph

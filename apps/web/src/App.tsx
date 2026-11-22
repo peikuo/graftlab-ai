@@ -154,7 +154,7 @@ export function App() {
           </button>
         )}
       </header>
-      <Stepper state={state} />
+      <Stepper state={state} unavailable={events.some((e) => e.type === "evidence_summary" && e.payload.experienceUnavailable) ? ["try"] : []} />
       <NowBar state={state} yourTurn={openCard ? openCard.title : null} detail={detail} onGo={() => openCard && document.getElementById(`card-${openCard.cardId}`)?.scrollIntoView({ behavior: "smooth", block: "center" })} />
       {live.error && <div className="banner failure-text" role="alert">{live.error}</div>}
       {gathering && isOperator && (

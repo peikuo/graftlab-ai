@@ -64,6 +64,15 @@ export const EvidenceRefSchema = z.object({
   status: z.enum(["passed", "unverified"]).optional(),
   reason: z.string().optional(),
 });
+// R11.7, R18.6: an analyzed workflow with its purpose tag; the evidence is checked by code.
+export const WorkflowSchema = z.object({
+  name: z.string().min(1),
+  purpose: z.enum(["A", "B", "unclear"]),
+  description: z.string(),
+  evidence: z.array(EvidenceRefSchema),
+  evidenceStatus: z.enum(["passed", "unverified"]),
+});
+
 export type EvidenceRef = z.infer<typeof EvidenceRefSchema>;
 
 const nonEmpty = z.string().min(1);
@@ -160,6 +169,16 @@ export const PAYLOADS = {
     allowFreeText: z.boolean(),
   }),
   card_answered: z.object({ cardId: id, optionId: z.string().optional(), text: z.string().optional() }),
+  // R5.3, R11.4: no answer within the wait; the asking role is told and the meeting continues.
+  card_expired: z.object({ cardId: id, waitedS: count }),
+  // R11.5, R11.7, R18.6: a meeting statement; its findings are separate finding_recorded events (checked by code).
+  statement_submitted: z.object({ roleId: RoleIdSchema, round: count, summary: nonEmpty, workflows: z.array(WorkflowSchema) }),
+  // R15.1: the Facilitator's closing summary; findings and workflows carry checked evidence.
+  meeting_summary: z.object({
+    findings: z.array(z.object({ claim: nonEmpty, evidence: z.array(EvidenceRefSchema), evidenceStatus: z.enum(["passed", "unverified"]) })),
+    workflows: z.array(WorkflowSchema),
+    openQuestions: z.array(z.string()),
+  }),
   artifact_updated: z.object({
     artifactKind: z.enum([
       "file",

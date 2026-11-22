@@ -10,8 +10,12 @@ import { GitHub, GitHubError, type RepoMeta } from "../reader/github.ts";
 import { DEFAULT_LIMITS, RepoCache, readRepository, type ReadLimits } from "../reader/reader.ts";
 import type { BriefCaps, BriefWriter } from "../reader/brief.ts";
 import type { MemoWriter } from "../reader/memo.ts";
-import { buildRepoBrief, buildRepoIndex } from "../reader/repoMemo.ts";
-import type { Emit } from "../runtime/pi.ts";
+import { buildRepoBrief, buildRepoIndex, type RepoMemoHandle } from "../reader/repoMemo.ts";
+import { renderBrief } from "../reader/brief.ts";
+import type { Emit, TurnOptions, TurnResult } from "../runtime/pi.ts";
+import type { RuntimeRules } from "../roles/rules.ts";
+import { filesFrom, type EvidenceFiles } from "../evidence/check.ts";
+import { runMeeting } from "../meeting/meeting.ts";
 import type { Lease } from "../queue/lease.ts";
 import { TaskRunner, closeInterruptedTask, type Clock, type JudgeAnswer, type NodeHandler } from "./runner.ts";
 
@@ -56,6 +60,13 @@ export interface TaskServiceOptions {
     concurrency?: number;
     indexConcurrency?: number;
   };
+  /** The meeting roles' LLM side (R11); without it the meeting stops honestly. */
+  meeting?: {
+    rules: RuntimeRules;
+    runTurn: (o: Omit<TurnOptions, "model">) => Promise<TurnResult>;
+    rounds?: number;
+    questionWaitMs?: number;
+  };
 }
 
 export class TaskService {
@@ -66,6 +77,8 @@ export class TaskService {
   #meta: RepoMeta | null = null;
   /** Stops the background Repo_Index of the current Task (Task end, abort, or a new Task). */
   #index: AbortController | null = null;
+  /** What the reading step produced, for the meeting of the same Task. */
+  #read: { memo: RepoMemoHandle; files: Map<string, string>; evidence: EvidenceFiles } | null = null;
 
   constructor(o: TaskServiceOptions) {
     this.#o = o;
@@ -130,6 +143,7 @@ export class TaskService {
 
     this.#index?.abort();
     this.#index = null;
+    this.#read = null;
     await this.#store?.close().catch(() => undefined);
     this.#store = store;
     this.#meta = meta;
@@ -174,7 +188,8 @@ export class TaskService {
   }
 
   /** The Repo_Brief in the foreground, then the Repo_Index in the background (R10.7-R10.12). */
-  async #readerStep(ctx: Parameters<NodeHandler>[0], meta: RepoMeta, files: { path: string; text: string }[], notDownloaded: number): Promise<"done" | "failed"> {
+  async #readerStep(ctx: Parameters<NodeHandler>[0], meta: RepoMeta, files: { path: string; text: string }[], skipped: string[]): Promise<"done" | "failed"> {
+    const notDownloaded = skipped.length;
     const r = this.#o.reader;
     if (!r) {
       await ctx.fail("interface_call_failure", "llm", "the Reader is not configured (no LLM profile), so no Repo_Brief can be written");
@@ -203,6 +218,8 @@ export class TaskService {
       return "failed";
     }
     ctx.patch({ briefReady: true });
+    const texts = new Map(files.map((f) => [f.path, f.text]));
+    this.#read = { memo: handle, files: texts, evidence: filesFrom(texts, skipped) };
     // The meeting does not wait for the index; it stops at Task end, abort or a new Task.
     this.#index = index;
     void buildRepoIndex(opts(index.signal, "index"), handle).catch(async (e: unknown) => {
@@ -210,6 +227,49 @@ export class TaskService {
       await ctx.emit({ type: "failure", actor: { kind: "role", roleId: "reader" }, payload: { failureClass: "interface_call_failure", source: "llm", detail: `the background index stopped: ${(e as Error).message}` } }).catch(() => undefined);
     });
     return "done";
+  }
+
+  /** The meeting (R11): evidence summary by code, then the fixed turn order; leaving needs a valid summary. */
+  async #meetingStep(ctx: Parameters<NodeHandler>[0]): Promise<"done" | "failed"> {
+    const m = this.#o.meeting;
+    const read = this.#read;
+    if (!m || !read) {
+      await ctx.fail("interface_call_failure", "llm", !m ? "the meeting roles are not configured (no LLM profile)" : "the meeting has no Repo_Brief from this Task's reading step");
+      return "failed";
+    }
+    const events = this.#store?.events() ?? [];
+    const agentFindings = events.flatMap((e) => (e.type === "finding_recorded" && e.actor.kind === "role" && e.payload.kind === "finding" ? [e.payload.text] : []));
+    const skipped = events.flatMap((e) => (e.type === "finding_recorded" && e.payload.kind === "skipped" ? [e.payload.text] : []));
+    const g = ctx.task.gathering;
+    const summary = { findings: agentFindings, skipped, experienceNotes: [], screenshotRefs: [], ...(g.experienceUnavailable ? { experienceUnavailable: g.experienceUnavailable } : {}), partial: g.partial };
+    await ctx.emit({ type: "evidence_summary", actor: { kind: "system" }, payload: summary });
+    const context = [
+      `## Repo_Brief (written by the Reader; an LLM description, not evidence)\n\n${renderBrief(read.memo.brief).replace(/^## Repo brief\n/, "")}`,
+      `## Evidence summary (built by Studio code)\n\n${[
+        agentFindings.length ? `Findings so far:\n${agentFindings.map((f) => `- ${f}`).join("\n")}` : "No findings were recorded during reading.",
+        skipped.length ? `Skipped while reading:\n${skipped.map((s) => `- ${s}`).join("\n")}` : "",
+        g.experienceUnavailable ? `App experience unavailable: ${g.experienceUnavailable}.` : "",
+        g.partial ? "Evidence gathering was ended early by the Judge (partial)." : "",
+      ].filter(Boolean).join("\n\n")}`,
+    ].join("\n\n");
+    const r = await runMeeting({
+      rules: m.rules,
+      context,
+      files: read.files,
+      evidence: read.evidence,
+      memo: read.memo.tree,
+      emit: ctx.emit,
+      askJudgeFor: (card, waitMs, actor) => ctx.askJudgeFor(card, waitMs, actor),
+      runTurn: (t) => m.runTurn({ ...t, emit: ctx.emit }),
+      signal: ctx.signal,
+      idPrefix: `${ctx.task.taskId}-meeting`,
+      ...(m.rounds ? { rounds: m.rounds } : {}),
+      ...(m.questionWaitMs ? { questionWaitMs: m.questionWaitMs } : {}),
+    });
+    if (r.ok) return "done";
+    if (ctx.signal.aborted) return "failed";
+    await ctx.fail("llm_output_format_invalid", "llm", r.reason);
+    return "failed";
   }
 
   #handlers(): Partial<Record<NodeId, NodeHandler>> {
@@ -257,9 +317,17 @@ export class TaskService {
           await ctx.fail("interface_call_failure", "github", message);
           return "failed";
         }
-        return this.#readerStep(ctx, meta, read.files, read.skipped.length + lateSkipped.length);
+        return this.#readerStep(ctx, meta, read.files, [...read.skipped.map((s) => s.path), ...lateSkipped]);
       },
       adapter_branch: async () => "done",
+      // Until milestone 11 builds the app trial, the experience is honestly unavailable and the meeting starts (R13.4).
+      sandbox_start: async (ctx) => {
+        const reason = "the app trial is not built yet in this version";
+        ctx.patch({ gathering: { ...ctx.task.gathering, experienceUnavailable: reason } });
+        await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Experience unavailable: ${reason}. The meeting starts with what was read.`, evidence: [], evidenceStatus: "none" } });
+        return "failed";
+      },
+      meeting: (ctx) => this.#meetingStep(ctx),
     };
   }
 }

@@ -42,12 +42,15 @@ type Row =
   | { kind: "card"; key: string; entry: FeedEntry }
   | { kind: "judge"; key: string; entry: FeedEntry }
   | { kind: "group"; key: string; actor: string; type: FoldKey; entries: FeedEntry[] }
+  | { kind: "background"; key: string; entries: FeedEntry[] }
   | { kind: "line"; key: string; entry: FeedEntry };
 
 function toRows(feed: FeedEntry[], events: StudioEvent[]): Row[] {
   const bySeq = new Map(events.map((e) => [e.seq, e]));
   const rows: Row[] = [];
   let step = -1;
+  // The background Repo_Index (Reader events after the reading step) is one row, so the meeting stays readable.
+  let background: Extract<Row, { kind: "background" }> | null = null;
   for (let i = 0; i < feed.length; i++) {
     const entry = feed[i]!;
     const e = bySeq.get(entry.seq);
@@ -55,6 +58,14 @@ function toRows(feed: FeedEntry[], events: StudioEvent[]): Row[] {
     // A failed browser step is followed by its failure event: show it once, as the failure.
     if (entry.type === "browser_action" && entry.failure && next?.type === "failure" && next.actor === entry.actor) continue;
     if (entry.type === "card_answered" || entry.type === "task_created") continue;
+    if (entry.actor === "reader" && e && e.node !== "reading" && !entry.failure) {
+      if (!background) {
+        background = { kind: "background", key: `bg${entry.seq}`, entries: [] };
+        rows.push(background);
+      }
+      background.entries.push(entry);
+      continue;
+    }
     if (entry.type === "node_entered" && e?.type === "node_entered") {
       const idx = stepIndex(e.payload.to);
       if (idx !== step && idx >= 0) {
@@ -164,6 +175,38 @@ function MessageBubble({ m, live, events }: { m: MessageState; live?: LiveBuffer
   );
 }
 
+function BackgroundRow({ row, events }: { row: Extract<Row, { kind: "background" }>; events: StudioEvent[] }) {
+  const [open, setOpen] = useState(false);
+  const w = who("reader");
+  const seqs = new Set(row.entries.map((x) => x.seq));
+  const mine = events.filter((e) => seqs.has(e.seq));
+  const files = mine.filter((e) => e.type === "memo_written" && e.payload.level === "file").length;
+  const folders = mine.filter((e) => e.type === "memo_written" && e.payload.level === "directory").length;
+  const end = mine.findLast((e) => e.type === "index_progress" && e.payload.state !== "started");
+  const state = end?.type === "index_progress" ? (end.payload.state === "finished" ? "finished" : "stopped") : "running";
+  const lines = row.entries.filter((x) => x.type === "memo_written");
+  return (
+    <div className="step" title={time(row.entries[0]!.ts)}>
+      <span className="step-avatar" aria-hidden="true">{w.avatar}</span>
+      <div className="step-main">
+        <button type="button" className="step-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)} disabled={lines.length === 0}>
+          <span className="step-who">{w.name}</span> Background index {state}: {files} files and {folders} folders summarized
+          {lines.length > 0 && <span className="step-caret">{open ? "Hide" : "Show"}</span>}
+        </button>
+        {open && (
+          <ul className="step-items">
+            {lines.map((x) => (
+              <li key={x.seq}>
+                {x.text}
+                {x.path && <span className="mono muted"> · {x.path}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
 function GroupRow({ row }: { row: Extract<Row, { kind: "group" }> }) {
   const [open, setOpen] = useState(false);
   const w = who(row.actor);
@@ -255,7 +298,8 @@ interface FeedProps {
 export function ActivityFeed({ state, events, buffers, onAnswer, cardExtra, inline }: FeedProps) {
   const end = useRef<HTMLDivElement>(null);
   const open = Object.values(state.messages)
-    .filter((m) => m.status === "open")
+    // Background index calls are counted in their one row; their live bubbles would drown the meeting.
+    .filter((m) => m.status === "open" && !(m.purpose === "memo" && state.node !== "reading"))
     .sort((a, b) => a.startedSeq - b.startedSeq);
   const [follow, setFollow] = useState(true);
   useEffect(() => {
@@ -308,6 +352,8 @@ export function ActivityFeed({ state, events, buffers, onAnswer, cardExtra, inli
               );
             case "group":
               return <GroupRow key={r.key} row={r} />;
+            case "background":
+              return <BackgroundRow key={r.key} row={r} events={events} />;
             case "line":
               return <LineRow key={r.key} entry={r.entry} event={bySeq.get(r.entry.seq)} />;
           }

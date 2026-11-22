@@ -44,6 +44,8 @@ export interface CardState {
   openedBy: ActorKey;
   openedSeq: number;
   answered: boolean;
+  /** No answer within the wait (card_expired); the meeting continued. */
+  expired?: boolean;
 }
 
 export interface UiState {
@@ -98,7 +100,7 @@ export const initialUiState: UiState = {
 export const ALWAYS_NARRATED: ReadonlySet<StudioEvent["type"]> = new Set([
   "task_created", "node_entered", "transition_rejected", "file_read", "finding_recorded", "message_completed",
   "message_incomplete", "tool_started", "judge_message", "card_opened", "card_answered", "decision_doc_frozen",
-  "decision_item_reviewed", "browser_action", "code_change", "memo_written", "reading_planned", "repo_brief", "index_progress", "review_verdict", "question_opened", "question_answered",
+  "decision_item_reviewed", "browser_action", "code_change", "memo_written", "reading_planned", "repo_brief", "index_progress", "card_expired", "statement_submitted", "meeting_summary", "review_verdict", "question_opened", "question_answered",
   "verifier_result", "failure", "terminal_reached",
 ]);
 
@@ -108,6 +110,9 @@ const SUBMIT_PLAIN: Record<string, string> = {
   submit_file_memos: "Submitted file summaries",
   submit_repo_brief: "Submitted the repo brief",
   submit_directory_memo: "Submitted a folder summary",
+  submit_statement: "Submitted the statement",
+  submit_meeting_summary: "Submitted the meeting summary",
+  ask_judge: "Asked you a question",
 };
 function refOf(e: StudioEvent): string | undefined {
   switch (e.type) {
@@ -138,6 +143,12 @@ export function narrate(e: StudioEvent): { text: string; path?: string; failure?
       const path = e.payload.evidence[0]?.path;
       return path === undefined ? { text: e.payload.text } : { text: e.payload.text, path };
     }
+    case "card_expired":
+      return { text: `No answer within ${e.payload.waitedS} s; the meeting continued without it` };
+    case "statement_submitted":
+      return { text: e.payload.summary };
+    case "meeting_summary":
+      return { text: `Meeting summary: ${e.payload.findings.length} findings, ${e.payload.workflows.length} workflows, ${e.payload.openQuestions.length} open questions` };
     case "repo_brief":
       return { text: e.payload.fromCache ? "Repo brief loaded from the cache (same commit)" : "Wrote the repo brief" };
     case "index_progress":
@@ -158,7 +169,7 @@ export function narrate(e: StudioEvent): { text: string; path?: string; failure?
     case "tool_finished":
       if (e.payload.ok) return null;
       return SUBMIT_PLAIN[e.payload.tool]
-        ? { text: `The submission was not accepted: ${e.payload.outputSummary.replace(/\s*Submit again\.?$/, "").replace(/^Not accepted:\s*/, "").replace(/\.$/, "")}; the Reader corrects it`, failure: true }
+        ? { text: `The submission was not accepted (${e.payload.outputSummary.replace(/\s*Submit again\.?$/, "").replace(/^Not accepted:\s*/, "").replace(/\.$/, "")}); it is corrected and sent again`, failure: true }
         : { text: `${e.payload.tool} failed: ${e.payload.outputSummary}`, failure: true };
     case "judge_message":
       return { text: e.payload.status === "queued" ? `${e.payload.text} (queued until the meeting starts)` : e.payload.text };
@@ -301,6 +312,11 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
     case "card_answered": {
       const c = state.cards[e.payload.cardId];
       if (c) s.cards = { ...state.cards, [c.cardId]: { ...c, answered: true } };
+      break;
+    }
+    case "card_expired": {
+      const c = state.cards[e.payload.cardId];
+      if (c) s.cards = { ...state.cards, [c.cardId]: { ...c, expired: true } };
       break;
     }
     case "decision_doc_version":
