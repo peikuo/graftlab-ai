@@ -28,6 +28,7 @@ export interface MessageState {
   actor: ActorKey;
   startedSeq: number;
   startedTs: string;
+  purpose: string;
   status: "open" | "complete" | "incomplete";
   phase?: "waiting" | "thinking" | "speaking" | "tool_call";
   lastProgressTs?: string;
@@ -97,7 +98,7 @@ export const initialUiState: UiState = {
 export const ALWAYS_NARRATED: ReadonlySet<StudioEvent["type"]> = new Set([
   "task_created", "node_entered", "transition_rejected", "file_read", "finding_recorded", "message_completed",
   "message_incomplete", "tool_started", "judge_message", "card_opened", "card_answered", "decision_doc_frozen",
-  "decision_item_reviewed", "browser_action", "code_change", "review_verdict", "question_opened", "question_answered",
+  "decision_item_reviewed", "browser_action", "code_change", "memo_written", "review_verdict", "question_opened", "question_answered",
   "verifier_result", "failure", "terminal_reached",
 ]);
 
@@ -129,6 +130,11 @@ export function narrate(e: StudioEvent): { text: string; path?: string; failure?
     case "finding_recorded": {
       const path = e.payload.evidence[0]?.path;
       return path === undefined ? { text: e.payload.text } : { text: e.payload.text, path };
+    }
+    case "memo_written": {
+      const where = e.payload.path === "" ? "the whole repository" : e.payload.path;
+      const how = e.payload.mapOnly ? " (map only)" : e.payload.fromCache ? " (from the cache)" : "";
+      return { text: `Summarized ${where}${how}`, ...(e.payload.path ? { path: e.payload.path } : {}) };
     }
     case "message_completed":
       return { text: e.payload.text };
@@ -206,7 +212,7 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
     case "message_started":
       s.messages = {
         ...state.messages,
-        [e.payload.messageId]: { messageId: e.payload.messageId, actor, startedSeq: e.seq, startedTs: e.ts, status: "open" },
+        [e.payload.messageId]: { messageId: e.payload.messageId, actor, startedSeq: e.seq, startedTs: e.ts, purpose: e.payload.purpose, status: "open" },
       };
       break;
     case "message_progress": {

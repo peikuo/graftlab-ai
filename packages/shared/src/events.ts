@@ -95,7 +95,7 @@ export const PAYLOADS = {
   message_started: z.object({
     messageId: id,
     roleId: RoleIdSchema.optional(),
-    purpose: z.enum(["statement", "review", "operator", "code_agent_step"]),
+    purpose: z.enum(["statement", "review", "operator", "code_agent_step", "memo"]),
   }),
   // Carries no text (design.md, "Gaps found"): it only proves the stream is alive.
   message_progress: z.object({
@@ -110,8 +110,17 @@ export const PAYLOADS = {
     reasoning: z.string().optional(),
     finishReason: nonEmpty,
     usage: z
-      .object({ inputTokens: count, outputTokens: count, reasoningTokens: count.optional() })
+      .object({ inputTokens: count, outputTokens: count, reasoningTokens: count.optional(), cacheReadTokens: count.optional() })
       .optional(),
+  }),
+  // One Repo_Memo record written (design.md, "Repo_Memo"; R10.7, R10.8). The memo text is in the memo artifact.
+  memo_written: z.object({
+    path: z.string(),
+    level: z.enum(["file", "directory", "root"]),
+    purpose: z.string(),
+    files: count,
+    fromCache: z.boolean(),
+    mapOnly: z.boolean(),
   }),
   message_incomplete: z.object({ messageId: id, partialText: z.string(), reason: nonEmpty }),
   tool_started: z.object({ callId: id, tool: nonEmpty, inputSummary: z.string() }),

@@ -63,7 +63,7 @@ const P: { [K in EventType]: fc.Arbitrary<PayloadOf<K>> } = {
   message_started: fc.record({
     messageId: idA,
     roleId: opt(role),
-    purpose: fc.constantFrom("statement" as const, "review" as const, "operator" as const, "code_agent_step" as const),
+    purpose: fc.constantFrom("statement" as const, "review" as const, "operator" as const, "code_agent_step" as const, "memo" as const),
   }),
   message_progress: fc.record({
     messageId: idA,
@@ -76,7 +76,15 @@ const P: { [K in EventType]: fc.Arbitrary<PayloadOf<K>> } = {
     text: str,
     reasoning: opt(str),
     finishReason: fc.constantFrom("stop", "tool_calls", "length"),
-    usage: opt(fc.record({ inputTokens: nat, outputTokens: nat, reasoningTokens: opt(nat) })),
+    usage: opt(fc.record({ inputTokens: nat, outputTokens: nat, reasoningTokens: opt(nat), cacheReadTokens: opt(nat) })),
+  }),
+  memo_written: fc.record({
+    path: fc.oneof(fc.constant(""), path),
+    level: fc.constantFrom("file" as const, "directory" as const, "root" as const),
+    purpose: str,
+    files: fc.nat({ max: 50 }),
+    fromCache: fc.boolean(),
+    mapOnly: fc.boolean(),
   }),
   message_incomplete: fc.record({ messageId: idA, partialText: str, reason: ne }),
   tool_started: fc.record({ callId: idA, tool: ne, inputSummary: str }),
