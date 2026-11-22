@@ -270,7 +270,8 @@ Conventions:
     - `packages/shared/src/runtime.ts` types; `apps/server/src/runtime/pi.ts`: event mapping table, `message_progress` every 5 s and at the first delta, deltas as SSE frames only, `message_incomplete` plus `failure` on a break, non-streaming fallback note, `beforeToolCall` whitelist, abort
     - Design: AgentRuntime interface, PiRuntime
     - _Requirements: 3.6, 3.7, 3.8, 3.9, 3.11, 27.7, 27.10, 30.9, 30.10, 23.7_
-  - [ ] 6.4a Implement the Repo_Map and the agent read tools
+  - [x] 6.4a Implement the Repo_Map and the agent read tools
+    - Done 2026-11-23 (`read_memo` and `search_memo` follow with the memo in 6.4b): on the cached linkding download (300 files) the map takes 11 ms; 97 test and 57 generated files are map only, so 146 files (684 of 1840 KB) get an LLM memo
     - `apps/server/src/reader/map.ts`: path, size, lines, language, top-level symbols by per-language regular expressions; map-only classification for tests, vendored and generated files; tools `read_file` with line ranges (400 lines or 16 KB), `search_repo` (30 matches with context), `read_memo`, `search_memo`, all confined to the download
     - Design: Repo_Memo
     - _Requirements: 10.3, 10.7_
