@@ -25,6 +25,31 @@ Every Studio event passes the secret redactor, is appended to `events.jsonl`, an
 
 Success is decided only by the Verifier, plain TypeScript with no LLM, that runs executable Acceptance_Checks: API read-back, the target's own test suite, and scripted browser checks (R22).
 
+### User story: one linkding Task end to end
+
+**As a** Kiroween judge who has never seen the Studio, **I want to** paste the linkding repository, watch an AI team read and try it, decide with them what AI feature to add, and see that feature built and independently checked, **so that** I can judge in one sitting whether AI agents can safely improve existing software, and see where they failed.
+
+The walk below is the reference journey for the UI, the Flow_Graph and the demo (`/demo` plays it on mock data). The feature in it, tag suggestions on the add form, is only an example: the real feature is decided in the meeting with the Judge (R15.9) and is never pre-decided. Each step names what the Judge sees, what the Judge may do, and which part of the Studio acts.
+
+| Step (flow) | The Judge sees | The Judge may | Who acts | Requirements |
+|---|---|---|---|---|
+| 1 Start (F1) | One input. Pasting `github.com/sissbruecker/linkding` shows "linkding is fully supported: read, try, build and check". | Start the Task; a wrong or private URL is refused with the reason | Studio code: URL check, GitHub existence check, Adapter match, `task_created` | R9 |
+| 2 Read the code (F2) | The Reader's card appears; "Read 6 files" grows; findings appear with the file they come from and a check mark when code found the quoted text | Watch; send a message, which is queued for the meeting | Repo_Reader (code) downloads read-only; the Reader agent skims and records findings | R10, R24, R34, R12.5 |
+| 3 Try the app (F4-F5) | "Starting a private copy of the app with test data"; then the Explorer's card appears and its steps in the app show live, including a failed click shown in red | Start the meeting early ("Start the meeting now") | Studio code starts the pinned linkding image, provisions and resets test data; the Explorer operates the browser | R13, R14, R29 |
+| 4 Meeting (F3) | The Facilitator opens with the evidence summary and delivers the queued message; User_Value, Feasibility and Risk join and disagree (confirm each tag vs. apply automatically); a question card asks the Judge to choose | Answer the question; interject to any agent at any time | Facilitator and the three Meeting_Perspectives (pi agents), streaming with collapsible reasoning | R11, R12, R5.3 |
+| 5 Decide (F6) | A decision draft as items: what is made AI-powered, scope, the approach (exactly one of the assessed options; an option without an executable check cannot be chosen), what the user will see, how success is checked, risks, open questions; an Unverified claim is marked | Accept items; reject an item with a reason and send the draft back; freeze when all items are accepted | Facilitator drafts; Studio code checks the schema, the complete-option rule and the freeze conditions, then freezes with version, hash, Judge and time | R5.7, R15, R16, R37 |
+| 6 Plan (F7-F8) | The Planner splits the work into stories (S1 add form, S2 edit form), each with a Feature_Contract; documents appear in Details | Watch; ask for changes through a message | Planner (pi agent); Studio code validates the backlog and the documents | R19, R20, R40 |
+| 7 Build and check (F10) | The Code_Agent's card appears and works in a private copy; it stops to ask a feature question in plain words; the Reviewer asks for a change that went outside the contract, then approves (labeled as an LLM judgment); a checkpoint card shows the changed app | Answer the question; confirm the checkpoint or say "not right" with feedback | Code_Agent in the per-Task container; Reviewer (pi agent); Studio code starts the Run_Environment | R21, R38, R39, R40 |
+| 8 Result | The Verifier's card appears and lists each check: the form shows the button, clicking it shows only the user's own tags, linkding's tests pass; a green result banner | Watch the Replay later | Verifier (code, no LLM) runs the Acceptance_Checks and decides success | R22, R26 |
+
+What can go wrong in the same story, and what the Judge sees instead:
+
+- The Sandbox does not start: step 3 shows the failure and the meeting starts labeled "experience unavailable" (R13.4).
+- An agent's output does not match its schema: the failure is shown with its class and one visible retry follows (R23).
+- An unexpected failure (download, start of the changed app, a Code_Agent error): the Task stops for the Judge, who can retry the step, skip the story or end the Task (R36.6).
+- A Verifier check fails: the Task ends in `failed` with the per-item results; an approving review does not change this (R22.3).
+- The Judge does not answer a checkpoint in time: the story is marked Unconfirmed and the Judge is reminded at the next input (R21.4, R21.8).
+
 ### Design decisions at a glance
 
 | Decision | Choice | Requirements |
@@ -1322,6 +1347,7 @@ Decisions the user made for the first version that are to be revisited. Each ite
 | Failure review choices | Retry the failed step, skip the story, end the Task | Collect failure cases from test and demo runs: failed step, Failure_Class, the Judge's choice, whether it helped. The Retrospective of each Task records them. Add or change choices when new cases show a need | R36.6, Open item 52 |
 | Verifier mismatch | A result: ends the Task in `failed` directly | Decide whether a mismatch should stop in `failure_review` (for example "send the story back to development"); success stays Verifier-only | R22, R36.6, Open item 53 |
 | Security of analyzed repositories | Read-only analysis, no execution of repository code | See "Security of analyzed repositories", section "Future" | Open item 51 |
+| Reader exploration tools | `read_file`, `search_repo`, `record_finding` over the downloaded files | Add `list_dir` (directory listing of the downloaded tree) so the Reader can explore like a coding agent, still confined to the download and without execution; small change, decided by the user 2026-11-22 to do later | R10, R34 |
 
 ## Deliberately left out
 
