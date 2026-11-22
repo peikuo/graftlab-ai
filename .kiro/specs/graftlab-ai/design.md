@@ -565,9 +565,18 @@ None of them edited tests in the first scenario. The comparison is repeated at t
 
 ### Secret redactor (R30.15, R28.4, R27.12)
 
+First guard, by design (decided by the user 2026-11-22: secrets in events, logs or outgoing data are never allowed):
+
+- Credentials live in one server module (`secrets/`) and are read only at the point of use: the LLM_Proxy adds the real key to the upstream request; the Repo_Reader adds the GitHub token to its request headers; the Adapter client adds the target token; Studio code performs the target login. No credential is passed to an Agent_Role, put into a prompt, a tool result, an event payload or an error message. Error messages from HTTP clients are rebuilt from status code and URL path only, never from request headers or bodies.
+- Server logging (Fastify/pino) logs no request headers, no request or response bodies, and no environment; a logger serializer allow-lists the fields that may be logged.
+- The per-Task proxy credential is the only credential that exists inside a container (the Code_Agent needs it to call the LLM_Proxy). It is short-lived (valid for one Task), accepted only by the LLM_Proxy, and revoked at Task end, so a leak through Code_Agent output cannot be used outside the Task.
+
+Second guard, the redactor (a safety net, not the mechanism):
+
 - A registry of known secret values: LLM key, GitHub token, the target credentials (generated baseline values from `secretEnv` and every credential returned by the Adapter's `provision` hook), per-Task proxy credential, Judge-supplied key, admin token. Values shorter than 8 characters are refused at registration (configuration error).
-- `redact(event)` walks every string in the payload and replaces each occurrence of a registered value with `[REDACTED:<name>]`. It runs inside the event store before persisting and before broadcasting; SSE `delta` frames pass the same function.
-- The Replay exporter runs a second scan (registered values plus common key patterns) and refuses to export if anything is found, recording a `failure`.
+- `redact(value)` walks every string and replaces each occurrence of a registered value with `[REDACTED:<name>]`. It runs inside the event store before persisting and before broadcasting, on SSE `delta` frames, and in the logger serializer.
+- A hit is a defect, not normal operation: the event store appends a `failure` with Failure_Class `rejected_by_safety_rule`, source `persistence`, and a detail that names the secret by its registered name and the event type (never the value), and the Workspace shows it like any other failure (R23). A hit in a log line is counted and reported the same way.
+- The Replay exporter runs a second scan (registered values plus common key patterns, the same patterns as `scripts/secret-scan.mjs`) and refuses to export if anything is found, recording a `failure`.
 
 ### Repo_Reader (R10, R34)
 
@@ -1094,7 +1103,7 @@ Each property below is implemented by exactly one fast-check property test. Prop
 
 ### Property 12: Secret redaction
 
-*For any* set of registered secret values and *any* event whose payload strings contain those values at any position and nesting depth, the persisted JSONL line, the broadcast SSE frame and the exported Replay_File contain none of the secret values.
+*For any* set of registered secret values and *any* event whose payload strings contain those values at any position and nesting depth, the persisted JSONL line, the broadcast SSE frame, the server log line and the exported Replay_File contain none of the secret values; and every event in which a value was redacted is followed by exactly one `failure` event with Failure_Class `rejected_by_safety_rule` whose detail names the secret by its registered name and contains no secret value.
 
 **Validates: Requirements 30.15, 27.12, 28.4, 30.5, 13.5**
 

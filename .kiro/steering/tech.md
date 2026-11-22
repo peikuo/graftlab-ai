@@ -25,6 +25,7 @@ Never start watchers or dev servers from an agent tool call; run tests with `--r
 
 - Secrets live only in server-side environment variables. Never read, print or commit `.env`. The repository has only `.env.example`.
 - Load environment in Node with `process.loadEnvFile()` on the server only. Never send a key to the browser or into a container (the LLM_Proxy holds the real key).
+- Secrets never enter events, logs, prompts, tool results, error messages, SSE frames or Replay files. Credentials are read only at the point of the request in `secrets/`-backed code. Do not log request headers, bodies or the environment. The redactor is only a safety net: a redaction hit is a defect and is recorded as a visible `rejected_by_safety_rule` failure.
 - Streamed text is not stored. Only complete messages, incomplete messages with a reason, and lifecycle events are persisted.
 - The UI state is a pure function of the event list (`foldEvents`). Live and Replay use the same reducer.
 - Leaving a Flow_Graph node happens only through `transition()` with a guard over validated state, never through free model text.
