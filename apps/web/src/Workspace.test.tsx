@@ -26,7 +26,7 @@ function Workspace() {
   return (
     <main>
       <PresenceColumn state={state} now={end} />
-      <ActivityFeed state={state} events={events} buffers={{}} />
+      <ActivityFeed state={state} events={events} buffers={{}} onAnswer={async () => ({ ok: true })} />
       <ArtifactArea state={state} events={events} />
     </main>
   );

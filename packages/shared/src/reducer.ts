@@ -65,6 +65,7 @@ export interface UiState {
   lastOtherByActor: Partial<Record<ActorKey, { seq: number; ts: string }>>;
   lastFileReadByActor: Partial<Record<ActorKey, { seq: number; ts: string; path: string }>>;
   lastBrowserByActor: Partial<Record<ActorKey, { seq: number; ts: string; what: string }>>;
+  verifierResults: { seq: number; storyId: string; checkId: string; pass: boolean; items: { item: string; pass: boolean; expected: string; actual: string }[] }[];
 }
 
 export const initialUiState: UiState = {
@@ -83,6 +84,7 @@ export const initialUiState: UiState = {
   lastOtherByActor: {},
   lastFileReadByActor: {},
   lastBrowserByActor: {},
+  verifierResults: [],
 };
 
 /** Event types that always produce exactly one Activity_Feed entry (Property 5). */
@@ -234,6 +236,9 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
     }
     case "file_read":
       s.lastFileReadByActor = { ...state.lastFileReadByActor, [actor]: { seq: e.seq, ts: e.ts, path: e.payload.path } };
+      break;
+    case "verifier_result":
+      s.verifierResults = [...state.verifierResults, { seq: e.seq, ...e.payload }];
       break;
     case "browser_action":
       s.lastBrowserByActor = { ...state.lastBrowserByActor, [actor]: { seq: e.seq, ts: e.ts, what: `${e.payload.action} ${e.payload.target}`.trim() } };

@@ -1,13 +1,13 @@
 // Interaction_Cards (R5.3, R5.4, R5.6, R5.8, R6.5, R8.2): options plus free text, feature words only (the card
 // content comes from the event); keyboard operable with visible focus. The answer state is shown next to the card.
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { StudioEvent } from "@graftlab/shared";
-import { api } from "../api.ts";
 import { ACTOR_LABEL } from "../roles.ts";
 
 type CardEvent = Extract<StudioEvent, { type: "card_opened" }>;
+export type AnswerFn = (cardId: string, answer: { optionId?: string; text?: string }) => Promise<{ ok: true } | { ok: false; error: string }>;
 
-export function CardView({ event, answered, taskId, events }: { event: CardEvent; answered: boolean; taskId: string | undefined; events: StudioEvent[] }) {
+export function CardView({ event, answered, events, onAnswer, extra }: { event: CardEvent; answered: boolean; events: StudioEvent[]; onAnswer: AnswerFn; extra?: ReactNode }) {
   const p = event.payload;
   const [text, setText] = useState("");
   const [status, setStatus] = useState<{ kind: "idle" | "sending" | "received" | "failed"; detail?: string }>({ kind: "idle" });
@@ -15,19 +15,20 @@ export function CardView({ event, answered, taskId, events }: { event: CardEvent
   const answer = events.find((e) => e.type === "card_answered" && e.payload.cardId === p.cardId);
 
   const send = async (a: { optionId?: string; text?: string }) => {
-    if (!taskId) return;
     setStatus({ kind: "sending" });
-    const r = await api.answer(taskId, p.cardId, a);
+    const r = await onAnswer(p.cardId, a);
     setStatus(r.ok ? { kind: "received" } : { kind: "failed", detail: r.error });
   };
 
   return (
-    <div className={`icard kind-${p.kind}${answered ? " answered" : ""}`} role="group" aria-label={`${who.name} asks: ${p.title}`}>
+    <div id={`card-${p.cardId}`} className={`icard kind-${p.kind}${answered ? " answered" : " pending"}`} role="group" aria-label={`${who.name} asks: ${p.title}`}>
       <div className="icard-head">
-        <span aria-hidden="true">{who.avatar}</span> {who.name} {p.kind === "question" ? "asks you" : "needs your confirmation"}
+        <span aria-hidden="true">{who.avatar}</span> {who.name} {p.kind === "question" ? "asks you" : p.kind === "checkpoint" ? "shows you the result" : "needs your confirmation"}
+        {!answered && <span className="your-turn">your turn</span>}
       </div>
       <p className="icard-title">{p.title}</p>
       {p.body && <p className="icard-body">{p.body}</p>}
+      {extra}
       {answered && answer?.type === "card_answered" ? (
         <p className="icard-answer">
           Answered: {p.options.find((o) => o.id === answer.payload.optionId)?.label ?? answer.payload.text}

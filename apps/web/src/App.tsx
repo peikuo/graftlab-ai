@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.ts";
 import { ArtifactArea } from "./components/Artifacts.tsx";
-import { FlowLine, InterjectionInput, TopBar } from "./components/Chrome.tsx";
+import type { AnswerFn } from "./components/Cards.tsx";
+import { FlowLine, InterjectionInput, TopBar, type SendFn } from "./components/Chrome.tsx";
 import { ActivityFeed } from "./components/Feed.tsx";
 import { PresenceColumn } from "./components/Presence.tsx";
 import { useStudio } from "./useStudio.ts";
@@ -31,6 +32,17 @@ function DevBar({ isOperator }: { isOperator: boolean }) {
 export function App() {
   const [ready, setReady] = useState(false);
   const live = useStudio(ready);
+  const taskId = live.state.taskId;
+  const answer: AnswerFn = async (cardId, a) => {
+    if (!taskId) return { ok: false, error: "no Task" };
+    const r = await api.answer(taskId, cardId, a);
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  };
+  const send: SendFn = async (to, text) => {
+    if (!taskId) return { ok: false, error: "no Task" };
+    const r = await api.message(taskId, to, text);
+    return r.ok ? { ok: true, clientMsgId: r.data.clientMsgId } : { ok: false, error: r.error };
+  };
   useEffect(() => {
     void api.session().then(() => setReady(true));
     const t = setInterval(() => void api.heartbeat(), 30_000);
@@ -54,10 +66,10 @@ export function App() {
       {live.error && <div className="banner failure-text" role="alert">{live.error}</div>}
       <main className="workspace">
         <PresenceColumn state={live.state} now={live.now} />
-        <ActivityFeed state={live.state} events={live.events} buffers={live.buffers} />
+        <ActivityFeed state={live.state} events={live.events} buffers={live.buffers} onAnswer={answer} />
         <ArtifactArea state={live.state} events={live.events} />
       </main>
-      <InterjectionInput state={live.state} events={live.events} queue={live.queue} />
+      <InterjectionInput state={live.state} events={live.events} queue={live.queue} onSend={send} />
     </div>
   );
 }

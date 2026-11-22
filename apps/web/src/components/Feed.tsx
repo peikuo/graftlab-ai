@@ -1,11 +1,11 @@
 // Activity_Feed (R3.1-R3.13): one entry per narrated event with role, time and source path; messages stream
 // with a "live" marker and are replaced by the persisted Complete_Message; reasoning is collapsible and labeled.
 // Interaction_Cards appear inline where the work happens (design.md, "UI design").
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { FeedEntry, MessageState, StudioEvent, UiState } from "@graftlab/shared";
 import { ACTOR_LABEL } from "../roles.ts";
 import type { LiveBuffer } from "../useStudio.ts";
-import { CardView } from "./Cards.tsx";
+import { CardView, type AnswerFn } from "./Cards.tsx";
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
@@ -48,14 +48,23 @@ function MessageBubble({ m, live, events }: { m: MessageState; live?: LiveBuffer
   );
 }
 
-function Entry({ entry, state, events, taskId }: { entry: FeedEntry; state: UiState; events: StudioEvent[]; taskId: string | undefined }) {
+interface EntryProps {
+  entry: FeedEntry;
+  state: UiState;
+  events: StudioEvent[];
+  onAnswer: AnswerFn;
+  cardExtra?: (cardId: string) => ReactNode;
+}
+
+function Entry({ entry, state, events, onAnswer, cardExtra }: EntryProps) {
   if ((entry.type === "message_completed" || entry.type === "message_incomplete") && entry.ref) {
     const m = state.messages[entry.ref];
     if (m) return <MessageBubble m={m} events={events} />;
   }
   if (entry.type === "card_opened" && entry.ref) {
     const opened = events.find((e) => e.seq === entry.seq);
-    if (opened?.type === "card_opened") return <CardView event={opened} answered={state.cards[entry.ref]?.answered ?? false} taskId={taskId} events={events} />;
+    if (opened?.type === "card_opened")
+      return <CardView event={opened} answered={state.cards[entry.ref]?.answered ?? false} events={events} onAnswer={onAnswer} extra={cardExtra?.(entry.ref)} />;
   }
   if (entry.type === "card_answered" || entry.type === "message_completed") return null;
   const who = ACTOR_LABEL[entry.actor] ?? { name: entry.actor, avatar: "•" };
@@ -73,7 +82,22 @@ function Entry({ entry, state, events, taskId }: { entry: FeedEntry; state: UiSt
   );
 }
 
-export function ActivityFeed({ state, events, buffers }: { state: UiState; events: StudioEvent[]; buffers: Record<string, LiveBuffer> }) {
+export function ActivityFeed({
+  state,
+  events,
+  buffers,
+  onAnswer,
+  cardExtra,
+  inline,
+}: {
+  state: UiState;
+  events: StudioEvent[];
+  buffers: Record<string, LiveBuffer>;
+  onAnswer: AnswerFn;
+  cardExtra?: (cardId: string) => ReactNode;
+  /** Extra content placed after the entries, for example the decision review. */
+  inline?: ReactNode;
+}) {
   const end = useRef<HTMLDivElement>(null);
   const open = Object.values(state.messages).filter((m) => m.status === "open").sort((a, b) => a.startedSeq - b.startedSeq);
   const [follow, setFollow] = useState(true);
@@ -89,8 +113,9 @@ export function ActivityFeed({ state, events, buffers }: { state: UiState; event
       }}>
         {state.feed.length === 0 && <p className="empty">No Task yet. Paste a repository on the home page, or play a fixture in development.</p>}
         {state.feed.map((entry) => (
-          <Entry key={entry.seq} entry={entry} state={state} events={events} taskId={state.taskId} />
+          <Entry key={entry.seq} entry={entry} state={state} events={events} onAnswer={onAnswer} {...(cardExtra ? { cardExtra } : {})} />
         ))}
+        {inline}
         {open.map((m) => (
           <MessageBubble key={m.messageId} m={m} live={buffers[m.messageId]} events={events} />
         ))}

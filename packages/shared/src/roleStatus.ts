@@ -79,12 +79,15 @@ export function roleStatus(state: UiState, actor: ActorKey, now: number, recency
   if (tool) return { kind: "waiting_for_tool", text: `waiting for tool ${tool.tool}, ${secs(tool.ts, now)} s`, working: false };
 
   // 9. A recent browser action or observation (the Browser_Use operator duty).
+  // Reading and browser use count only while they are the role's latest activity, so a role that has moved on
+  // (for example to the meeting) does not keep showing an old activity for the rest of the Recency_Window.
+  const latest = state.lastOtherByActor[actor]?.seq;
   const browser = state.lastBrowserByActor[actor];
-  if (browser && recent(browser.ts)) return { kind: "using_browser", text: `using the browser: ${browser.what}`, working: true, backedBySeq: browser.seq };
+  if (browser && browser.seq === latest && recent(browser.ts)) return { kind: "using_browser", text: `using the browser: ${browser.what}`, working: true, backedBySeq: browser.seq };
 
   // 10. A recent file read.
   const read = state.lastFileReadByActor[actor];
-  if (read && recent(read.ts)) return { kind: "reading", text: `reading ${read.path}`, working: true, backedBySeq: read.seq };
+  if (read && read.seq === latest && recent(read.ts)) return { kind: "reading", text: `reading ${read.path}`, working: true, backedBySeq: read.seq };
 
   return { kind: "idle", text: "idle", working: false };
 }

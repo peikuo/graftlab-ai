@@ -80,6 +80,14 @@ describe("roleStatus examples", () => {
     expect([...seen]).toEqual(expect.arrayContaining(["speaking", "thinking", "reading", "waiting_for_llm", "blocked", "waiting_for_tool", "idle"]));
   });
 
+  it("reading stops as soon as the role does something else", () => {
+    const read = ev(1, 0, { type: "file_read", payload: { path: "a.py", bytes: 1 } });
+    expect(roleStatus(foldEvents([read]), "architecture", now(2)).kind).toBe("reading");
+    const said = ev(2, 1, { type: "message_started", payload: { messageId: "m9", roleId: "architecture", purpose: "statement" } });
+    const done = ev(3, 2, { type: "message_completed", payload: { messageId: "m9", text: "x", finishReason: "stop" } });
+    expect(roleStatus(foldEvents([read, said, done]), "architecture", now(3)).kind).toBe("idle");
+  });
+
   it("progress from another actor does not make a role look active", () => {
     const foreign = ev(2, 2, { type: "message_progress", payload: { messageId: "m1", phase: "speaking", textChars: 1, reasoningChars: 0 } }, { kind: "system" });
     expect(roleStatus(foldEvents([started, foreign]), "architecture", now(3)).kind).toBe("waiting_for_llm");

@@ -1,7 +1,7 @@
 // Top bar, Flow_Graph line and the Interjection_Input (R1.3, R5.1, R5.2, R6.1-R6.5, R7.1-R7.3, R36.8).
 import { useState } from "react";
 import { ROLE_IDS, type StudioEvent, type UiState } from "@graftlab/shared";
-import { api, type QueueView } from "../api.ts";
+import type { QueueView } from "../api.ts";
 import { ACTOR_LABEL } from "../roles.ts";
 
 const MAIN_FLOW = ["reading", "adapter_branch", "sandbox_start", "browser_experience", "meeting", "deciding", "awaiting_confirmation", "frozen", "planning", "documenting", "target_check"] as const;
@@ -46,7 +46,9 @@ export function FlowLine({ state }: { state: UiState }) {
   );
 }
 
-export function InterjectionInput({ state, events, queue }: { state: UiState; events: StudioEvent[]; queue: QueueView | null }) {
+export type SendFn = (to: string, text: string) => Promise<{ ok: true; clientMsgId: string } | { ok: false; error: string }>;
+
+export function InterjectionInput({ state, events, queue, onSend }: { state: UiState; events: StudioEvent[]; queue: QueueView | null; onSend: SendFn }) {
   const [to, setTo] = useState<string>("all");
   const [text, setText] = useState("");
   const [sent, setSent] = useState<{ id?: string; state: "sending" | "received" | "failed"; error?: string } | null>(null);
@@ -69,9 +71,9 @@ export function InterjectionInput({ state, events, queue }: { state: UiState; ev
   const submit = async () => {
     if (!state.taskId || !text.trim()) return;
     setSent({ state: "sending" });
-    const r = await api.message(state.taskId, to, text.trim());
+    const r = await onSend(to, text.trim());
     if (r.ok) {
-      setSent({ id: r.data.clientMsgId, state: "received" });
+      setSent({ id: r.clientMsgId, state: "received" });
       setText("");
     } else setSent({ state: "failed", error: r.error });
   };
@@ -99,7 +101,15 @@ export function InterjectionInput({ state, events, queue }: { state: UiState; ev
         value={text}
         onChange={(e) => setText(e.target.value)}
         disabled={!canOperate}
-        placeholder={canOperate ? "Message the team at any time…" : queue?.role === "queued" ? `You are watching (queue position ${queue.position}).` : "Join the queue to talk to the team."}
+        placeholder={
+          state.terminal
+            ? "The Task has ended."
+            : canOperate
+              ? "Message the team at any time…"
+              : queue?.role === "queued"
+                ? `You are watching (queue position ${queue.position}).`
+                : "Join the queue to talk to the team."
+        }
       />
       <button type="submit" disabled={!canOperate || !text.trim()}>Send</button>
       <span className={`send-status${sent?.state === "failed" ? " failure-text" : ""}`} aria-live="polite">{statusText}</span>

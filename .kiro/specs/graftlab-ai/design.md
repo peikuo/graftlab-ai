@@ -854,8 +854,8 @@ Failure_Class values: `interface_call_failure`, `readback_mismatch`, `llm_output
 | Open message, recent `message_progress` with phase speaking or tool_call | speaking | yes |
 | Open message, no recent event for it | waiting for LLM, no output for N s | no |
 | Open `tool_started` without `tool_finished` | waiting for tool `<name>`, elapsed seconds | no |
-| Recent `browser_action` or `browser_observation` by the role (the Browser_Use operator duty) | using the browser | yes |
-| Recent `file_read` by the role | reading | yes |
+| Recent `browser_action` or `browser_observation` by the role (the Browser_Use operator duty), and it is the role's latest event | using the browser | yes |
+| Recent `file_read` by the role, and it is the role's latest event | reading | yes |
 | Otherwise | idle | no |
 
 "Open message" means a `message_started` without a later `message_completed` or `message_incomplete` for the same `messageId`. In Replay, `now` is the timestamp at the playhead, so the same function gives the same result (R26.7).

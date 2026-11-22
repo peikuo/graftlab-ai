@@ -4,8 +4,24 @@ import { roleStatus, type UiState } from "@graftlab/shared";
 import { ROLE_CARDS, type RoleCard } from "../roles.ts";
 
 function verifierSummary(state: UiState): string {
-  // Milestone 3 has no Verifier results in the reducer yet; the card says so plainly.
-  return state.lastEventByActor.verifier ? "checks recorded" : "no checks yet";
+  const items = state.verifierResults.flatMap((r) => r.items);
+  if (items.length === 0) return "no checks yet";
+  const passed = items.filter((i) => i.pass).length;
+  return `${passed} of ${items.length} checks passed`;
+}
+
+function VerifierChecks({ state }: { state: UiState }) {
+  const items = state.verifierResults.flatMap((r) => r.items);
+  if (items.length === 0) return null;
+  return (
+    <ul className="vchecks mono">
+      {items.map((i, n) => (
+        <li key={n} className={i.pass ? "" : "failure-text"}>
+          {i.pass ? "☑" : "☒"} {i.item}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export function PresenceCard({ card, state, now }: { card: RoleCard; state: UiState; now: number }) {
@@ -16,13 +32,14 @@ export function PresenceCard({ card, state, now }: { card: RoleCard; state: UiSt
         <div className="who">
           <div className="name mono">Verifier · code, no LLM</div>
           <div className="status mono">{verifierSummary(state)}</div>
+          <VerifierChecks state={state} />
         </div>
       </li>
     );
   }
   const st = roleStatus(state, card.key, now);
   return (
-    <li className={`card status-${st.kind}${st.working ? " working" : ""}`} aria-label={`${card.name}: ${st.text}`}>
+    <li className={`card status-${st.kind}${st.working ? " working" : ""}`} aria-label={`${card.name}: ${st.text}`} title={card.description}>
       <span className="avatar" aria-hidden="true">{card.avatar}</span>
       <div className="who">
         <div className="name">{card.name}</div>
@@ -30,7 +47,8 @@ export function PresenceCard({ card, state, now }: { card: RoleCard; state: UiSt
           <span className="dot" aria-hidden="true" />
           {st.text}
         </div>
-        <div className="desc">{card.description}</div>
+        {/* The description is shown for active roles; idle cards stay compact so the whole team fits. */}
+        {st.kind !== "idle" && <div className="desc">{card.description}</div>}
       </div>
     </li>
   );
