@@ -57,6 +57,11 @@ export interface UiState {
   lastEventByActor: Partial<Record<ActorKey, { seq: number; ts: string; type: StudioEvent["type"] }>>;
   openTools: Record<string, { actor: ActorKey; tool: string; ts: string }>;
   decisionDocs: { version: number; hash: string; frozen: boolean }[];
+  questions: Record<string, { questionId: string; from: ActorKey; askedParty: "tech_manager" | "judge"; ts: string; answered: boolean }>;
+  /** Latest failure and latest other event per actor, for the "blocked" Role_Status rule. */
+  lastFailureByActor: Partial<Record<ActorKey, { seq: number; ts: string; detail: string }>>;
+  lastOtherByActor: Partial<Record<ActorKey, { seq: number; ts: string }>>;
+  lastFileReadByActor: Partial<Record<ActorKey, { seq: number; ts: string; path: string }>>;
 }
 
 export const initialUiState: UiState = {
@@ -70,6 +75,10 @@ export const initialUiState: UiState = {
   lastEventByActor: {},
   openTools: {},
   decisionDocs: [],
+  questions: {},
+  lastFailureByActor: {},
+  lastOtherByActor: {},
+  lastFileReadByActor: {},
 };
 
 function feedText(e: StudioEvent): { text: string; path?: string; failure?: boolean } | null {
@@ -137,6 +146,12 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
   const entry = feedText(e);
   if (entry) s.feed = [...state.feed, { seq: e.seq, ts: e.ts, actor, type: e.type, ...entry }];
 
+  if (e.type === "failure") {
+    s.lastFailureByActor = { ...state.lastFailureByActor, [actor]: { seq: e.seq, ts: e.ts, detail: e.payload.detail } };
+  } else {
+    s.lastOtherByActor = { ...state.lastOtherByActor, [actor]: { seq: e.seq, ts: e.ts } };
+  }
+
   switch (e.type) {
     case "task_created": {
       const { url, owner, repo, repoKind } = e.payload;
@@ -155,8 +170,10 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
       };
       break;
     case "message_progress": {
+      // Progress counts only from the message's own actor, so no role can look active because of another's event (R2.1).
       const m = state.messages[e.payload.messageId];
-      if (m) s.messages = { ...state.messages, [m.messageId]: { ...m, phase: e.payload.phase, lastProgressTs: e.ts } };
+      if (m && m.status === "open" && m.actor === actor)
+        s.messages = { ...state.messages, [m.messageId]: { ...m, phase: e.payload.phase, lastProgressTs: e.ts } };
       break;
     }
     case "message_completed": {
@@ -183,6 +200,22 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
     case "tool_finished": {
       const { [e.payload.callId]: _closed, ...rest } = state.openTools;
       s.openTools = rest;
+      break;
+    }
+    case "file_read":
+      s.lastFileReadByActor = { ...state.lastFileReadByActor, [actor]: { seq: e.seq, ts: e.ts, path: e.payload.path } };
+      break;
+    case "question_opened": {
+      const from: ActorKey = e.payload.from;
+      s.questions = {
+        ...state.questions,
+        [e.payload.questionId]: { questionId: e.payload.questionId, from, askedParty: e.payload.askedParty, ts: e.ts, answered: false },
+      };
+      break;
+    }
+    case "question_answered": {
+      const q = state.questions[e.payload.questionId];
+      if (q) s.questions = { ...state.questions, [q.questionId]: { ...q, answered: true } };
       break;
     }
     case "artifact_updated":

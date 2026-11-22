@@ -203,3 +203,51 @@ export const eventBodyArb: fc.Arbitrary<Omit<StudioEvent, "seq">> = eventTypeArb
 /** A valid Event_Stream: seq starts at 1 and increases by 1. */
 export const eventStreamArb = (maxLength = 40): fc.Arbitrary<StudioEvent[]> =>
   fc.array(eventBodyArb, { maxLength }).map((bodies) => bodies.map((b, i) => ({ ...b, seq: i + 1 }) as StudioEvent));
+
+/**
+ * Coherent role activity: per role, message lifecycles (started, progress in a phase, then completed,
+ * incomplete or still open), file reads, tool calls and failures, with increasing timestamps,
+ * interleaved across roles. Used where random events would almost never form a lifecycle (Property 6).
+ */
+export const activityStreamArb: fc.Arbitrary<StudioEvent[]> = fc
+  .array(
+    fc.record({
+      role,
+      kind: fc.constantFrom("message", "message", "message", "file_read", "tool", "failure"),
+      phase: fc.constantFrom("thinking" as const, "speaking" as const, "tool_call" as const, "waiting" as const),
+      progressCount: fc.integer({ min: 0, max: 3 }),
+      end: fc.constantFrom("completed", "incomplete", "open"),
+      gapMs: fc.integer({ min: 200, max: 20_000 }),
+    }),
+    { minLength: 1, maxLength: 12 },
+  )
+  .map((episodes) => {
+    const out: Omit<StudioEvent, "seq" | "ts">[] = [];
+    const gaps: number[] = [];
+    episodes.forEach((ep, i) => {
+      const actor: Actor = { kind: "role", roleId: ep.role };
+      const push = (type: string, payload: unknown) => {
+        out.push({ v: 1, taskId: "t1", node: "meeting", actor, type, payload } as Omit<StudioEvent, "seq" | "ts">);
+        gaps.push(ep.gapMs);
+      };
+      const id = `m${i}`;
+      if (ep.kind === "message") {
+        push("message_started", { messageId: id, roleId: ep.role, purpose: "statement" });
+        for (let k = 0; k < ep.progressCount; k++) push("message_progress", { messageId: id, phase: ep.phase, textChars: k * 10, reasoningChars: k * 5 });
+        if (ep.end === "completed") push("message_completed", { messageId: id, text: "done", finishReason: "stop" });
+        if (ep.end === "incomplete") push("message_incomplete", { messageId: id, partialText: "part", reason: "stream closed" });
+      } else if (ep.kind === "file_read") {
+        push("file_read", { path: `src/f${i}.py`, bytes: 100 });
+      } else if (ep.kind === "tool") {
+        push("tool_started", { callId: `c${i}`, tool: "read_file", inputSummary: "" });
+        if (ep.end !== "open") push("tool_finished", { callId: `c${i}`, tool: "read_file", ok: true, outputSummary: "" });
+      } else {
+        push("failure", { failureClass: "interface_call_failure", source: "llm", detail: "test failure" });
+      }
+    });
+    let t = Date.UTC(2026, 10, 22, 10, 0, 0);
+    return out.map((e, i) => {
+      t += gaps[i]!;
+      return { ...e, seq: i + 1, ts: new Date(t).toISOString() } as StudioEvent;
+    });
+  });
