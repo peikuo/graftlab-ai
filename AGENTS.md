@@ -39,3 +39,4 @@ This file holds constraints and an index only. Details live in `.kiro/specs/graf
 - Reference, first target: `.kiro/specs/graftlab-ai/reference-target-linkding.md` (how linkding is installed, run, provisioned, tested and verified; design.md is authoritative)
 - Reference, deployment: `.kiro/specs/graftlab-ai/reference-deployment.md` (where and how the Studio is deployed, and the host facts from the spikes; design.md is authoritative)
 - Tasks: `.kiro/specs/graftlab-ai/tasks.md`
+- How we use Kiro (spec, steering, hooks; not product design): `docs/kiro-usage.md`

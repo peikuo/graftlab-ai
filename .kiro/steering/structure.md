@@ -11,7 +11,8 @@ runtime-rules/          Layer B: VERSION, roles/, rules/, schemas/, adapters/<id
 adapters/<adapterId>/   One Adapter per target: adapter.json, hooks, test-data.json, own tests
 docker/dev-sandbox/     Image layer for Development_Sandbox, Run_Environment, Verifier tests, LLM_Proxy
 docker/llm-proxy/       LLM_Proxy container entry and README
-scripts/                Repository scripts (secret scan, image transfer helpers)
+scripts/                Repository scripts (secret scan, hook runner, image transfer helpers)
+docs/                   Project notes outside the product spec (docs/kiro-usage.md: how we use Kiro)
 data/                   Runtime state, gitignored
 .kiro/specs/graftlab-ai Requirements, design, tasks, reference documents, UI mocks (ui/)
 .kiro/steering/         These steering files

@@ -110,11 +110,11 @@ Conventions:
 - [x] 2. Foundations (target 2026-11-21)
   - [x] 2.1 Create the steering files
     - `.kiro/steering/product.md` (purpose, honesty rules, UI priority, Studio guarantees versus best effort), `tech.md` (stack, versions, commands, testing rules, fast-check tag format), `structure.md` (repository layout, three document layers)
-    - Design: Kiro usage plan, Repository layout
+    - docs/kiro-usage.md (Steering); Design: Repository layout
     - _Requirements: 35.1, 35.5, 35.10_
   - [x] 2.2 Create the Kiro hooks
     - `.kiro/hooks/`: run related vitest tests on save of TypeScript files; run the secret scan on save and before commits; run the Flow_Graph reachability test when `packages/shared/src/flow/` changes
-    - Design: Kiro usage plan
+    - docs/kiro-usage.md
     - _Requirements: 30.5, 33.4, 36.7_
   - [x] 2.3 Scaffold the monorepo
     - npm workspaces `apps/server` (Fastify), `apps/web` (React + Vite), `packages/shared`; directories `runtime-rules/` with `VERSION`, `adapters/linkding/` (placeholder `adapter.json` with the digest and commit from 1.3 and 1.6 and the `api` allow-list from 1.5; the contract and hooks follow in 10.15), `docker/dev-sandbox/`, `docker/llm-proxy/`; vitest and fast-check; `data/` in `.gitignore`; `.env.example` with variable names only
@@ -618,11 +618,11 @@ Conventions:
     - _Requirements: 4.1, 5.4, 21.2_
   - [ ] 18.4 Write the README
     - Run instructions, how Judges try the product, new-work statement, third-party notices: pi packages MIT, Playwright Apache-2.0, linkding MIT as an unmodified external dependency, the DeepSeek Harness runtime only if it was activated as the fallback (MIT with its THIRD_PARTY_NOTICES, to be verified), Remotion only if used; Kiroween rule facts kept as TO BE CONFIRMED
-    - Design: Kiro usage plan, Deployment model; reference-deployment.md (First deployment); reference-target-linkding.md (Identity and why linkding)
+    - docs/kiro-usage.md; Design: Deployment model; reference-deployment.md (First deployment); reference-target-linkding.md (Identity and why linkding)
     - _Requirements: 33.1, 33.5, 33.6, 33.8, 27.5_
   - [ ] 18.5 Write the Kiro usage write-up
     - `docs/kiro-usage.md`: spec-driven build, steering, hooks, spike results feeding the design
-    - Design: Kiro usage plan
+    - docs/kiro-usage.md
     - _Requirements: 33.7_
   - [ ] 18.6 Write the Devpost English text
     - `docs/devpost.md`: what it does, how it was built, Frankenstein statement, honest limits
