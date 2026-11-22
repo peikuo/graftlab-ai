@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pingDocker } from "./containers/engine.ts";
+import { resolveLlmConfig } from "./llm/config.ts";
 import { Lease } from "./queue/lease.ts";
 import { GitHub } from "./reader/github.ts";
 import { DEFAULT_LIMITS, TaskService, loadAdapters } from "./tasks/service.ts";
@@ -17,8 +18,11 @@ import { readSession } from "./http/session.ts";
 const envFile = process.env.GL_ENV_FILE ?? ".env";
 if (existsSync(envFile)) process.loadEnvFile(envFile);
 
+const llm = resolveLlmConfig(process.env);
 const secrets = new SecretRegistry();
-for (const [name, key] of [["llm_key", "LLM_API_KEY"], ["github_token", "GITHUB_TOKEN"], ["admin_token", "GL_ADMIN_TOKEN"]] as const) {
+// Every LLM key of every profile is registered, so none can leak even if the profile is switched later.
+for (const k of llm.allKeys) secrets.register(k.name, k.value);
+for (const [name, key] of [["github_token", "GITHUB_TOKEN"], ["admin_token", "GL_ADMIN_TOKEN"]] as const) {
   const v = process.env[key];
   if (v) secrets.register(name, v);
 }
@@ -43,6 +47,7 @@ const tasks = new TaskService({
   }),
   adapters: await loadAdapters(join(root, "adapters")),
   runtimeRulesVersion,
+  llm: { profile: llm.profile, model: llm.model },
   lease,
   onStore: (store) => setCurrent(store),
   limits: {
@@ -59,6 +64,7 @@ const studio = createStudio({
   lease,
   tasks,
   liveExecution: () => pingDocker(),
+  llm: { profile: llm.profile, model: llm.model, keySet: !!llm.apiKey },
   logger: true,
   allowedOrigins: (process.env.GL_ALLOWED_ORIGINS ?? "").split(",").filter(Boolean),
   secureCookie: process.env.GL_SECURE_COOKIE === "1",
@@ -66,6 +72,7 @@ const studio = createStudio({
 });
 const { app } = studio;
 setCurrent = (store) => studio.setCurrent(store);
+app.log.info({ msg: "LLM profile", profile: llm.profile, model: llm.model, keySet: !!llm.apiKey });
 if (closed > 0) app.log.info({ msg: "closed Tasks left open by a previous process", count: closed });
 
 app.get("/api/health", async () => ({ ok: true, dev }));

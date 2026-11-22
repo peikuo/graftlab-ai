@@ -24,6 +24,8 @@ export interface StudioOptions {
   tasks?: TaskApi;
   /** Whether live execution is possible (a container engine answered), for the home page (R25.8). */
   liveExecution?: () => Promise<{ available: boolean; reason?: string }>;
+  /** The active LLM profile and model, shown on the status endpoint (never the key, R30.18). */
+  llm?: { profile: string; model: string; keySet: boolean };
   allowedOrigins?: string[];
   secureCookie?: boolean;
   adminToken?: string;
@@ -207,7 +209,7 @@ export function createStudio(opts: StudioOptions): Studio {
 
   app.get("/api/status", async () => {
     const live = (await opts.liveExecution?.()) ?? { available: false, reason: "not checked" };
-    return { liveExecution: live.available, ...(live.reason ? { reason: live.reason } : {}), creating: !!opts.tasks };
+    return { liveExecution: live.available, ...(live.reason ? { reason: live.reason } : {}), creating: !!opts.tasks, ...(opts.llm ? { llm: opts.llm } : {}) };
   });
 
   app.post("/api/admin/queue", async (req, reply) => {

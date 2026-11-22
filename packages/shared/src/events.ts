@@ -80,6 +80,8 @@ export const PAYLOADS = {
     adapterId: z.string().optional(),
     runtimeRulesVersion: nonEmpty,
     commitSha: z.string().optional(),
+    llmProfile: z.string().optional(),
+    llmModel: z.string().optional(),
   }),
   node_entered: z.object({ from: NodeIdSchema.nullable(), to: NodeIdSchema, edgeId: id }),
   transition_rejected: z.object({ from: NodeIdSchema, requestedEdgeId: z.string(), reason: nonEmpty }),

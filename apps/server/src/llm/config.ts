@@ -1,0 +1,50 @@
+// LLM configuration with profiles (design.md, "LLM configuration and SSRF validation"; R30.1, R30.3, R30.5, R30.18).
+// LLM_PROFILE selects which set of variables the server uses; the default set is LLM_BASE_URL, LLM_MODEL,
+// LLM_API_KEY. Keys are only returned to the caller, which registers them with the redactor and passes them to
+// the LLM client. No key is ever part of an error message.
+
+export interface LlmConfig {
+  profile: string;
+  baseUrl: string;
+  model: string;
+  /** Undefined when no key is set: the server starts, but agent steps report the missing key honestly. */
+  apiKey: string | undefined;
+  /** Name of the missing key variable, when apiKey is undefined. */
+  missingKey?: string;
+  /** Every LLM key found in the environment (all profiles), for the redactor. */
+  allKeys: { name: string; value: string }[];
+}
+
+export class LlmConfigError extends Error {}
+
+const PROFILE = /^[a-z][a-z0-9]{0,15}$/;
+const DEFAULTS = { baseUrl: "https://api.deepseek.com", model: "deepseek-flash" };
+
+function vars(profile: string) {
+  const p = profile === "default" ? "LLM" : `LLM_${profile.toUpperCase()}`;
+  return { base: `${p}_BASE_URL`, model: `${p}_MODEL`, key: `${p}_API_KEY` };
+}
+
+export function resolveLlmConfig(env: Record<string, string | undefined>): LlmConfig {
+  const profile = (env.LLM_PROFILE ?? "default").trim().toLowerCase() || "default";
+  if (!PROFILE.test(profile)) throw new LlmConfigError("LLM_PROFILE must be a short lowercase profile name, for example local");
+  const v = vars(profile);
+  const baseUrl = env[v.base] ?? (profile === "default" ? DEFAULTS.baseUrl : undefined);
+  const model = env[v.model] ?? (profile === "default" ? DEFAULTS.model : undefined);
+  if (!baseUrl) throw new LlmConfigError(`LLM profile "${profile}" needs ${v.base}`);
+  if (!model) throw new LlmConfigError(`LLM profile "${profile}" needs ${v.model}`);
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    throw new LlmConfigError(`${v.base} is not a valid address`);
+  }
+  if (url.protocol !== "https:") throw new LlmConfigError(`${v.base} must use https`);
+  if (url.username || url.password) throw new LlmConfigError(`${v.base} must not contain credentials`);
+
+  const allKeys = Object.entries(env)
+    .filter(([name, value]) => /^LLM(_[A-Z0-9]+)?_API_KEY$/.test(name) && !!value)
+    .map(([name, value]) => ({ name: name.toLowerCase(), value: value! }));
+  const apiKey = env[v.key] || undefined;
+  return { profile, baseUrl: baseUrl.replace(/\/$/, ""), model, apiKey, ...(apiKey ? {} : { missingKey: v.key }), allKeys };
+}

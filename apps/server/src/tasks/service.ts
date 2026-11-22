@@ -36,6 +36,8 @@ export interface TaskServiceOptions {
   github: GitHub;
   adapters: AdapterRef[];
   runtimeRulesVersion: string;
+  /** Recorded in task_created so a Replay states which model produced it (R30.18). */
+  llm?: { profile: string; model: string };
   lease: Lease;
   onStore: (store: EventStore) => void;
   limits?: ReadLimits;
@@ -107,7 +109,7 @@ export class TaskService {
       type: "task_created",
       node: "reading",
       actor: { kind: "system" },
-      payload: { url: task.url, owner: meta.owner, repo: meta.repo, repoKind: task.repoKind, ...(adapter ? { adapterId: adapter.id } : {}), runtimeRulesVersion: task.runtimeRulesVersion, commitSha: meta.sha },
+      payload: { url: task.url, owner: meta.owner, repo: meta.repo, repoKind: task.repoKind, ...(adapter ? { adapterId: adapter.id } : {}), runtimeRulesVersion: task.runtimeRulesVersion, commitSha: meta.sha, ...(this.#o.llm ? { llmProfile: this.#o.llm.profile, llmModel: this.#o.llm.model } : {}) },
     });
     await store.append({ type: "node_entered", node: "reading", actor: { kind: "system" }, payload: { from: null, to: "reading", edgeId: "task_created" } });
 

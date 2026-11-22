@@ -39,7 +39,7 @@ describe("repository checks", () => {
     expect(tracked.filter((f) => /(^|\/)\.env(\..+)?$/.test(f) && !f.endsWith(".env.example"))).toEqual([]);
     const example = read(".env.example");
     for (const line of example.split("\n")) {
-      if (/^(LLM_API_KEY|GITHUB_TOKEN)\s*=/.test(line)) expect(line.split("=")[1]!.trim()).toBe("");
+      if (/^(LLM(_[A-Z0-9]+)?_API_KEY|GITHUB_TOKEN)\s*=/.test(line)) expect(line.split("=")[1]!.trim()).toBe("");
     }
   });
 

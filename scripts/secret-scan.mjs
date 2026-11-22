@@ -12,7 +12,7 @@ const PATTERNS = [
   { name: "AWS access key", re: /\bAKIA[0-9A-Z]{16}\b/ },
   { name: "private key", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----/ },
   { name: "Slack token", re: /\bxox[abprs]-[A-Za-z0-9-]{10,}/ },
-  { name: "key assignment with a value", re: /\b(LLM_API_KEY|GITHUB_TOKEN|OPENAI_API_KEY|DEEPSEEK_API_KEY)\s*=\s*['"]?[A-Za-z0-9_-]{16,}/ },
+  { name: "key assignment with a value", re: /\b(LLM(?:_[A-Z0-9]+)?_API_KEY|GITHUB_TOKEN|OPENAI_API_KEY|DEEPSEEK_API_KEY)\s*=\s*['"]?[A-Za-z0-9_-]{16,}/ },
 ];
 
 const SKIP = [/^package-lock\.json$/, /\.(png|jpg|jpeg|gif|webp|ico|pdf|woff2?|ttf|zip|gz|tgz)$/i];
