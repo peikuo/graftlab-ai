@@ -206,11 +206,18 @@ Conventions:
   - [x]* 3.14 Write UI example tests for the Workspace skeleton
     - All areas present; Engineering details collapsed by default; cards contain no file names, paths or diffs; reduced motion disables non-essential animation; keyboard-only card operation; status text present
     - _Requirements: 1.3, 4.7, 4.8, 5.4, 8.1, 8.2, 8.4_
-  - [ ] 3.15 Demo and verify: Workspace skeleton
+  - [x] 3.15 Demo and verify: Workspace skeleton
+    - Done 2026-11-22: fixture over SSE with a queued second browser (HTTP 403 on commands, "queue position 1"), resume with `Last-Event-ID`, mid-stream reload shows the buffer, secret scan clean; the user reviewed the UI through `/demo`
     - Show the user the Workspace playing the fixture events live over SSE, a second browser as a queued Viewer, and a reload that resumes from `Last-Event-ID`; check `events.jsonl` contains no registered secret and the queued browser gets HTTP 403 on a command
     - _Requirements: 1.1, 2.1, 28.3, 30.15_
 
-- [ ] 4. Checkpoint: Workspace skeleton (target 2026-11-22)
+  - [x] 3.16 UI demo on mock data and redesign (added 2026-11-22 after the user tried the Workspace)
+    - `/demo`: the full linkding story on mock data in the browser (engine, script, decision review, checkpoint mock screen), labeled "DEMO · mock data"; uses the same reducer and components as the live app
+    - Agents split by function plus three Meeting_Perspectives (requirements "Roles and Queue Rules"); light redesign (stepper, Now bar, folded timeline, chat bubbles, segmented Details, modern cards); progressive disclosure (R1.9); screenshots in `ui/`
+    - _Requirements: 1.2, 1.3, 1.9, 5.7, 11.1, 37.2_
+
+- [x] 4. Checkpoint: Workspace skeleton (target 2026-11-22)
+  - Done 2026-11-22: all tests pass; the user tried the demo and accepted the current UI ("keep it as it is for now"). Open from milestone 3: 3.2 (real fixtures, needs the PC files), to be done before milestone 6
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 5. F1-F2: home input, URL validation, Repo_Reader and immersive reading view (target 2026-11-23)
