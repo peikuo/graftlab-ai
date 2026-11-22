@@ -1316,6 +1316,17 @@ Would build: the `prototype` node, enabled by a flag, running the Code_Agent in 
 - Hooks: run the related vitest tests on save of TypeScript files; run the secret scan on save and before commits; run the Flow_Graph reachability test when `packages/shared/src/flow/` changes. Created in the first tasks.
 - Write-up: the Devpost write-up describes how the spec drove the build, how steering kept rules stable across sessions, how hooks enforced tests and the secret scan, and how spike results fed the design decisions.
 
+## Deferred for later
+
+Decisions the user made for the first version that are to be revisited. Each item names what to collect before deciding.
+
+| Item | First version | To do later | Requirements and open items |
+|---|---|---|---|
+| Failure review choices | Retry the failed step, skip the story, end the Task | Collect failure cases from test and demo runs: failed step, Failure_Class, the Judge's choice, whether it helped. The Retrospective of each Task records them. Add or change choices when new cases show a need | R36.6, Open item 52 |
+| Verifier mismatch | A result: ends the Task in `failed` directly | Decide whether a mismatch should stop in `failure_review` (for example "send the story back to development"); success stays Verifier-only | R22, R36.6, Open item 53 |
+| Browser_Use role | `GL_BROWSER_ROLE=product` | Choose Product or Tech_Manager after the first real run | Roles and Queue Rules |
+| Security of analyzed repositories | Read-only analysis, no execution of repository code | See "Security of analyzed repositories", section "Future" | Open item 51 |
+
 ## Deliberately left out
 
 - Running more than one Task at a time; queue scaling beyond one operator (R28).
