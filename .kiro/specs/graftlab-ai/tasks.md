@@ -284,14 +284,15 @@ Conventions:
     - Done 2026-11-23: 8 tests with a scripted fake model
     - Every read file covered by a memo or a map entry; every directory memo covers its children; root exists; cache hit on the same commit; a memo is never accepted as evidence; a missing file memo is marked, not invented (scripted fake model)
     - _Requirements: 10.7, 10.9, 24_
-  - [ ] 6.4d Implement the Repo_Brief (foreground reading)
-    - Progress 2026-11-23: `reader/brief.ts` (ranking, docs outline, plan check and fallback, brief schema, source check, coverage, rendering), writer submit tools, `reading_planned` event, rejected-tool-call cap, 7 tests. Live on linkding (300-file download): plan at 59 s, first memo at 81 s, brief at 157 s (first run with longer brief rules: 259 s); 8 model messages, 0 failures, 2 rejected submissions recovered by the model, 29 % cached input. Open: cache of the brief per commit, wiring into the `reading` handler
+  - [x] 6.4d Implement the Repo_Brief (foreground reading)
+    - Progress 2026-11-23: `reader/brief.ts` (ranking, docs outline, plan check and fallback, brief schema, source check, coverage, rendering), writer submit tools, `reading_planned` event, rejected-tool-call cap, 7 tests. Live on linkding (300-file download): plan at 59 s, first memo at 81 s, brief at 157 s (first run with longer brief rules: 259 s); 8 model messages, 0 failures, 2 rejected submissions recovered by the model, 29 % cached input. Done 2026-11-24: cache per commit and prompt version, wired into `reading` with the `briefReady` guard, Workspace view (brief, plan, phase in the now bar). Live UI walk on linkding (421 files, download cached): plan at 7 s, brief at 122 s; a second Task on the same commit shows the brief from the cache at once (`scripts/live-walk-m6-brief.mjs`)
     - Code ranking (README and manifests, entry points and routes, import in-degree) and docs outline; `submit_reading_plan` with caps enforced by code (30 files, 160 KB) and a labeled code-ranking fallback; planned file memos with `features[]`, one visible retry for left-out files in a batch of their own, a visible `failure` when a call ends without a valid submission; `submit_repo_brief` in the generic format with source paths checked against the map; coverage computed by code; cache per commit and prompt version
     - Tests with a scripted fake model: plan caps and unknown paths rejected, fallback labeled, left-out file retried once then marked, brief validates, unknown source paths dropped and counted, coverage matches the map
     - Live check on linkding: time to the first shown result, time to the brief, call count, cache hits, failures
     - Design: Repo_Memo
     - _Requirements: 10.7, 10.8, 10.9, 10.10, 10.11_
-  - [ ] 6.4e Implement the background Repo_Index
+  - [x] 6.4e Implement the background Repo_Index
+    - Done 2026-11-24: starts after the brief, concurrency 2, stopped at Task end, abort or a new Task (`index_progress`); the meeting does not wait
     - Remaining non-map-only files and directory rollups after the brief, concurrency 2, reuse of foreground memos, progress from `memo_written`, stop recorded at Task end or abort; the reading node does not wait for it
     - _Requirements: 10.8, 10.12_
   - [ ]* 6.5 Write property test for evidence marks

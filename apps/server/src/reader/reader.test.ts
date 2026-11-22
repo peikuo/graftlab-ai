@@ -1,4 +1,6 @@
 // Repo_Reader tests with a fake GitHub (tasks.md 5.6; R10.5, R10.6, R34.2, R34.3, R34.4).
+import type { BriefWriter } from "./brief.ts";
+import type { MemoWriter } from "./memo.ts";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -112,16 +114,33 @@ describe("Repo_Reader", () => {
   });
 });
 
+/** A scripted Reader (no LLM): plans the first two source files, describes every file, writes a small brief. */
+function scriptedReader(calls: { plan: number; brief: number }) {
+  const writer: MemoWriter & BriefWriter = {
+    plan: async (prompt) => (calls.plan++, { files: [{ path: "src/models.py", why: "data model" }, { path: "docs/guide.md", why: "user guide" }].filter((f) => prompt.includes(f.path)) }),
+    files: async (_d, batch) => batch.map((f) => ({ path: f.path, purpose: `P ${f.path}`, keySymbols: [], relatesTo: [] })),
+    directory: async () => ({ purpose: "d", contains: [], entryPoints: [], featuresHere: [] }),
+    root: async () => ({ purpose: "r", contains: [], entryPoints: [], featuresHere: [], workflows: [] }),
+    brief: async () => (calls.brief++, {
+      what: { text: "A small app.", kind: "web_app" as const, sources: ["README.md"] },
+      users: [{ who: "People", jobs: ["use it"], sources: [] }],
+      howItRuns: { stack: [], parts: [], entryPoints: [], sources: [] },
+      concepts: [], features: [], extensionPoints: [], unknowns: [],
+    }),
+  };
+  return { makeWriter: () => writer, promptVersion: "0.2.1" };
+}
 describe("reading step in a Task", () => {
-  async function service(repo: FakeRepo) {
+  async function service(repo: FakeRepo, withReader = true) {
     const dataDir = await tmp();
     const secrets = new SecretRegistry();
     secrets.register("github_token", TOKEN);
     const { gh } = fakeGitHub(repo);
     const lease = new Lease();
     let store: import("../events/store.ts").EventStore | null = null;
-    const s = new TaskService({ dataDir, secrets, github: gh, adapters: [{ id: "linkding", match: { owner: "sissbruecker", repo: "linkding" } }], runtimeRulesVersion: "0.1.0", lease, onStore: (x) => (store = x) });
-    return { s, dataDir, store: () => store! };
+    const calls = { plan: 0, brief: 0 };
+    const s = new TaskService({ dataDir, secrets, github: gh, adapters: [{ id: "linkding", match: { owner: "sissbruecker", repo: "linkding" } }], runtimeRulesVersion: "0.1.0", lease, onStore: (x) => (store = x), ...(withReader ? { reader: scriptedReader(calls) } : {}) });
+    return { s, dataDir, calls, lease, store: () => store! };
   }
   const waitFor = async (cond: () => boolean) => {
     for (let i = 0; i < 400 && !cond(); i++) await new Promise((r) => setTimeout(r, 5));
@@ -137,10 +156,36 @@ describe("reading step in a Task", () => {
     expect(events[0]).toMatchObject({ type: "task_created", payload: { repoKind: "other", commitSha: SHA } });
     expect(events.filter((e) => e.type === "file_read").map((e) => (e.payload as { path: string }).path)).toEqual(["README.md", "docs/guide.md", "src/models.py", "src/app.py"]);
     expect(events.some((e) => e.type === "finding_recorded" && e.payload.kind === "skipped")).toBe(true);
-    // The meeting is not built yet in milestone 5: an honest stop for the Judge.
+    // The Reader planned, summarized and wrote the brief before the reading step was left (R10.7, R10.10).
+    expect(events.find((e) => e.type === "reading_planned")?.payload).toMatchObject({ byCode: false, files: [{ path: "src/models.py" }, { path: "docs/guide.md" }] });
+    expect(events.find((e) => e.type === "repo_brief")?.payload).toMatchObject({ fromCache: false, content: { brief: { what: { text: "A small app." } }, coverage: { read: ["README.md", "src/models.py", "docs/guide.md"] } } });
+    const briefSeq = events.find((e) => e.type === "repo_brief")!.seq;
+    expect(events.find((e) => e.type === "node_entered" && e.payload.to === "adapter_branch")!.seq).toBeGreaterThan(briefSeq);
+    // The meeting is not built yet: an honest stop for the Judge.
     expect(events.find((e) => e.type === "failure")?.payload).toMatchObject({ detail: 'the step "meeting" is not built yet in this version' });
     const file = await readFile(join(store().dir, "events.jsonl"), "utf8");
     expect(file.includes(TOKEN)).toBe(false);
+    // REPO_MEMO.md lives in the Task's docs directory, starting with the brief.
+    expect(await readFile(join(store().dir, "docs", "REPO_MEMO.md"), "utf8")).toContain("## Repo brief\nA small app.");
+  });
+  it("a second Task on the same commit loads the brief from the cache (R10.9)", async () => {
+    const { s, calls, store, lease } = await service({ files });
+    await s.create("github.com/o/r");
+    await waitFor(() => store().events().some((e) => e.type === "node_entered" && e.payload.to === "failure_review"));
+    const first = store();
+    s.abort(first.events()[0]!.taskId);
+    await waitFor(() => !s.active);
+    lease.taskEnded();
+    await s.create("github.com/o/r");
+    await waitFor(() => store() !== first && store().events().some((e) => e.type === "repo_brief"));
+    expect(store().events().find((e) => e.type === "repo_brief")?.payload).toMatchObject({ fromCache: true });
+    expect(calls).toEqual({ plan: 1, brief: 1 });
+  });
+  it("without a configured Reader the reading step stops honestly after the download", async () => {
+    const { s, store } = await service({ files }, false);
+    await s.create("github.com/o/r");
+    await waitFor(() => store().events().some((e) => e.type === "node_entered" && e.payload.to === "failure_review"));
+    expect(store().events().find((e) => e.type === "failure")?.payload).toMatchObject({ source: "llm", detail: "the Reader is not configured (no LLM profile), so no Repo_Brief can be written" });
   });
 
   it("a download failure is recorded with the reason and stops for the Judge (R10.5)", async () => {

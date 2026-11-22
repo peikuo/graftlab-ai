@@ -1,6 +1,7 @@
 // Flow_Graph as data (R36.1; design.md, "Flow_Graph"). transition() in transition.ts is the only way to change task.node.
 import {
   and,
+  briefReady,
   atRetryLimit,
   belowRetryLimit,
   currentKindIs,
@@ -44,7 +45,7 @@ export interface FlowEdge {
 const min = (m: number) => m * 60;
 
 export const NODES: Record<NodeId, FlowNode> = {
-  reading: { id: "reading", kind: "agent_loop", tools: ["read_file", "search_repo", "read_memo", "search_memo", "submit_memos", "record_finding"], timeoutS: min(15), requirements: "R10, R34" },
+  reading: { id: "reading", kind: "agent_loop", tools: ["read_file", "search_repo", "read_memo", "search_memo", "submit_reading_plan", "submit_file_memos", "submit_repo_brief", "record_finding"], timeoutS: min(15), requirements: "R10, R34" },
   adapter_branch: { id: "adapter_branch", kind: "auto", tools: [], timeoutS: 5, requirements: "R25" },
   sandbox_start: { id: "sandbox_start", kind: "auto", tools: [], timeoutS: min(3), requirements: "R13, R29" },
   browser_experience: {
@@ -105,8 +106,8 @@ const e = (id: string, from: NodeId, to: NodeId, guard: Guard, label: string): F
 /** Non-global edges. Edge ids are unique across the graph. */
 export const EDGES: readonly FlowEdge[] = [
   // evidence gathering
-  e("reading_done", "reading", "adapter_branch", outcomeIs("done"), "F2 download and skim done"),
-  e("reading_failed", "reading", "failure_review", outcomeIs("failed"), "download failed"),
+  e("reading_done", "reading", "adapter_branch", and(outcomeIs("done"), briefReady), "F2 download and Repo_Brief done"),
+  e("reading_failed", "reading", "failure_review", outcomeIs("failed"), "download or Repo_Brief failed"),
   e("adapted_repo", "adapter_branch", "sandbox_start", isAdapted, "Adapted_Repo"),
   e("other_repo", "adapter_branch", "meeting", isOther, "Other_Repo, Analysis only label"),
   e("sandbox_ready", "sandbox_start", "browser_experience", outcomeIs("done"), "F4 baseline ready, reset verified"),

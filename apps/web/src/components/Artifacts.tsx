@@ -3,11 +3,12 @@
 // closed until the Judge opens them.
 import { useEffect, useRef, useState } from "react";
 import type { StudioEvent, UiState } from "@graftlab/shared";
+import { BriefView } from "./Brief.tsx";
 
 type Tab = "found" | "app" | "decision";
 
 function tabOf(e: StudioEvent): Tab | null {
-  if (e.type === "file_read" || e.type === "finding_recorded" || e.type === "evidence_summary") return "found";
+  if (e.type === "file_read" || e.type === "finding_recorded" || e.type === "evidence_summary" || e.type === "reading_planned" || e.type === "repo_brief") return "found";
   if (e.type === "browser_action" || e.type === "browser_observation") return "app";
   if (e.type === "decision_doc_version" || e.type === "decision_doc_frozen" || e.type === "artifact_updated") return "decision";
   return null;
@@ -70,7 +71,7 @@ export function ArtifactArea({ state, events, loadFile }: { state: UiState; even
 
   // A tab exists only once it has content (R1.9); the app trial also when it was due but failed (R4.6).
   const tabs = (["found", "app", "decision"] as const).filter((t) =>
-    t === "found" ? files.length + findings.length > 0 : t === "app" ? browser.length > 0 || unavailable !== undefined : state.decisionDocs.length + docs.length > 0,
+    t === "found" ? files.length + findings.length + events.filter((e) => e.type === "reading_planned" || e.type === "repo_brief").length > 0 : t === "app" ? browser.length > 0 || unavailable !== undefined : state.decisionDocs.length + docs.length > 0,
   );
   const active: Tab | undefined = tabs.includes(tab) ? tab : tabs[0];
   if (!active) return null;
@@ -88,6 +89,7 @@ export function ArtifactArea({ state, events, loadFile }: { state: UiState; even
       <div className="details-body" role="tabpanel">
         {active === "found" && (
             <>
+              <BriefView events={events} {...(loadFile ? { open: (p: string) => setPicked(p) } : {})} />
               {studioNotes.length > 0 && (
                 <>
                   <h3>Download</h3>

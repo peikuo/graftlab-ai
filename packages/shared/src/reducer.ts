@@ -98,10 +98,17 @@ export const initialUiState: UiState = {
 export const ALWAYS_NARRATED: ReadonlySet<StudioEvent["type"]> = new Set([
   "task_created", "node_entered", "transition_rejected", "file_read", "finding_recorded", "message_completed",
   "message_incomplete", "tool_started", "judge_message", "card_opened", "card_answered", "decision_doc_frozen",
-  "decision_item_reviewed", "browser_action", "code_change", "memo_written", "reading_planned", "review_verdict", "question_opened", "question_answered",
+  "decision_item_reviewed", "browser_action", "code_change", "memo_written", "reading_planned", "repo_brief", "index_progress", "review_verdict", "question_opened", "question_answered",
   "verifier_result", "failure", "terminal_reached",
 ]);
 
+/** The Reader's submit tools in plain words (their arguments stay in Engineering_Details). */
+const SUBMIT_PLAIN: Record<string, string> = {
+  submit_reading_plan: "Submitted the reading plan",
+  submit_file_memos: "Submitted file summaries",
+  submit_repo_brief: "Submitted the repo brief",
+  submit_directory_memo: "Submitted a folder summary",
+};
 function refOf(e: StudioEvent): string | undefined {
   switch (e.type) {
     case "message_completed":
@@ -131,10 +138,13 @@ export function narrate(e: StudioEvent): { text: string; path?: string; failure?
       const path = e.payload.evidence[0]?.path;
       return path === undefined ? { text: e.payload.text } : { text: e.payload.text, path };
     }
+    case "repo_brief":
+      return { text: e.payload.fromCache ? "Repo brief loaded from the cache (same commit)" : "Wrote the repo brief" };
+    case "index_progress":
+      return { text: e.payload.state === "started" ? `Background index started: ${e.payload.total} files` : e.payload.state === "finished" ? `Background index finished: ${e.payload.done} of ${e.payload.total} files` : `Background index stopped at ${e.payload.done} of ${e.payload.total} files` };
     case "reading_planned":
       return { text: `Planned to read ${e.payload.files.length} files${e.payload.byCode ? " (plan by code)" : ""}` };
     case "memo_written": {
-      if (e.payload.level === "brief") return { text: "Wrote the repo brief" };
       const where = e.payload.path === "" ? "the whole repository" : e.payload.path;
       const how = e.payload.mapOnly ? " (map only)" : e.payload.fromCache ? " (from the cache)" : "";
       return { text: `Summarized ${where}${how}`, ...(e.payload.path ? { path: e.payload.path } : {}) };
@@ -144,9 +154,12 @@ export function narrate(e: StudioEvent): { text: string; path?: string; failure?
     case "message_incomplete":
       return { text: `${e.payload.partialText} [incomplete: ${e.payload.reason}]`, failure: true };
     case "tool_started":
-      return { text: `${e.payload.tool} ${e.payload.inputSummary}`.trim() };
+      return SUBMIT_PLAIN[e.payload.tool] ? { text: SUBMIT_PLAIN[e.payload.tool]! } : { text: `${e.payload.tool} ${e.payload.inputSummary}`.trim() };
     case "tool_finished":
-      return e.payload.ok ? null : { text: `${e.payload.tool} failed: ${e.payload.outputSummary}`, failure: true };
+      if (e.payload.ok) return null;
+      return SUBMIT_PLAIN[e.payload.tool]
+        ? { text: `The submission was not accepted: ${e.payload.outputSummary.replace(/\s*Submit again\.?$/, "").replace(/^Not accepted:\s*/, "").replace(/\.$/, "")}; the Reader corrects it`, failure: true }
+        : { text: `${e.payload.tool} failed: ${e.payload.outputSummary}`, failure: true };
     case "judge_message":
       return { text: e.payload.status === "queued" ? `${e.payload.text} (queued until the meeting starts)` : e.payload.text };
     case "card_opened":

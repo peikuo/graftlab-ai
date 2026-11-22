@@ -1,7 +1,7 @@
 // Live Studio (design.md, "Web app", "UI design"): the home page until a Task exists, then the Workspace driven
 // by the live event stream. The same components as the demo; nothing here is mock data.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { EXPECTED_FORM, parseRepoUrl } from "@graftlab/shared";
+import { EXPECTED_FORM, parseRepoUrl, type StudioEvent } from "@graftlab/shared";
 import { api } from "./api.ts";
 import { ArtifactArea } from "./components/Artifacts.tsx";
 import type { AnswerFn } from "./components/Cards.tsx";
@@ -125,7 +125,7 @@ export function App() {
   if (!taskId || (home && state.terminal)) return <Home status={status} onCreated={() => setHome(false)} />;
 
   const isOperator = live.queue?.role === "operator";
-  const detail = state.node === "reading" && planned !== null ? `${filesRead} of ${planned} files` : null;
+  const detail = state.node === "reading" ? readingPhase(events, filesRead, planned) : null;
   const gathering = state.node === "sandbox_start" || state.node === "browser_experience";
 
   return (
@@ -173,4 +173,17 @@ export function App() {
       </main>
     </div>
   );
+}
+
+/** What the reading step is doing right now, from events only (R10.2, R10.8). */
+function readingPhase(events: StudioEvent[], filesRead: number, planned: number | null): string | null {
+  const plan = events.findLast((e) => e.type === "reading_planned");
+  if (plan?.type === "reading_planned") {
+    const wanted = new Set(plan.payload.files.map((f) => f.path));
+    const done = new Set(events.flatMap((e) => (e.type === "memo_written" && e.payload.level === "file" && wanted.has(e.payload.path) ? [e.payload.path] : [])));
+    return done.size < wanted.size ? `The Reader is summarizing the planned files: ${done.size} of ${wanted.size}` : "The Reader is writing the repo brief";
+  }
+  if (planned !== null && filesRead < planned) return `Downloading files: ${filesRead} of ${planned}`;
+  if (planned !== null) return "The Reader is choosing what to read";
+  return null;
 }

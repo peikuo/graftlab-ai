@@ -155,9 +155,10 @@ describe("transition examples", () => {
     deadlineAt: "2026-11-22T11:30:00.000Z",
   });
 
-  it("accepts reading_done after a done outcome and rejects it without one", () => {
+  it("accepts reading_done only after a done outcome with a valid Repo_Brief", () => {
     expect(transition(base, "reading_done")).toMatchObject({ ok: false, event: { type: "transition_rejected" } });
-    const r = transition({ ...base, outcome: "done" }, "reading_done");
+    expect(transition({ ...base, outcome: "done" }, "reading_done")).toMatchObject({ ok: false, event: { type: "transition_rejected" } });
+    const r = transition({ ...base, outcome: "done", briefReady: true }, "reading_done");
     expect(r).toMatchObject({ ok: true, task: { node: "adapter_branch" } });
   });
 

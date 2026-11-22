@@ -13,12 +13,15 @@ const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-di
 const who = (actor: string) => ACTOR_LABEL[actor] ?? { name: actor, avatar: "•" };
 
 /** Entries of these kinds fold together when they follow each other with the same actor. */
-type FoldKey = StudioEvent["type"] | "file_download";
+type FoldKey = StudioEvent["type"] | "file_download" | "memo_map";
 const FOLD: Partial<Record<FoldKey, { one: string; many: (n: number) => string }>> = {
   file_read: { one: "Read a file", many: (n) => `Read ${n} files` },
   // Studio code downloads files before any agent reads them (milestone 5); said plainly, not as an agent's reading.
   file_download: { one: "Downloaded a file", many: (n) => `Downloaded ${n} files` },
   finding_recorded: { one: "Noted a finding", many: (n) => `Noted ${n} findings` },
+  memo_written: { one: "Summarized a file", many: (n) => `Summarized ${n} files` },
+  // Tests, vendored and generated files get a code-built map entry, no LLM summary.
+  memo_map: { one: "Listed a file from the map only", many: (n) => `Listed ${n} files from the map only` },
   browser_action: { one: "Did a step in the app", many: (n) => `Did ${n} steps in the app` },
   tool_started: { one: "Ran a step", many: (n) => `Ran ${n} steps` },
   decision_item_reviewed: { one: "Reviewed an item", many: (n) => `Reviewed ${n} items` },
@@ -75,7 +78,8 @@ function toRows(feed: FeedEntry[], events: StudioEvent[]): Row[] {
       continue;
     }
     // Studio notes (plan, skipped parts) stay single lines; Studio file reads are downloads.
-    const foldType: FoldKey = entry.type === "file_read" && entry.actor === "system" ? "file_download" : entry.type;
+    const e2 = bySeq.get(entry.seq);
+    const foldType: FoldKey = entry.type === "file_read" && entry.actor === "system" ? "file_download" : e2?.type === "memo_written" && e2.payload.mapOnly ? "memo_map" : entry.type;
     const fold = entry.type === "finding_recorded" && entry.actor === "system" ? undefined : FOLD[foldType];
     const last = rows.at(-1);
     if (fold && !entry.failure && last?.kind === "group" && last.actor === entry.actor && last.type === foldType) {
@@ -111,6 +115,23 @@ function MessageBubble({ m, live, events }: { m: MessageState; live?: LiveBuffer
   const seconds = Math.max(0, Math.round((end - Date.parse(m.startedTs)) / 1000));
   const text = m.status === "open" ? (live?.text ?? "") : (m.text ?? "");
   const reasoning = m.status === "open" ? live?.reasoning : m.reasoning;
+  // Summary calls answer only through a submit tool: no speech bubble, one compact line with the real timing.
+  if (m.purpose === "memo" && !text) {
+    return (
+      <div className={`msg memo ${m.status}`} title={time(m.startedTs)}>
+        <span className="msg-avatar" aria-hidden="true">{w.avatar}</span>
+        <div className="msg-main">
+          <div className="msg-head">
+            <strong>{w.name}</strong>
+            <span className="muted small">{m.status === "open" ? "is summarizing files" : "summarized files"}</span>
+            {m.status === "open" && <span className="live-pill">● live</span>}
+            {m.status === "incomplete" && <span className="fail-pill">incomplete: {m.reason}</span>}
+          </div>
+          <Reasoning text={reasoning} seconds={seconds} live={m.status === "open"} />
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={`msg ${m.status}`} title={time(m.startedTs)}>
       <span className="msg-avatar" aria-hidden="true">{w.avatar}</span>
@@ -121,7 +142,7 @@ function MessageBubble({ m, live, events }: { m: MessageState; live?: LiveBuffer
           {m.status === "incomplete" && <span className="fail-pill">incomplete: {m.reason}</span>}
         </div>
         <Reasoning text={reasoning} seconds={reasoning || m.status !== "open" ? seconds : 0} live={m.status === "open"} />
-        <div className="msg-bubble">
+        {(text || m.status !== "complete") && <div className="msg-bubble">
           {text ? (
             <p>
               {text}
@@ -137,7 +158,7 @@ function MessageBubble({ m, live, events }: { m: MessageState; live?: LiveBuffer
               waiting for the first words
             </p>
           ) : null}
-        </div>
+        </div>}
       </div>
     </div>
   );

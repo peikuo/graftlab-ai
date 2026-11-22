@@ -116,7 +116,7 @@ export const PAYLOADS = {
   // One Repo_Memo record written (design.md, "Repo_Memo"; R10.7, R10.8). The memo text is in the memo artifact.
   memo_written: z.object({
     path: z.string(),
-    level: z.enum(["file", "directory", "root", "brief"]),
+    level: z.enum(["file", "directory", "root"]),
     purpose: z.string(),
     files: count,
     fromCache: z.boolean(),
@@ -128,6 +128,10 @@ export const PAYLOADS = {
     byCode: z.boolean(),
     dropped: count,
   }),
+  // R10.7, R10.11: the Repo_Brief record (validated by RepoBriefRecordSchema on the server), so Replay needs no other file.
+  repo_brief: z.object({ content: z.unknown(), fromCache: z.boolean() }),
+  // R10.12: background Repo_Index progress (started, then finished or stopped).
+  index_progress: z.object({ state: z.enum(["started", "finished", "stopped"]), done: count, total: count }),
   message_incomplete: z.object({ messageId: id, partialText: z.string(), reason: nonEmpty }),
   tool_started: z.object({ callId: id, tool: nonEmpty, inputSummary: z.string() }),
   tool_finished: z.object({ callId: id, tool: nonEmpty, ok: z.boolean(), outputSummary: z.string() }),

@@ -79,9 +79,11 @@ const P: { [K in EventType]: fc.Arbitrary<PayloadOf<K>> } = {
     usage: opt(fc.record({ inputTokens: nat, outputTokens: nat, reasoningTokens: opt(nat), cacheReadTokens: opt(nat) })),
   }),
   reading_planned: fc.record({ files: fc.array(fc.record({ path, why: str }), { maxLength: 4 }), byCode: fc.boolean(), dropped: fc.nat({ max: 5 }) }),
+  repo_brief: fc.record({ content: fc.constant({}), fromCache: fc.boolean() }),
+  index_progress: fc.record({ state: fc.constantFrom("started" as const, "finished" as const, "stopped" as const), done: fc.nat({ max: 50 }), total: fc.nat({ max: 50 }) }),
   memo_written: fc.record({
     path: fc.oneof(fc.constant(""), path),
-    level: fc.constantFrom("file" as const, "directory" as const, "root" as const, "brief" as const),
+    level: fc.constantFrom("file" as const, "directory" as const, "root" as const),
     purpose: str,
     files: fc.nat({ max: 50 }),
     fromCache: fc.boolean(),

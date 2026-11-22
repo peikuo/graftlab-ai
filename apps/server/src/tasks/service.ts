@@ -1,12 +1,17 @@
 // Task creation and the current Task (design.md, "HTTP API"; R9, R10, R25.8, R28.5, R35.3). One Task at a time.
-// Milestone 5 handlers: reading (download by Studio code) and adapter_branch; later steps are added by later
-// milestones; until then the runner stops honestly in failure_review ("not built yet").
+// Handlers: reading (download by Studio code, then the Reader's Repo_Brief; the Repo_Index continues in the
+// background) and adapter_branch; later steps are added by later milestones; until then the runner stops
+// honestly in failure_review ("not built yet").
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { initialTaskState, matchesAdapter, parseRepoUrl, type NodeId, type SecretRegistry, type TaskState } from "@graftlab/shared";
 import { EventStore } from "../events/store.ts";
 import { GitHub, GitHubError, type RepoMeta } from "../reader/github.ts";
 import { DEFAULT_LIMITS, RepoCache, readRepository, type ReadLimits } from "../reader/reader.ts";
+import type { BriefCaps, BriefWriter } from "../reader/brief.ts";
+import type { MemoWriter } from "../reader/memo.ts";
+import { buildRepoBrief, buildRepoIndex } from "../reader/repoMemo.ts";
+import type { Emit } from "../runtime/pi.ts";
 import type { Lease } from "../queue/lease.ts";
 import { TaskRunner, closeInterruptedTask, type Clock, type JudgeAnswer, type NodeHandler } from "./runner.ts";
 
@@ -43,6 +48,14 @@ export interface TaskServiceOptions {
   limits?: ReadLimits;
   clock?: Clock;
   taskTimeoutMs?: number;
+  /** The Reader's LLM side (R10.7); without it the reading step stops honestly after the download. */
+  reader?: {
+    makeWriter: (emit: Emit, idPrefix: string) => MemoWriter & BriefWriter;
+    promptVersion: string;
+    caps?: BriefCaps;
+    concurrency?: number;
+    indexConcurrency?: number;
+  };
 }
 
 export class TaskService {
@@ -51,6 +64,8 @@ export class TaskService {
   #runner: TaskRunner | null = null;
   #store: EventStore | null = null;
   #meta: RepoMeta | null = null;
+  /** Stops the background Repo_Index of the current Task (Task end, abort, or a new Task). */
+  #index: AbortController | null = null;
 
   constructor(o: TaskServiceOptions) {
     this.#o = o;
@@ -113,6 +128,8 @@ export class TaskService {
     });
     await store.append({ type: "node_entered", node: "reading", actor: { kind: "system" }, payload: { from: null, to: "reading", edgeId: "task_created" } });
 
+    this.#index?.abort();
+    this.#index = null;
     await this.#store?.close().catch(() => undefined);
     this.#store = store;
     this.#meta = meta;
@@ -124,7 +141,10 @@ export class TaskService {
       handlers: this.#handlers(),
       ...(this.#o.clock ? { clock: this.#o.clock } : {}),
       taskTimeoutMs: timeoutMs,
-      onTerminal: () => this.#o.lease.taskEnded(),
+      onTerminal: () => {
+        this.#index?.abort();
+        this.#o.lease.taskEnded();
+      },
     });
     void this.#runner.start();
     return { ok: true, taskId };
@@ -153,14 +173,54 @@ export class TaskService {
     return bytes ? new TextDecoder().decode(bytes) : null;
   }
 
+  /** The Repo_Brief in the foreground, then the Repo_Index in the background (R10.7-R10.12). */
+  async #readerStep(ctx: Parameters<NodeHandler>[0], meta: RepoMeta, files: { path: string; text: string }[], notDownloaded: number): Promise<"done" | "failed"> {
+    const r = this.#o.reader;
+    if (!r) {
+      await ctx.fail("interface_call_failure", "llm", "the Reader is not configured (no LLM profile), so no Repo_Brief can be written");
+      return "failed";
+    }
+    const taskId = ctx.task.taskId;
+    const index = new AbortController();
+    const opts = (signal: AbortSignal, prefix: string) => ({
+      files,
+      repo: { owner: meta.owner, repo: meta.repo, sha: meta.sha },
+      cacheRoot: join(this.#o.dataDir, "cache"),
+      docsDir: join(this.#o.dataDir, "tasks", taskId, "docs"),
+      promptVersion: r.promptVersion,
+      writer: r.makeWriter(ctx.emit, `${taskId}-${prefix}`),
+      emit: ctx.emit,
+      signal,
+      notDownloaded,
+      ...(r.caps ? { caps: r.caps } : {}),
+      ...(r.concurrency ? { concurrency: r.concurrency } : {}),
+      ...(r.indexConcurrency ? { indexConcurrency: r.indexConcurrency } : {}),
+    });
+    const handle = await buildRepoBrief(opts(ctx.signal, "brief"));
+    if (!handle) {
+      if (ctx.signal.aborted) return "failed";
+      await ctx.fail("llm_output_format_invalid", "llm", "the Reader could not write a valid Repo_Brief");
+      return "failed";
+    }
+    ctx.patch({ briefReady: true });
+    // The meeting does not wait for the index; it stops at Task end, abort or a new Task.
+    this.#index = index;
+    void buildRepoIndex(opts(index.signal, "index"), handle).catch(async (e: unknown) => {
+      if (index.signal.aborted) return;
+      await ctx.emit({ type: "failure", actor: { kind: "role", roleId: "reader" }, payload: { failureClass: "interface_call_failure", source: "llm", detail: `the background index stopped: ${(e as Error).message}` } }).catch(() => undefined);
+    });
+    return "done";
+  }
+
   #handlers(): Partial<Record<NodeId, NodeHandler>> {
     const limits = this.#o.limits ?? DEFAULT_LIMITS;
     return {
       reading: async (ctx) => {
         const meta = this.#meta!;
         const lateSkipped: string[] = [];
+        let read: Awaited<ReturnType<typeof readRepository>>;
         try {
-          await readRepository(
+          read = await readRepository(
             this.#o.github,
             this.#cache,
             meta,
@@ -191,13 +251,13 @@ export class TaskService {
             const more = lateSkipped.length > 8 ? ` and ${lateSkipped.length - 8} more` : "";
             await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "skipped", text: `Also skipped ${lateSkipped.length} files whose content is binary: ${sample}${more}.`, evidence: [], evidenceStatus: "none" } });
           }
-          return "done";
         } catch (e) {
           if (ctx.signal.aborted) return "failed";
           const message = e instanceof GitHubError ? e.message : `reading failed: ${(e as Error).message}`;
           await ctx.fail("interface_call_failure", "github", message);
           return "failed";
         }
+        return this.#readerStep(ctx, meta, read.files, read.skipped.length + lateSkipped.length);
       },
       adapter_branch: async () => "done",
     };

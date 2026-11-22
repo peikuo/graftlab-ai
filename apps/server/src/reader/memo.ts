@@ -10,7 +10,9 @@ import { dirsDeepestFirst, type MapEntry, type RepoMap } from "./map.ts";
 const short = z.string().trim().min(1).max(400);
 const list = (max: number) => z.array(z.string().trim().min(1).max(200)).max(max);
 
-export const FileMemoSchema = z.object({ path: z.string().min(1), purpose: short, keySymbols: list(8), relatesTo: list(12), features: list(4).optional(), notes: z.string().max(400).optional() });
+// Over-long lists are cut by code (deterministic) instead of rejected: a rejection costs a whole model call.
+const capped = (max: number) => z.array(z.string().trim().min(1).max(200)).transform((a) => a.slice(0, max));
+export const FileMemoSchema = z.object({ path: z.string().min(1), purpose: short, keySymbols: capped(8), relatesTo: capped(12), features: capped(4).optional(), notes: z.string().max(400).optional() });
 export const DirMemoSchema = z.object({ purpose: short, contains: list(60), entryPoints: list(4), featuresHere: list(6) });
 export const RootMemoSchema = DirMemoSchema.extend({ workflows: z.array(z.object({ name: short, paths: list(8) })).max(8) });
 
@@ -27,6 +29,8 @@ export interface MemoTree {
   records: Record<string, MemoRecord>; // file memos by path; directory memos by "dir:<path>"; root by "dir:"
   /** The Repo_Brief (brief.ts), written before the meeting. */
   brief?: unknown;
+  /** The background Repo_Index finished for this commit. */
+  indexComplete?: boolean;
 }
 
 export const dirKey = (path: string) => `dir:${path}`;
@@ -277,12 +281,16 @@ export function renderMemo(tree: MemoTree, key: string): string {
 
 /** REPO_MEMO.md: the root, then every directory top-down with its files (an Output_Doc, layer C). */
 export function renderRepoMemoDoc(tree: MemoTree, map: RepoMap): string {
-  const parts = [`# Repo memo\n\nCommit ${tree.commit}. Summaries are LLM descriptions, not evidence.`, renderMemo(tree, dirKey(""))];
+  return [`# Repo memo\n\nCommit ${tree.commit}. Summaries are LLM descriptions, not evidence.`, renderMemo(tree, dirKey("")), ...renderIndexSections(tree, map)].join("\n\n") + "\n";
+}
+/** Every directory memo top-down, then every file memo; parts that have no memo yet are left out. */
+export function renderIndexSections(tree: MemoTree, map: RepoMap): string[] {
+  const parts: string[] = [];
   const dirs = [...map.dirs.keys()].filter((d) => d !== "").sort();
-  for (const d of dirs) parts.push(renderMemo(tree, dirKey(d)));
-  for (const f of map.dirs.get("")?.files ?? []) parts.push(renderMemo(tree, f));
-  for (const d of dirs) for (const f of map.dirs.get(d)!.files) parts.push(renderMemo(tree, f));
-  return parts.join("\n\n") + "\n";
+  for (const d of dirs) if (tree.records[dirKey(d)]) parts.push(renderMemo(tree, dirKey(d)));
+  for (const f of map.dirs.get("")?.files ?? []) if (tree.records[f]) parts.push(renderMemo(tree, f));
+  for (const d of dirs) for (const f of map.dirs.get(d)!.files) if (tree.records[f]) parts.push(renderMemo(tree, f));
+  return parts;
 }
 
 /** search_memo: memos whose text matches the query (literal, case-insensitive), at most 20. */

@@ -8,7 +8,7 @@ import { arr, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import type { z } from "zod";
 import type { StudioModel } from "../llm/model.ts";
 import { systemPrompt, type RuntimeRules } from "../roles/rules.ts";
-import { runAgentTurn, type Emit } from "../runtime/pi.ts";
+import { runAgentTurn, type DeltaSink, type Emit } from "../runtime/pi.ts";
 import { BRIEF_KINDS, ReadingPlanSchema, RepoBriefSchema, type BriefWriter, type ReadingPlan, type RepoBrief } from "./brief.ts";
 import { DirMemoSchema, FileMemoSchema, RootMemoSchema, type BatchFile, type ChildLine, type FileMemoInput, type MemoWriter } from "./memo.ts";
 
@@ -31,9 +31,13 @@ export interface PiMemoWriterOptions {
   model: StudioModel;
   rules: RuntimeRules;
   emit: Emit;
+  /** Streamed text and reasoning go to the SSE hub only, never to the event store. */
+  hub?: DeltaSink;
   /** Unique per Task, for message ids. */
   idPrefix: string;
   thinkingLevel?: "off" | "low" | "medium" | "high";
+  /** The reading plan is a selection from a ranked list: no thinking by default (measured 2026-11-23). */
+  planThinkingLevel?: "off" | "low" | "medium" | "high";
 }
 
 export function piMemoWriter(o: PiMemoWriterOptions): MemoWriter & BriefWriter {
@@ -68,7 +72,7 @@ export function piMemoWriter(o: PiMemoWriterOptions): MemoWriter & BriefWriter {
       make("submit_directory_memo", "directory", obj(dirFields), "Submit the memo of the directory."),
       make("submit_root_memo", "root", obj({ ...dirFields, workflows: arr(obj({ name: str(), paths: arr(str()) })) }), "Submit the memo of the whole repository."),
     ];
-    const r = await runAgentTurn({ roleId: "reader", purpose: "memo", systemPrompt: system, prompt, tools, model: o.model, emit: o.emit, signal, thinkingLevel: o.thinkingLevel ?? "low", idPrefix: `${o.idPrefix}-memo${++n}`, maxToolErrors: 3 });
+    const r = await runAgentTurn({ roleId: "reader", purpose: "memo", systemPrompt: system, prompt, tools, model: o.model, emit: o.emit, ...(o.hub ? { hub: o.hub } : {}), signal, thinkingLevel: kind === "plan" ? (o.planThinkingLevel ?? "off") : (o.thinkingLevel ?? "low"), idPrefix: `${o.idPrefix}-memo${++n}`, maxToolErrors: 3 });
     if (accepted === undefined) {
       const why = r.error ?? (r.toolCalls === 0 ? "it answered without calling the submit tool" : "no submission was valid");
       // A model-call error already produced its own failure event in runAgentTurn; everything else is recorded here.

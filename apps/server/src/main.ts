@@ -4,6 +4,9 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pingDocker } from "./containers/engine.ts";
 import { resolveLlmConfig } from "./llm/config.ts";
+import { buildStudioModel } from "./llm/model.ts";
+import { piMemoWriter } from "./reader/memoWriter.ts";
+import { loadRuntimeRules } from "./roles/rules.ts";
 import { Lease } from "./queue/lease.ts";
 import { GitHub } from "./reader/github.ts";
 import { DEFAULT_LIMITS, TaskService, loadAdapters } from "./tasks/service.ts";
@@ -34,6 +37,11 @@ const port = Number(process.env.GL_PORT ?? 8080);
 const host = process.env.GL_HOST ?? "127.0.0.1";
 
 const runtimeRulesVersion = (await readFile(join(root, "runtime-rules/VERSION"), "utf8")).trim();
+const rules = await loadRuntimeRules(join(root, "runtime-rules"), ["reader"]);
+// The Reader needs a key; without one the reading step stops honestly after the download.
+const model = llm.apiKey ? buildStudioModel(llm) : null;
+const envInt = (name: string) => (process.env[name] ? Number(process.env[name]) : undefined);
+let hub: { delta(messageId: string, channel: "text" | "reasoning" | "toolcall", text: string): void } | null = null;
 const lease = new Lease({ idleReleaseMs: Number(process.env.GL_LEASE_IDLE_S ?? 120) * 1000 });
 let setCurrent: (store: EventStore) => void = () => {};
 const tasks = new TaskService({
@@ -56,6 +64,17 @@ const tasks = new TaskService({
     ...(process.env.GL_READ_MAX_BYTES ? { maxBytes: Number(process.env.GL_READ_MAX_BYTES) } : {}),
   },
   taskTimeoutMs: Number(process.env.GL_TASK_TIMEOUT_MIN ?? 90) * 60_000,
+  ...(model
+    ? {
+        reader: {
+          promptVersion: rules.version,
+          makeWriter: (emit, idPrefix) => piMemoWriter({ model, rules, emit, idPrefix, ...(hub ? { hub } : {}) }),
+          ...(envInt("GL_BRIEF_FILES") || envInt("GL_BRIEF_KB") ? { caps: { maxFiles: envInt("GL_BRIEF_FILES") ?? 30, maxBytes: (envInt("GL_BRIEF_KB") ?? 160) * 1024 } } : {}),
+          ...(envInt("GL_MEMO_CONCURRENCY") ? { concurrency: envInt("GL_MEMO_CONCURRENCY")! } : {}),
+          ...(envInt("GL_INDEX_CONCURRENCY") ? { indexConcurrency: envInt("GL_INDEX_CONCURRENCY")! } : {}),
+        },
+      }
+    : {}),
 });
 const closed = await tasks.closeInterrupted();
 
@@ -72,6 +91,7 @@ const studio = createStudio({
 });
 const { app } = studio;
 setCurrent = (store) => studio.setCurrent(store);
+hub = studio.hub;
 app.log.info({ msg: "LLM profile", profile: llm.profile, model: llm.model, keySet: !!llm.apiKey });
 if (closed > 0) app.log.info({ msg: "closed Tasks left open by a previous process", count: closed });
 

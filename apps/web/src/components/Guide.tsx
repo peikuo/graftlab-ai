@@ -61,7 +61,7 @@ export function Stepper({ state }: { state: UiState }) {
 }
 
 const NOW: Partial<Record<NodeId, string>> = {
-  reading: "The Reader is going through the code and documents.",
+  reading: "Reading the repository.",
   adapter_branch: "Checking whether this software can also be run here.",
   sandbox_start: "Starting a private copy of the app with test data.",
   browser_experience: "The Explorer is using the app in a browser, like a new user would.",

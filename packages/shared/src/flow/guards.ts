@@ -22,6 +22,7 @@ export const not =
 export const isAdapted: Guard = (t) => t.repoKind === "adapted";
 export const isOther: Guard = (t) => t.repoKind === "other";
 export const isFrozen: Guard = (t) => t.frozenVersion !== null;
+export const briefReady: Guard = (t) => t.briefReady;
 
 export const belowRetryLimit: Guard = (t) => (currentStory(t)?.attempts ?? Infinity) < t.limits.storyAttempts;
 export const atRetryLimit: Guard = not(belowRetryLimit);

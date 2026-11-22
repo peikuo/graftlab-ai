@@ -67,6 +67,8 @@ export interface TaskState {
   outcome?: NodeOutcome;
   runtimeRulesVersion: string;
   frozenVersion: number | null;
+  /** A valid Repo_Brief exists for this Task (R10.7); leaving reading needs it. */
+  briefReady: boolean;
   review?: DecisionReview;
   backlogValid: boolean;
   docsComplete: boolean;
@@ -103,6 +105,7 @@ export function initialTaskState(init: {
     ...init,
     node: "reading",
     frozenVersion: null,
+    briefReady: false,
     backlogValid: false,
     docsComplete: false,
     stories: [],

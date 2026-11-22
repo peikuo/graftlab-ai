@@ -62,7 +62,7 @@ describe("TaskRunner", () => {
   it("moves only through transition(): reading, adapter_branch, then a missing step stops in failure_review", async () => {
     const { store, task } = await setup("other");
     const handlers: Partial<Record<string, NodeHandler>> = {
-      reading: async () => "done",
+      reading: async (ctx) => (ctx.patch({ briefReady: true }), "done"),
       adapter_branch: async () => "done",
     };
     const runner = new TaskRunner({ store, task, handlers, clock: fakeClock() });
@@ -86,6 +86,7 @@ describe("TaskRunner", () => {
           await ctx.fail("interface_call_failure", "github", "GitHub returned 502");
           return "failed";
         }
+        ctx.patch({ briefReady: true });
         return "done";
       },
       adapter_branch: async () => "done",
@@ -120,7 +121,7 @@ describe("TaskRunner", () => {
     const { store, task } = await setup("adapted");
     const clock = fakeClock();
     const handlers: Partial<Record<string, NodeHandler>> = {
-      reading: async () => "done",
+      reading: async (ctx) => (ctx.patch({ briefReady: true }), "done"),
       adapter_branch: async () => "done",
       sandbox_start: (ctx) => new Promise((_, reject) => ctx.signal.addEventListener("abort", () => reject(new Error("aborted")))),
       meeting: async () => "judge_abort" as NodeOutcome,

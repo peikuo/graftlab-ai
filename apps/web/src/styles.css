@@ -342,3 +342,18 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .home-note { margin: -28px 0 32px; font-size: 13px; color: var(--muted); }
 .home-error { color: var(--failure); }
 .stop-btn { color: var(--failure) !important; }
+
+/* Repo_Brief (R10.7-R10.12) */
+.brief { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.brief h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.brief h4 { font-size: 12.5px; margin: 14px 0 6px; color: var(--muted); font-weight: 600; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.brief-what { font-size: 14.5px; line-height: 1.55; margin: 4px 0 8px; }
+.brief-list { gap: 6px; font-size: 13.5px; line-height: 1.5; }
+.brief-src { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 4px; font-size: 11.5px; color: var(--muted); }
+.brief-coverage { margin-top: 12px; line-height: 1.5; }
+.brief-index { margin: 8px 0 0; color: var(--accent-ink); }
+.brief-plan li { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.plan-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #cbd5e1; flex: none; }
+.plan-dot.on { background: var(--working); }
+.src-toggle { background: none; border: none; padding: 0 0 0 4px; font: inherit; font-size: 11.5px; color: var(--muted); cursor: pointer; text-decoration: underline dotted; }
+.brief-src { display: flex; margin: 2px 0 0; }
