@@ -6,12 +6,12 @@ import { dirname, join, normalize } from "node:path";
 import type { GitHub, RepoMeta, TreeEntry } from "./github.ts";
 
 export interface ReadLimits {
-  maxFiles: number; // GL_READ_MAX_FILES, default 300
-  maxBytes: number; // GL_READ_MAX_BYTES, default 2 MB
+  maxFiles: number; // GL_READ_MAX_FILES, default 500
+  maxBytes: number; // GL_READ_MAX_BYTES, default 4 MB
   maxFileBytes: number; // files above 200 KB are skipped
 }
 
-export const DEFAULT_LIMITS: ReadLimits = { maxFiles: 300, maxBytes: 2 * 1024 * 1024, maxFileBytes: 200 * 1024 };
+export const DEFAULT_LIMITS: ReadLimits = { maxFiles: 500, maxBytes: 4 * 1024 * 1024, maxFileBytes: 200 * 1024 };
 
 const BINARY_EXT = /\.(png|jpe?g|gif|webp|ico|bmp|tiff?|svgz|pdf|zip|gz|tgz|bz2|xz|7z|rar|tar|jar|war|class|so|dylib|dll|exe|bin|o|a|pyc|pyo|whl|woff2?|ttf|otf|eot|mp3|mp4|mov|avi|webm|wav|ogg|flac|sqlite3?|db|psd|ai|sketch)$/i;
 

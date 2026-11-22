@@ -84,7 +84,10 @@ What can go wrong in the same story, and what the Judge sees instead:
 | Retry limit per story | 3 attempts | `GL_STORY_ATTEMPTS` | R40.11, R40.12, Open item 35 |
 | Item_Count_Cap per Demo_Case | 10 items | `GL_DEMO_CASE_MAX_ITEMS` | R18.11, Open item 50 |
 | Task timeout | 90 minutes | `GL_TASK_TIMEOUT_MIN` | R36.6, Open item 28 |
-| Read-volume limit | 300 files or 2 MB of text, whichever comes first | `GL_READ_MAX_FILES`, `GL_READ_MAX_BYTES` | R34.3, Open item 16 |
+| Read-volume limit | 500 files or 4 MB of text, whichever comes first (raised from 300 files and 2 MB on 2026-11-23: linkding has 421 readable files, 2.1 MB) | `GL_READ_MAX_FILES`, `GL_READ_MAX_BYTES` | R34.3, Open item 16 |
+| Repo_Memo batching and concurrency | 48 KB of source per file-memo call, 4 calls at a time | `GL_MEMO_BATCH_KB`, `GL_MEMO_CONCURRENCY` | R10.7 |
+| `read_file` result size | 400 lines or 16 KB per call | `GL_READ_FILE_MAX_LINES`, `GL_READ_FILE_MAX_KB` | R10.7 |
+| Tool-result token budget per agent turn | 60 % of the model context window | `GL_TURN_TOOL_BUDGET_PCT` | R10.7, R30.12 |
 | max_tokens for role turns | 16384, finish reason checked | `GL_MAX_TOKENS` | R30.12, R30.13 |
 | Queue heartbeat and idle release | 30 s heartbeat, 120 s idle release | `GL_LEASE_HEARTBEAT_S`, `GL_LEASE_IDLE_S` | R28 |
 | Container memory limits | Explicit limit per container; values per deployment, see reference-deployment.md | `GL_MEM_*_MB` | R38.3, Open item 25 |
@@ -331,7 +334,7 @@ Node table:
 
 | Node | Kind | Allowed tools (enforced by `beforeToolCall` or by not exposing a tool) | Timeout | Requirements |
 |---|---|---|---|---|
-| reading | agent_loop (evidence gathering) | Studio download (code); Reader skim: `read_file`, `search_repo`, `record_finding`; no `ask_judge` | 10 min | R10, R34 |
+| reading | agent_loop (evidence gathering) | Studio download and Repo_Map (code); Reader builds the Repo_Memo and records findings: `read_file` (line ranges), `search_repo`, `read_memo`, `search_memo`, `submit_memos`, `record_finding`; no `ask_judge` | 15 min (raised from 10 for the Repo_Memo) | R10, R34 |
 | adapter_branch | auto | none | 5 s | R25 |
 | sandbox_start | auto (gathering) | none (Studio code: baseline start, provisioning, reset, equality check) | 3 min; timeout or failure takes the edge to `meeting` with `experienceUnavailable` | R13, R29 |
 | browser_experience | agent_loop (gathering) | `browser_open`, `browser_click`, `browser_fill`, `browser_press`, `browser_snapshot`, `browser_screenshot`, `record_note`; no `ask_judge` | 10 min, 40 actions; timeout or failure takes the edge to `meeting` with `experienceUnavailable` | R14 |
@@ -619,12 +622,43 @@ Second guard, the redactor (a safety net, not the mechanism):
 ### Repo_Reader (R10, R34)
 
 - GitHub REST API with the read-only token held server-side (R34.1): repository metadata (existence, visibility, default branch; R9.4), the commit SHA of the default branch, the recursive git tree, then raw file contents.
-- Prioritized reading order: README, docs, OpenAPI or schema files, route and URL definitions, models, then the rest by path depth. Reading stops at the read-volume limit (300 files or 2 MB of text); skipped parts are listed in a `finding_recorded` event of kind `skipped` and shown in the Artifact_Area (R10.6).
+- Prioritized reading order: README, docs, OpenAPI or schema files, route and URL definitions, models, then the rest by path depth. Reading stops at the read-volume limit (500 files or 4 MB of text); skipped parts are listed in a `finding_recorded` event of kind `skipped` and shown in the Artifact_Area (R10.6).
 - Binary files and files above 200 KB are skipped and listed.
 - Cache: `data/cache/github/<owner>/<repo>/<sha>/` holds the tree and file contents; a repeated request for the same SHA reads only from the cache (R34.2).
 - Rate limit responses (`403` or `429` with rate limit headers) produce a `failure` with the limit state and stop the Task honestly (R34.4). The anonymous rate limit value is not assumed (R34.5).
 - Files are treated as text only and never executed (R10.3). Each file read appends `file_read` with path, size and an artifact reference to the cached content (R10.4, R4.4).
-- After the download, the Reader skims the prioritized files with `read_file` and `search_repo` and records findings with `record_finding` (best effort, R10.2).
+- After the download, the Reader builds the Repo_Memo (next section) and records findings with `record_finding` (best effort, R10.2).
+
+### Repo_Memo: tree-shaped reading (R10.7-R10.9; decided by the user 2026-11-23)
+
+A repository does not fit into a context window (linkding: 421 readable files, 2.1 MB, about 550k tokens), and reading files one by one with `read_file` leaves nothing behind for later agents. The Reader therefore builds a tree of memos, bottom-up, and every later agent navigates it top-down. The idea follows public "repo map" and "layered summary" practice; the implementation is our own.
+
+Three layers, from cheap to expensive:
+
+1. Repo_Map (Studio code, no LLM): for every downloaded file the path, size, line count, language and the top-level symbols found by per-language regular expressions (classes, functions, routes, exported names). Built in seconds. Files of low value for understanding get only this map entry, no LLM memo: tests (`test/`, `tests/`, `*_test.*`, `test_*`), vendored and generated code (`vendor/`, `static/vendor/`, `*.min.*`, lock files, migrations). For linkding this removes about 1 MB of tests alone.
+2. File memos (LLM, Reader agent): the remaining files of one directory are summarized together in one call when they fit a batch (initial value 48 KB of source per call, `GL_MEMO_BATCH_KB`); larger files are cut at line boundaries. Each file memo is `{ path, purpose (one sentence), keySymbols[], relatesTo[] (paths), notes? }`, validated by zod; a file the model leaves out gets a visible "no memo" mark, never an invented one.
+3. Directory memos, then the root memo (LLM): each directory memo is written from its children's memos and map entries only, never from raw source, so a rollup stays small: `{ path, purpose, contains[] (child and one line each), entryPoints[], featuresHere[] }`. The root memo adds the software's purpose, users, main workflows and where each workflow lives. It is the input of the repository introduction (Open item 54) and the first page every later agent reads.
+
+Order and budget:
+
+- Directories are processed deepest first, with up to 4 LLM calls at a time (`GL_MEMO_CONCURRENCY`). For linkding the estimate is about 125 calls (77 file batches, 48 directory rollups) before skipping tests and vendored code, and far fewer after.
+- The Reader's reading node keeps its timeout; when time runs short, the remaining directories get code-built rollups from the map (labeled "map only") and the root memo is still written, so the meeting always gets a complete tree, some of it honestly marked as shallow.
+- Each memo is an event `memo_written` `{ path, level: file | directory | root, fromCache, mapOnly }` and the memo text is an artifact; the Workspace shows them folded per directory ("Summarized bookmarks/api/ · 6 files"), so the long reading step is visibly busy.
+- Cache: `data/cache/memo/<owner>/<repo>/<sha>/`, keyed by the commit and the prompt version of `runtime-rules/`; a second Task on the same commit loads it instantly (R10.9).
+
+How agents use it (tools over the download only, no execution, R10.3):
+
+| Tool | Returns | Limit |
+|---|---|---|
+| `read_memo(path)` | The memo of a directory or file, with its children's one-liners | one memo |
+| `search_memo(query)` | Memos whose purpose, symbols or features match | 20 results |
+| `search_repo(query)` | Matching lines with two lines of context, by file | 30 matches |
+| `read_file(path, fromLine?, toLine?)` | The requested lines of a file | 400 lines or 16 KB per call; the result says how many lines remain |
+| `record_finding` | Records a finding; evidence must quote the file (R24) | |
+
+- Every agent context starts with the root memo, not with files. Agents open files only when a decision needs exact code, which is also when they cite evidence.
+- A memo is an LLM description and never evidence: findings, assessments and decision items still need a quoted snippet that the evidence checker finds in the file (R24).
+- Token budget per agent turn: the runner counts the tokens of tool results in the turn; near the budget (initial value 60% of the model context window) further `read_file` calls return "budget reached, record what you have", so the agent submits instead of failing late.
 
 ### Evidence checker (R24)
 
@@ -832,6 +866,7 @@ Event types and payloads:
 | `transition_rejected` | from, requestedEdgeId, reason | R36.4 |
 | `file_read` | path, bytes, artifactRef | R10.4 |
 | `finding_recorded` | kind (finding, endpoint, skipped, note), text, evidence[], evidenceStatus | R3.2, R10.2, R24 |
+| `memo_written` | path, level (file, directory, root), fromCache, mapOnly; the memo text is an artifact | R10.7, R10.8 |
 | `message_started` | messageId, roleId, purpose (statement, review, operator, code_agent_step) | R27.10 |
 | `message_progress` | messageId, phase (waiting, thinking, speaking, tool_call), textChars, reasoningChars | R2.4, R2.8 (see Gaps found) |
 | `message_completed` | messageId, text, reasoning, finishReason, usage | R3.8, R27.7 |
@@ -1348,7 +1383,7 @@ Decisions the user made for the first version that are to be revisited. Each ite
 | Verifier mismatch | A result: ends the Task in `failed` directly | Decide whether a mismatch should stop in `failure_review` (for example "send the story back to development"); success stays Verifier-only | R22, R36.6, Open item 53 |
 | Security of analyzed repositories | Read-only analysis, no execution of repository code | See "Security of analyzed repositories", section "Future" | Open item 51 |
 | Repository introduction before the meeting | After reading (and gathering) the flow goes to the meeting; the meeting opens with the evidence summary built by code | Add an introduction step: the Studio presents to the Judge, in plain words, what the software is, who uses it, its main parts and workflows, and what was tried, with evidence; the Judge confirms or corrects it, so the team and the Judge share one understanding before ideas are discussed. A basic feature that shows the team understood the software. Decided by the user 2026-11-23 to add later; needs a node between gathering and `meeting` and a Judge card | R10, R11.9, Open item 54 |
-| Reader exploration tools | `read_file`, `search_repo`, `record_finding` over the downloaded files | Add `list_dir` (directory listing of the downloaded tree) so the Reader can explore like a coding agent, still confined to the download and without execution; small change, decided by the user 2026-11-22 to do later | R10, R34 |
+| Reader exploration tools | Covered by the Repo_Map and the Repo_Memo tools (2026-11-23): the directory listing is part of the map | Nothing left from this item; a separate `list_dir` tool only if agents still need it after the first real runs | R10, R34 |
 
 ## Deliberately left out
 

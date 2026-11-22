@@ -108,9 +108,9 @@ describe("TaskRunner", () => {
     const runner = new TaskRunner({ store, task, handlers, clock, taskTimeoutMs: 60 * 60_000 });
     void runner.start();
     await tick();
-    clock.advance(10 * 60_000 + 1); // reading node timeout is 10 min
+    clock.advance(15 * 60_000 + 1); // reading node timeout is 15 min
     await until(() => runner.openCards().length === 1);
-    expect(store.events().find((e) => e.type === "failure")?.payload).toMatchObject({ detail: 'step "reading" timed out after 600 s' });
+    expect(store.events().find((e) => e.type === "failure")?.payload).toMatchObject({ detail: 'step "reading" timed out after 900 s' });
     clock.advance(60 * 60_000); // Task timeout while waiting for the Judge
     expect(await runner.done).toBe("failed");
     expect(nodes(store).at(-1)).toBe("failed");

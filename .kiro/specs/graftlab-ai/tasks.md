@@ -237,7 +237,7 @@ Conventions:
     - Design: HTTP API, Web app
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 25.8, 35.3_
   - [x] 5.5 Implement the Repo_Reader
-    - `apps/server/src/reader/`: read-only token, metadata, commit SHA, recursive tree, prioritized reading order, limits 300 files or 2 MB (`GL_READ_MAX_FILES`, `GL_READ_MAX_BYTES`), skip binary and files above 200 KB, cache by SHA, rate limit failure, download failure stops the Task, `file_read` events
+    - `apps/server/src/reader/`: read-only token, metadata, commit SHA, recursive tree, prioritized reading order, limits 500 files or 4 MB (`GL_READ_MAX_FILES`, `GL_READ_MAX_BYTES`), skip binary and files above 200 KB, cache by SHA, rate limit failure, download failure stops the Task, `file_read` events
     - Design: Repo_Reader
     - _Requirements: 10.1, 10.3, 10.4, 10.5, 10.6, 34.1, 34.2, 34.3, 34.4, 34.5_
   - [x]* 5.6 Write unit tests for the Repo_Reader
@@ -269,6 +269,17 @@ Conventions:
     - `packages/shared/src/runtime.ts` types; `apps/server/src/runtime/pi.ts`: event mapping table, `message_progress` every 5 s and at the first delta, deltas as SSE frames only, `message_incomplete` plus `failure` on a break, non-streaming fallback note, `beforeToolCall` whitelist, abort
     - Design: AgentRuntime interface, PiRuntime
     - _Requirements: 3.6, 3.7, 3.8, 3.9, 3.11, 27.7, 27.10, 30.9, 30.10, 23.7_
+  - [ ] 6.4a Implement the Repo_Map and the agent read tools
+    - `apps/server/src/reader/map.ts`: path, size, lines, language, top-level symbols by per-language regular expressions; map-only classification for tests, vendored and generated files; tools `read_file` with line ranges (400 lines or 16 KB), `search_repo` (30 matches with context), `read_memo`, `search_memo`, all confined to the download
+    - Design: Repo_Memo
+    - _Requirements: 10.3, 10.7_
+  - [ ] 6.4b Implement the Repo_Memo builder
+    - Bottom-up: batched file memos per directory (48 KB), directory rollups from children only, root memo; zod schemas; `memo_written` events; concurrency 4; time-short fallback to map-only rollups with the root memo still written; cache by commit and prompt version
+    - Design: Repo_Memo
+    - _Requirements: 10.7, 10.8, 10.9_
+  - [ ]* 6.4c Write tests for the Repo_Memo
+    - Every read file covered by a memo or a map entry; every directory memo covers its children; root exists; cache hit on the same commit; a memo is never accepted as evidence; a missing file memo is marked, not invented (scripted fake model)
+    - _Requirements: 10.7, 10.9, 24_
   - [ ]* 6.5 Write property test for evidence marks
     - **Property 9: Evidence check marks**
     - **Validates: Requirements 24.2, 24.3, 24.4, 24.5, 11.5, 11.6, 37.6**
@@ -283,7 +294,7 @@ Conventions:
     - Stream break keeps partial text and records the failure; truncation is discarded; blocked tool recorded as rejected by a safety rule; reasoning persisted with the complete message
     - _Requirements: 3.9, 3.12, 23.7, 30.13_
   - [ ] 6.9 Implement the reading skim and the meeting
-    - Reader skim in `reading` (`read_file`, `search_repo`, `record_finding`, no `ask_judge`) leading to `adapter_branch`; the meeting starts after evidence gathering with the `evidence_summary` built by code (reading findings and skipped parts; experience notes, screenshots, "experience unavailable" and partial labels once milestone 11 adds them); meeting rounds (fixed order, 2 rounds), `submit_statement` with findings, evidence and A/B/unclear workflows, Unverified marks, Facilitator `ask_judge` with 120 s wait, `submit_meeting_summary` leading to `deciding`
+    - Reader in `reading` builds the Repo_Memo (6.4b) and records findings (`read_file`, `search_repo`, `record_finding`, no `ask_judge`) leading to `adapter_branch`; the meeting starts after evidence gathering with the `evidence_summary` built by code (reading findings and skipped parts; experience notes, screenshots, "experience unavailable" and partial labels once milestone 11 adds them); meeting rounds (fixed order, 2 rounds), `submit_statement` with findings, evidence and A/B/unclear workflows, Unverified marks, Facilitator `ask_judge` with 120 s wait, `submit_meeting_summary` leading to `deciding`
     - Note: until milestone 11 wires `sandbox_start` and `browser_experience`, an Adapted_Repo Task records the experience as "experience unavailable (not built yet)" and goes from `adapter_branch` to `meeting`, so the label stays honest
     - Design: Meeting, Repo_Reader, Flow_Graph
     - _Requirements: 10.2, 11.1, 11.3, 11.4, 11.5, 11.6, 11.7, 11.8, 11.9, 15.1, 18.1, 18.6_

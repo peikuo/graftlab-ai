@@ -44,7 +44,7 @@ export interface FlowEdge {
 const min = (m: number) => m * 60;
 
 export const NODES: Record<NodeId, FlowNode> = {
-  reading: { id: "reading", kind: "agent_loop", tools: ["read_file", "search_repo", "record_finding"], timeoutS: min(10), requirements: "R10, R34" },
+  reading: { id: "reading", kind: "agent_loop", tools: ["read_file", "search_repo", "read_memo", "search_memo", "submit_memos", "record_finding"], timeoutS: min(15), requirements: "R10, R34" },
   adapter_branch: { id: "adapter_branch", kind: "auto", tools: [], timeoutS: 5, requirements: "R25" },
   sandbox_start: { id: "sandbox_start", kind: "auto", tools: [], timeoutS: min(3), requirements: "R13, R29" },
   browser_experience: {

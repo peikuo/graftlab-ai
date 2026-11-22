@@ -101,6 +101,7 @@ Moved to `reference-target-linkding.md`, section "Verified linkding facts" (incl
 - **Viewer**: A person who only watches the current Task and cannot operate.
 - **Task**: One complete analysis and (if adapted) execution flow started by submitting a GitHub URL.
 - **Agent_Role**: An AI agent inside the Studio, defined by the function it performs in one flow step, not by a human job title (decided by the user, 2026-11-22). Function agents: Reader, Explorer, Facilitator, Planner, Reviewer; the Code_Agent is the development agent. Meeting_Perspectives take part only in the meeting. See "Roles and Queue Rules".
+- **Repo_Memo**: The tree of short summaries of a downloaded repository: one memo per file (or a code-built map entry for tests, vendored and generated files), one per directory built from its children's memos, and one for the whole repository. Agents read it top-down to find where things are, then open only the files they need. An LLM description, not evidence.
 - **Meeting_Perspective**: An Agent_Role that only speaks in the meeting and argues from one fixed viewpoint, so that the Judge sees real disagreement: User_Value (what the user gains, purpose A or B), Feasibility (interfaces, data, effort, how it can be built) and Risk (what can go wrong; safety rules are still enforced by Studio code).
 - **Reviewer**: The Agent_Role that, in the development stage, reviews the files changed by the Code_Agent against the Feature_Contract and the Decision_Doc and answers technical questions of the Code_Agent; for stories whose confirmed approach executes the workflow by operating linkding through its API, it designs the Demo_Case. Its verdicts and Demo_Cases are LLM judgments (assessments, not guarantees) and are never success.
 - **Review_Verdict**: The Reviewer's result for one story attempt: approve, request changes, or escalate. Labeled "reviewed by Reviewer (LLM judgment)".
@@ -531,6 +532,9 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 4. THE Studio SHALL record each reading event into the Event_Stream with a timestamp.
 5. IF the download fails, THEN THE Studio SHALL display the failure reason, record it in the Event_Stream, and stop the Task without retrying silently.
 6. WHERE the repository exceeds the read-volume limit defined in Requirement 34, THE Repo_Reader SHALL display which parts were skipped.
+7. WHEN the download finishes, THE Studio SHALL build a Repo_Memo: a tree of short summaries from the files up through each directory to one summary of the whole repository, so that later agents can find what a feature does and where its code is without loading whole files into their context (decided by the user 2026-11-23).
+8. WHILE the Repo_Memo is built, THE Studio SHALL show each summary as it is written, with its path; a summary is an LLM description (best effort) and SHALL NOT count as evidence (Requirement 24 still needs a quoted snippet from the file).
+9. THE Studio SHALL cache the Repo_Memo per repository commit, so that a repeated Task on the same commit does not build it again.
 
 ### Requirement 11: Multi-role meeting analysis
 
@@ -1214,7 +1218,7 @@ Nothing here may be assumed:
 | 7 Honest progress and Replay | A, B | Check that no progress value lacks a data source; "Replay" label check |
 | 8 Accessibility | A | Reduced-motion check; keyboard-only operation test; status text present |
 | 9 Home page input | A, B | Example test for form input; property test for URL validation |
-| 10 Download and read | A, B | Read-only and no-execution check; example test for events |
+| 10 Download and read | A, B | Read-only and no-execution check; example test for events; Repo_Memo tests: every read file is covered by a file memo or a code-built map entry, every directory memo covers its children, the root memo exists, a second Task on the same commit reads the memo from the cache, a memo is never accepted as evidence |
 | 11 Meeting analysis | A, B, C | Schema validation of role statements and evidence marks; example test that a role turn without a valid statement is recorded as failed; state machine check that the meeting starts only after evidence gathering (including after a recorded gathering failure or an early end by the Judge); example test that the meeting starts with the gathered-evidence summary, labeled partial after an early end and "experience unavailable" after a failed experience; example test that Judge messages received during gathering are delivered to the roles at the meeting start; participation and question quality are Best_Effort_Goals measured in the benchmark, not tested as guarantees |
 | 12 Interjection | A, B | Example test that interjections enter the Event_Stream; example test that a Judge message sent during gathering is acknowledged, recorded and delivered at the meeting start; check that no question card is opened during gathering |
 | 13 Sandbox | A, B | Integration test for start and reset; example test that a Sandbox start failure during gathering is recorded, labels the experience "experience unavailable" and continues to the meeting; example test that the pre-execution target check ends the Task in `failed` with the label "not executed" when the target baseline cannot start |
