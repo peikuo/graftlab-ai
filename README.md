@@ -38,6 +38,7 @@ Direct dependencies so far (the full list, including the pi packages, Playwright
 | fast-check | MIT | Property-based tests |
 | TypeScript | Apache-2.0 | Type checking |
 | tsx | MIT | Running the TypeScript backend |
+| pi-ai, pi-agent-core (@earendil-works) | MIT | Agent loop and LLM streaming in the backend |
 | Playwright (@playwright/test) | Apache-2.0 | Browser checks and UI screenshots in development |
 | Testing Library (@testing-library/react, @testing-library/dom) | MIT | Workspace UI tests |
 | jsdom | MIT | DOM for UI tests |
