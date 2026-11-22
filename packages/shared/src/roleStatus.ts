@@ -51,7 +51,7 @@ export function roleStatus(state: UiState, actor: ActorKey, now: number, recency
   // 2. An open question from the role.
   const question = Object.values(state.questions).find((q) => q.from === actor && !q.answered);
   if (question) {
-    const party = question.askedParty === "judge" ? "you" : "Tech_Manager";
+    const party = question.askedParty === "judge" ? "you" : "Reviewer";
     return { kind: "waiting_for_answer", text: `waiting for answer from ${party}, ${secs(question.ts, now)} s`, working: false };
   }
 
@@ -81,13 +81,15 @@ export function roleStatus(state: UiState, actor: ActorKey, now: number, recency
   // 9. A recent browser action or observation (the Browser_Use operator duty).
   // Reading and browser use count only while they are the role's latest activity, so a role that has moved on
   // (for example to the meeting) does not keep showing an old activity for the rest of the Recency_Window.
+  // They also end when the flow leaves the step where they happen (browser use in browser_experience,
+  // reading in reading), so an agent does not keep glowing after the next step has started.
   const latest = state.lastOtherByActor[actor]?.seq;
   const browser = state.lastBrowserByActor[actor];
-  if (browser && browser.seq === latest && recent(browser.ts)) return { kind: "using_browser", text: `using the browser: ${browser.what}`, working: true, backedBySeq: browser.seq };
+  if (browser && browser.seq === latest && recent(browser.ts) && (state.node === null || state.node === "browser_experience")) return { kind: "using_browser", text: `using the browser: ${browser.what}`, working: true, backedBySeq: browser.seq };
 
   // 10. A recent file read.
   const read = state.lastFileReadByActor[actor];
-  if (read && read.seq === latest && recent(read.ts)) return { kind: "reading", text: `reading ${read.path}`, working: true, backedBySeq: read.seq };
+  if (read && read.seq === latest && recent(read.ts) && (state.node === null || !["sandbox_start", "browser_experience", "meeting"].includes(state.node))) return { kind: "reading", text: `reading ${read.path}`, working: true, backedBySeq: read.seq };
 
   return { kind: "idle", text: "idle", working: false };
 }

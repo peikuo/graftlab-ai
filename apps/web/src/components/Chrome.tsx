@@ -1,48 +1,40 @@
-// Top bar, Flow_Graph line and the Interjection_Input (R1.3, R5.1, R5.2, R6.1-R6.5, R7.1-R7.3, R36.8).
+// Header, Flow line (live app) and the composer (Interjection_Input) (R1.3, R5.1, R5.2, R6.1-R6.5, R7.1-R7.3, R36.8).
 import { useState } from "react";
 import { ROLE_IDS, type StudioEvent, type UiState } from "@graftlab/shared";
 import type { QueueView } from "../api.ts";
 import { ACTOR_LABEL } from "../roles.ts";
-
-const MAIN_FLOW = ["reading", "adapter_branch", "sandbox_start", "browser_experience", "meeting", "deciding", "awaiting_confirmation", "frozen", "planning", "documenting", "target_check"] as const;
+import { NODE_SHORT } from "./Guide.tsx";
 
 export function TopBar({ state, connected, queue }: { state: UiState; connected: boolean; queue: QueueView | null }) {
   return (
     <header className="topbar">
-      <span className="brand">🧪 GraftLab AI</span>
-      <span className="repo mono">{state.repo ? `${state.repo.owner}/${state.repo.repo}` : "no Task"}</span>
-      {state.repo?.repoKind === "other" && <span className="tag">Analysis only</span>}
-      <span className="spacer" />
-      <span className="queue">
-        {queue?.role === "operator" && "you are the operator"}
-        {queue?.role === "queued" && `queued: position ${queue.position}`}
-        {queue?.role === "watching" && "watching"}
+      <span className="brand">
+        <span className="brand-mark" aria-hidden="true">🧪</span> GraftLab <b>AI</b>
       </span>
-      <span className={`live ${connected ? "on" : "off"}`}>{connected ? "● LIVE" : "○ reconnecting"}</span>
+      {state.repo && <span className="chip mono">{`${state.repo.owner}/${state.repo.repo}`}</span>}
+      {state.repo?.repoKind === "other" && <span className="badge">Analysis only</span>}
+      <span className="spacer" />
+      <span className="muted small">
+        {queue?.role === "operator" && "You are the operator"}
+        {queue?.role === "queued" && `Queued: position ${queue.position}`}
+        {queue?.role === "watching" && "Watching"}
+      </span>
+      <span className={`badge ${connected ? "green" : ""}`}>{connected ? "● LIVE" : "○ reconnecting"}</span>
     </header>
   );
 }
 
+/** A compact current-step line for the live app; progress is a number only when it comes from data (R7.1-R7.3). */
 export function FlowLine({ state }: { state: UiState }) {
   const node = state.node;
-  const idx = node ? MAIN_FLOW.indexOf(node as (typeof MAIN_FLOW)[number]) : -1;
   const filesRead = state.feed.filter((f) => f.type === "file_read").length;
   return (
-    <nav className="flowline" aria-label="Flow">
-      <ol>
-        {MAIN_FLOW.map((n, i) => (
-          <li key={n} className={n === node ? "current" : idx > i ? "done" : ""} aria-current={n === node ? "step" : undefined}>
-            {idx > i ? "✓ " : n === node ? "▶ " : ""}
-            {n}
-          </li>
-        ))}
-        {node && idx < 0 && <li className="current" aria-current="step">▶ {node}</li>}
-      </ol>
-      <div className="progress" aria-live="polite">
-        {/* A number only when it comes from data (R7.1-R7.3). */}
-        {node === "reading" ? `${filesRead} files read` : node ? <span className="indeterminate">in progress: {node}</span> : "idle"}
-      </div>
-    </nav>
+    <div className="flowline" aria-live="polite">
+      <span className="muted small">Current step</span>
+      <strong>{node ? (NODE_SHORT[node] ?? node) : "Nothing running"}</strong>
+      {node === "reading" && <span className="muted small">{filesRead} files read</span>}
+      {node && node !== "reading" && !state.terminal && <span className="indeterminate" aria-hidden="true" />}
+    </div>
   );
 }
 
@@ -59,14 +51,14 @@ export function InterjectionInput({ state, events, queue, onSend }: { state: UiS
   const statusText = !sent
     ? ""
     : sent.state === "sending"
-      ? "sending…"
+      ? "Sending…"
       : sent.state === "failed"
-        ? `not sent: ${sent.error}`
+        ? `Not sent: ${sent.error}`
         : delivered || (record?.type === "judge_message" && record.payload.status === "delivered")
-          ? "delivered"
+          ? "Delivered to the team"
           : record?.type === "judge_message" && record.payload.status === "queued"
-            ? "received, delivered when the team can take it"
-            : "received";
+            ? "Received. The team reads it when the meeting starts."
+            : "Received";
 
   const submit = async () => {
     if (!state.taskId || !text.trim()) return;
@@ -79,40 +71,46 @@ export function InterjectionInput({ state, events, queue, onSend }: { state: UiS
   };
 
   return (
-    <form
-      className="interject"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void submit();
-      }}
-    >
-      <label className="sr-only" htmlFor="to">Addressee</label>
-      <select id="to" value={to} onChange={(e) => setTo(e.target.value)} disabled={!canOperate}>
-        <option value="all">To: everyone</option>
-        {ROLE_IDS.map((r) => (
-          <option key={r} value={r}>
-            To: {ACTOR_LABEL[r]?.name ?? r}
-          </option>
-        ))}
-      </select>
-      <label className="sr-only" htmlFor="msg">Message to the team</label>
-      <input
-        id="msg"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        disabled={!canOperate}
-        placeholder={
-          state.terminal
-            ? "The Task has ended."
-            : canOperate
-              ? "Message the team at any time…"
-              : queue?.role === "queued"
-                ? `You are watching (queue position ${queue.position}).`
-                : "Join the queue to talk to the team."
-        }
-      />
-      <button type="submit" disabled={!canOperate || !text.trim()}>Send</button>
-      <span className={`send-status${sent?.state === "failed" ? " failure-text" : ""}`} aria-live="polite">{statusText}</span>
-    </form>
+    <div className="composer-wrap">
+      <form
+        className="composer"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <label className="sr-only" htmlFor="to">Send to</label>
+        <select id="to" className="composer-to" value={to} onChange={(e) => setTo(e.target.value)} disabled={!canOperate}>
+          <option value="all">Everyone</option>
+          {ROLE_IDS.map((r) => (
+            <option key={r} value={r}>
+              {ACTOR_LABEL[r]?.name ?? r}
+            </option>
+          ))}
+        </select>
+        <label className="sr-only" htmlFor="msg">Message to the team</label>
+        <input
+          id="msg"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          disabled={!canOperate}
+          placeholder={
+            state.terminal
+              ? "The Task has ended."
+              : canOperate
+                ? "Tell the team something at any time…"
+                : queue?.role === "queued"
+                  ? `You are watching (queue position ${queue.position}).`
+                  : "Join the queue to talk to the team."
+          }
+        />
+        <button type="submit" className="composer-send" disabled={!canOperate || !text.trim()} aria-label="Send">
+          ↑
+        </button>
+      </form>
+      <span className={`composer-status${sent?.state === "failed" ? " failure-text" : ""}`} aria-live="polite">
+        {statusText}
+      </span>
+    </div>
   );
 }

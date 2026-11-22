@@ -20,7 +20,7 @@ async function setup(): Promise<{ studio: Studio; store: EventStore }> {
   const studio = createStudio({ secrets, heartbeatMs: 60_000 });
   const store = await EventStore.open({ dataDir, taskId: "t1", secrets });
   studio.setCurrent(store);
-  await store.append({ type: "card_opened", node: "meeting", actor: { kind: "role", roleId: "moderator" }, payload: { cardId: "q1", kind: "question", title: "Confirm?", body: "", options: [{ id: "yes", label: "Yes" }], allowFreeText: true } });
+  await store.append({ type: "card_opened", node: "meeting", actor: { kind: "role", roleId: "facilitator" }, payload: { cardId: "q1", kind: "question", title: "Confirm?", body: "", options: [{ id: "yes", label: "Yes" }], allowFreeText: true } });
   cleanups.push(async () => {
     await studio.app.close();
     await store.close();
@@ -96,7 +96,7 @@ describe("queue and commands", () => {
     };
     await readUntil('"role":"queued"');
     expect(text).toContain("id: 1\nevent: event\n");
-    await store.append({ type: "file_read", node: "meeting", actor: { kind: "role", roleId: "architecture" }, payload: { path: "a.py", bytes: 1 } });
+    await store.append({ type: "file_read", node: "meeting", actor: { kind: "role", roleId: "reader" }, payload: { path: "a.py", bytes: 1 } });
     await readUntil("id: 2\n");
     ctrl.abort();
   });

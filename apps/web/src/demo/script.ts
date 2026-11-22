@@ -4,7 +4,7 @@ import type { Draft, ReviewItem } from "../components/DecisionReview.tsx";
 import type { DecisionDesk } from "./decision.ts";
 import type { DemoEngine } from "./engine.ts";
 
-const role = (roleId: "moderator" | "product" | "architecture" | "risk_and_security" | "verification" | "tech_manager") => ({ kind: "role" as const, roleId });
+const role = (roleId: "reader" | "explorer" | "facilitator" | "planner" | "reviewer" | "user_value" | "feasibility" | "risk") => ({ kind: "role" as const, roleId });
 const hash = (s: string) => {
   let h = 0;
   for (const c of s) h = (h * 31 + c.charCodeAt(0)) | 0;
@@ -59,7 +59,7 @@ function revise(d: Draft, rejected: { item: ReviewItem; reason: string }[]): Dra
 
 async function replyToMessages(e: DemoEngine): Promise<void> {
   for (const m of e.takeMessages()) {
-    await e.say("moderator", `You said: “${m.text}”. Noted. I will keep it in mind for the next step and bring it into the decision if it changes anything.`);
+    await e.say("facilitator", `You said: “${m.text}”. Noted. I will keep it in mind for the next step and bring it into the decision if it changes anything.`);
   }
 }
 
@@ -76,12 +76,12 @@ export async function runDemo(e: DemoEngine, desk: DecisionDesk, url: string): P
     ["bookmarks/templates/bookmarks/form.html", 5320],
   ] as const) {
     await e.sleep(650);
-    e.emit("file_read", { path, bytes }, role("architecture"));
+    e.emit("file_read", { path, bytes }, role("reader"));
   }
   await e.sleep(400);
-  e.emit("finding_recorded", { kind: "endpoint", text: "There is a REST API to create, change and archive bookmarks", evidence: [{ path: "bookmarks/api/routes.py", snippet: "class BookmarkViewSet", status: "passed" }], evidenceStatus: "passed" }, role("architecture"));
+  e.emit("finding_recorded", { kind: "endpoint", text: "There is a REST API to create, change and archive bookmarks", evidence: [{ path: "bookmarks/api/routes.py", snippet: "class BookmarkViewSet", status: "passed" }], evidenceStatus: "passed" }, role("reader"));
   await e.sleep(400);
-  e.emit("finding_recorded", { kind: "finding", text: "Tags are typed by hand; nothing suggests them", evidence: [{ path: "bookmarks/services/tags.py", snippet: "def get_or_create_tags", status: "passed" }], evidenceStatus: "passed" }, role("architecture"));
+  e.emit("finding_recorded", { kind: "finding", text: "Tags are typed by hand; nothing suggests them", evidence: [{ path: "bookmarks/services/tags.py", snippet: "def get_or_create_tags", status: "passed" }], evidenceStatus: "passed" }, role("reader"));
   await e.sleep(500);
   e.enter("adapter_branch", "reading_done");
   await e.sleep(500);
@@ -95,7 +95,7 @@ export async function runDemo(e: DemoEngine, desk: DecisionDesk, url: string): P
   e.emit("tool_finished", { callId: "sb", tool: "sandbox_start", ok: true, outputSummary: "app ready in 34 s, 12 test bookmarks loaded" });
   if (!early) {
     e.enter("browser_experience", "sandbox_ready");
-    const op = role("product");
+    const op = role("explorer");
     const steps: [string, string, boolean, string?][] = [
       ["open", "the bookmarks page", true, "A list of 12 bookmarks with search and a tag cloud"],
       ["click", "button “Add bookmark”", false],
@@ -120,37 +120,37 @@ export async function runDemo(e: DemoEngine, desk: DecisionDesk, url: string): P
   // F3: meeting
   e.emit("evidence_summary", { findings: ["REST API for bookmarks", "Tags are typed by hand"], skipped: [], experienceNotes: early ? ["You started the meeting early"] : ["Adding a bookmark needs tags typed by hand", "One failed click, recovered"], screenshotRefs: [], partial: early });
   const queued = e.takeMessages();
-  if (queued.length > 0) e.emit("judge_message_delivered", { clientMsgIds: queued.map((m) => m.clientMsgId), deliveredTo: ["moderator", "product", "architecture", "risk_and_security", "verification"] });
-  await e.say("moderator", `Welcome. We read 6 files${early ? " and you started the meeting early, so the app test is partial" : " and tried the app: adding a bookmark works, but every tag must be typed by hand"}.${queued.length ? ` You asked: “${queued.map((m) => m.text).join("”, “")}”. We will cover it.` : ""} Product, where can AI help most?`);
+  if (queued.length > 0) e.emit("judge_message_delivered", { clientMsgIds: queued.map((m) => m.clientMsgId), deliveredTo: ["facilitator", "user_value", "feasibility", "risk"] });
+  await e.say("facilitator", `Welcome. We read 6 files${early ? " and you started the meeting early, so the app test is partial" : " and tried the app: adding a bookmark works, but every tag must be typed by hand"}.${queued.length ? ` You asked: “${queued.map((m) => m.text).join("”, “")}”. We will cover it.` : ""} User_Value, where can AI help most?`);
   await e.say(
-    "product",
+    "user_value",
     "The add form is where people spend effort. Suggesting tags from the tags they already use saves typing and keeps their tag list tidy. The user should stay in control.",
     "Who is the user? Someone saving links quickly. Pain: typing tags, inconsistent tags. AI can suggest, but must not invent a messy tag list. Purpose B: AI helps, the person decides.",
   );
-  await e.say("architecture", "This is a small change: one endpoint that returns matching tags, and a button in the add form. The data is already there in the tag table.");
-  await e.say("risk_and_security", "One risk: never suggest tags from another user's data. Suggestions must only use the signed-in user's tags.");
+  await e.say("feasibility", "This is a small change: one endpoint that returns matching tags, and a button on the add form. The data is already in the tag table. Applying suggestions automatically would be even simpler to build.");
+  await e.say("risk", "Two risks. Never suggest tags from another user's data. And automatic tags can quietly fill the list with wrong ones, so I would let the user confirm.");
   await replyToMessages(e);
   const q = await e.ask(
     "q1",
-    { kind: "question", title: "Should suggested tags be applied automatically, or only after you click them?", body: "Product prefers you to confirm each tag. Architecture says automatic is simpler to build.", options: [{ id: "confirm", label: "Only after I click them" }, { id: "auto", label: "Automatically" }], allowFreeText: true },
-    role("moderator"),
+    { kind: "question", title: "Should suggested tags be applied automatically, or only after you click them?", body: "User_Value and Risk want you to confirm each tag. Feasibility says automatic is simpler to build.", options: [{ id: "confirm", label: "Only after I click them" }, { id: "auto", label: "Automatically" }], allowFreeText: true },
+    role("facilitator"),
   );
   const answer = q.optionId ?? "text";
-  await e.say("moderator", q.text ? `Thanks. Your answer: “${q.text}”. We will write the decision draft with that.` : answer === "auto" ? "Thanks: suggestions are applied automatically. We will write the decision draft with that." : "Thanks: nothing is applied until you click a suggestion. We will write the decision draft with that.");
-  await e.say("verification", "I will turn the decision into checks the Verifier can run without AI: a browser check on the form and linkding's own tests.");
+  await e.say("facilitator", q.text ? `Thanks. Your answer: “${q.text}”. We will write the decision draft with that.` : answer === "auto" ? "Thanks: suggestions are applied automatically. We will write the decision draft with that." : "Thanks: nothing is applied until you click a suggestion. We will write the decision draft with that.");
+  await e.say("facilitator", "I will now write the decision draft, including checks the Verifier can run without AI: a browser check on the form and linkding's own tests.");
   e.enter("deciding", "meeting_summary_valid");
 
   // F6: decision with item review and freeze
   let draft = firstDraft(answer);
   for (;;) {
-    await e.say("moderator", draft.number === 1 ? "The decision draft is ready. Please review each item on the right." : `Draft ${draft.number} is ready. We changed only the items you rejected; the others keep your verdict.`);
+    await e.say("facilitator", draft.number === 1 ? "The decision draft is ready. Please review each item on the right." : `Draft ${draft.number} is ready. We changed only the items you rejected; the others keep your verdict.`);
     desk.setDraft(draft);
     e.enter("awaiting_confirmation", "draft_valid");
     await e.waitSignal("decision");
     const rejected = desk.rejected();
     if (rejected.length === 0) break;
     e.enter("deciding", "send_back");
-    await e.say("architecture", `Revising ${rejected.map((r) => r.item.title.replace(/^\d+ /, "")).join(" and ")} using your reasons.`);
+    await e.say("facilitator", `Revising ${rejected.map((r) => r.item.title.replace(/^\d+ /, "")).join(" and ")} using your reasons.`);
     draft = revise(draft, rejected);
   }
   e.emit("decision_doc_version", { version: 1, content: { draft: draft.draftId, approach: desk.selected }, hash: hash(JSON.stringify(draft)) });
@@ -160,7 +160,7 @@ export async function runDemo(e: DemoEngine, desk: DecisionDesk, url: string): P
 
   // F7-F8: planning and documents
   e.enter("planning", "frozen_recorded");
-  await e.say("product", "Two stories. S1: suggest tags on the add form. S2: the same on the edit form. Each has a contract: what it must do, what it must not do, how it is checked.");
+  await e.say("planner", "Two stories. S1: suggest tags on the add form. S2: the same on the edit form. Each has a contract: what it must do, what it must not do, how it is checked.");
   e.emit("artifact_updated", { artifactKind: "doc", ref: "backlog", title: "Product backlog (2 stories)" });
   e.enter("documenting", "backlog_valid");
   for (const t of ["Requirements", "Design", "Tasks", "Task board"]) {
@@ -185,7 +185,7 @@ export async function runDemo(e: DemoEngine, desk: DecisionDesk, url: string): P
   const dq = await e.ask(
     "q2",
     { kind: "question", title: "Should suggestions include tags you have used only once?", body: "The developer stopped to ask instead of guessing. This is about how the feature behaves, so it comes to you.", options: [{ id: "yes", label: "Yes, all my tags" }, { id: "often", label: "Only tags I use often" }], allowFreeText: true },
-    role("moderator"),
+    role("facilitator"),
   );
   e.emit("question_answered", { questionId: "dq1", answer: dq.text ?? (dq.optionId === "often" ? "only tags used often" : "all tags") }, ca);
   for (const [i, f] of ["bookmarks/services/tags.py", "bookmarks/views/bookmarks.py", "bookmarks/templates/bookmarks/form.html", "bookmarks/settings.py"].entries()) {
@@ -195,16 +195,16 @@ export async function runDemo(e: DemoEngine, desk: DecisionDesk, url: string): P
   }
   e.emit("code_change", { storyId: "S1", attempt: 1, changedFiles: ["bookmarks/services/tags.py", "bookmarks/views/bookmarks.py", "bookmarks/templates/bookmarks/form.html", "bookmarks/settings.py"], diffRef: "diff-1" }, ca);
   e.enter("story_review", "attempt_finished");
-  await e.say("tech_manager", "The change to settings is not part of this story's contract. Please remove it and keep the rest.");
-  e.emit("review_verdict", { storyId: "S1", attempt: 1, verdict: "request_changes", reasons: ["settings changed outside the contract"], label: "reviewed by Tech_Manager (LLM judgment)" }, role("tech_manager"));
+  await e.say("reviewer", "The change to settings is not part of this story's contract. Please remove it and keep the rest.");
+  e.emit("review_verdict", { storyId: "S1", attempt: 1, verdict: "request_changes", reasons: ["settings changed outside the contract"], label: "reviewed by Reviewer (LLM judgment)" }, role("reviewer"));
   e.enter("story_develop", "request_changes");
   e.emit("tool_started", { callId: "w9", tool: "edit", inputSummary: "revert bookmarks/settings.py" }, ca);
   await e.sleep(900);
   e.emit("tool_finished", { callId: "w9", tool: "edit", ok: true, outputSummary: "" }, ca);
   e.emit("code_change", { storyId: "S1", attempt: 2, changedFiles: ["bookmarks/services/tags.py", "bookmarks/views/bookmarks.py", "bookmarks/templates/bookmarks/form.html"], diffRef: "diff-2" }, ca);
   e.enter("story_review", "attempt_finished");
-  await e.say("tech_manager", "Now the change stays inside the contract. Approved. This is my judgment only; the Verifier decides success.");
-  e.emit("review_verdict", { storyId: "S1", attempt: 2, verdict: "approve", reasons: [], label: "reviewed by Tech_Manager (LLM judgment)" }, role("tech_manager"));
+  await e.say("reviewer", "Now the change stays inside the contract. Approved. This is my judgment only; the Verifier decides success.");
+  e.emit("review_verdict", { storyId: "S1", attempt: 2, verdict: "approve", reasons: [], label: "reviewed by Reviewer (LLM judgment)" }, role("reviewer"));
   e.enter("story_run", "approve");
   e.emit("tool_started", { callId: "run", tool: "start changed app", inputSummary: "" });
   await e.sleep(2200);
@@ -215,7 +215,7 @@ export async function runDemo(e: DemoEngine, desk: DecisionDesk, url: string): P
     const c = await e.ask(
       `c${round}`,
       { kind: "checkpoint", title: "S1 Suggest tags on the add form", body: "This is the changed app. Click “Suggest tags” to see your own tags. Is this what you wanted?", options: [{ id: "ok", label: "Yes, this is right" }, { id: "no", label: "Not right" }], allowFreeText: true },
-      role("moderator"),
+      role("facilitator"),
     );
     if (c.optionId === "ok") break;
     e.enter("story_develop", "checkpoint_feedback");
@@ -223,7 +223,7 @@ export async function runDemo(e: DemoEngine, desk: DecisionDesk, url: string): P
     await e.sleep(1500);
     e.emit("code_change", { storyId: "S1", attempt: 3, changedFiles: ["bookmarks/templates/bookmarks/form.html"], diffRef: "diff-3" }, ca);
     e.enter("story_review", "attempt_finished");
-    e.emit("review_verdict", { storyId: "S1", attempt: 3, verdict: "approve", reasons: [], label: "reviewed by Tech_Manager (LLM judgment)" }, role("tech_manager"));
+    e.emit("review_verdict", { storyId: "S1", attempt: 3, verdict: "approve", reasons: [], label: "reviewed by Reviewer (LLM judgment)" }, role("reviewer"));
     e.enter("story_run", "approve");
     await e.sleep(1500);
   }

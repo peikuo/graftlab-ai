@@ -59,7 +59,7 @@ export interface UiState {
   lastEventByActor: Partial<Record<ActorKey, { seq: number; ts: string; type: StudioEvent["type"] }>>;
   openTools: Record<string, { actor: ActorKey; tool: string; ts: string }>;
   decisionDocs: { version: number; hash: string; frozen: boolean }[];
-  questions: Record<string, { questionId: string; from: ActorKey; askedParty: "tech_manager" | "judge"; ts: string; answered: boolean }>;
+  questions: Record<string, { questionId: string; from: ActorKey; askedParty: "reviewer" | "judge"; ts: string; answered: boolean }>;
   /** Latest failure and latest other event per actor, for the "blocked" Role_Status rule. */
   lastFailureByActor: Partial<Record<ActorKey, { seq: number; ts: string; detail: string }>>;
   lastOtherByActor: Partial<Record<ActorKey, { seq: number; ts: string }>>;

@@ -21,16 +21,16 @@ const clock = () => {
   return () => new Date((t += 1000));
 };
 
-const fileRead = (path: string): EventDraft => ({ type: "file_read", node: "reading", actor: { kind: "role", roleId: "architecture" }, payload: { path, bytes: 10 } });
+const fileRead = (path: string): EventDraft => ({ type: "file_read", node: "reading", actor: { kind: "role", roleId: "reader" }, payload: { path, bytes: 10 } });
 
 // Free-text drafts where a leaked secret could realistically appear.
 const textDraft = (text: string): fc.Arbitrary<EventDraft> =>
   fc.constantFrom<EventDraft>(
-    { type: "message_completed", node: "meeting", actor: { kind: "role", roleId: "product" }, payload: { messageId: "m1", text, reasoning: text, finishReason: "stop" } },
+    { type: "message_completed", node: "meeting", actor: { kind: "role", roleId: "user_value" }, payload: { messageId: "m1", text, reasoning: text, finishReason: "stop" } },
     { type: "tool_finished", node: "story_develop", actor: { kind: "code_agent" }, payload: { callId: "c1", tool: "bash", ok: false, outputSummary: text } },
     { type: "failure", node: "reading", actor: { kind: "system" }, payload: { failureClass: "interface_call_failure", source: "github", detail: text || "x" } },
-    { type: "browser_observation", node: "browser_experience", actor: { kind: "role", roleId: "product" }, payload: { snapshotSummary: text } },
-    { type: "card_opened", node: "meeting", actor: { kind: "role", roleId: "moderator" }, payload: { cardId: "k1", kind: "question", title: "Q", body: text, options: [], allowFreeText: true } },
+    { type: "browser_observation", node: "browser_experience", actor: { kind: "role", roleId: "user_value" }, payload: { snapshotSummary: text } },
+    { type: "card_opened", node: "meeting", actor: { kind: "role", roleId: "facilitator" }, payload: { cardId: "k1", kind: "question", title: "Q", body: text, options: [], allowFreeText: true } },
   );
 
 describe("EventStore", () => {

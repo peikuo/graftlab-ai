@@ -1,28 +1,35 @@
-// Presence_Card data (design.md, "UI design": avatars and names). Descriptions follow the requirements roles table.
+// Agents shown in the Team panel (requirements.md, "Roles and Queue Rules"; design.md, "UI design").
+// Agents are split by function; the three Meeting_Perspectives appear only during the meeting and the decision.
 import type { ActorKey } from "@graftlab/shared";
+
+export type CardGroup = "work" | "meeting" | "checker";
 
 export interface RoleCard {
   key: ActorKey;
   name: string;
+  /** What the agent does, in a few plain words (shown under the name). */
+  job: string;
   avatar: string;
-  description: string;
-  /** The Verifier is code, not an LLM: a different card with no reasoning section (design.md, "UI design"). */
+  group: CardGroup;
+  /** The Verifier is code, not an LLM: a different card with no reasoning section. */
   kind: "agent" | "verifier";
 }
 
 export const ROLE_CARDS: RoleCard[] = [
-  { key: "moderator", name: "Moderator", avatar: "🧙", description: "Runs the meeting, summarizes, asks you", kind: "agent" },
-  { key: "product", name: "Product", avatar: "🎃", description: "User value and workflows, A or B", kind: "agent" },
-  { key: "architecture", name: "Architecture", avatar: "🦇", description: "Interfaces, data and integration", kind: "agent" },
-  { key: "risk_and_security", name: "Risk_and_Security", avatar: "💀", description: "Risks; rules are enforced by code", kind: "agent" },
-  { key: "verification", name: "Verification", avatar: "👻", description: "Acceptance criteria and checks", kind: "agent" },
-  { key: "tech_manager", name: "Tech_Manager", avatar: "🐈", description: "Reviews changes against the contract", kind: "agent" },
-  { key: "code_agent", name: "Code_Agent", avatar: "🧪", description: "Develops inside the Task container", kind: "agent" },
-  { key: "verifier", name: "Verifier", avatar: "⚖", description: "code, no LLM · the only judge of success", kind: "verifier" },
+  { key: "reader", name: "Reader", job: "Reads the code", avatar: "🦇", group: "work", kind: "agent" },
+  { key: "explorer", name: "Explorer", job: "Tries the app in a browser", avatar: "🕷", group: "work", kind: "agent" },
+  { key: "facilitator", name: "Facilitator", job: "Runs the meeting, writes the decision", avatar: "🧙", group: "work", kind: "agent" },
+  { key: "planner", name: "Planner", job: "Splits work into stories", avatar: "📜", group: "work", kind: "agent" },
+  { key: "code_agent", name: "Code_Agent", job: "Builds in a private copy", avatar: "🧪", group: "work", kind: "agent" },
+  { key: "reviewer", name: "Reviewer", job: "Reviews each change", avatar: "🐈", group: "work", kind: "agent" },
+  { key: "user_value", name: "User_Value", job: "What users gain", avatar: "🎃", group: "meeting", kind: "agent" },
+  { key: "feasibility", name: "Feasibility", job: "How it can be built", avatar: "🧟", group: "meeting", kind: "agent" },
+  { key: "risk", name: "Risk", job: "What can go wrong", avatar: "💀", group: "meeting", kind: "agent" },
+  { key: "verifier", name: "Verifier", job: "Checks the result · code, no AI", avatar: "⚖", group: "checker", kind: "verifier" },
 ];
 
 export const ACTOR_LABEL: Record<string, { name: string; avatar: string }> = {
   ...Object.fromEntries(ROLE_CARDS.map((r) => [r.key, { name: r.name, avatar: r.avatar }])),
-  judge: { name: "You", avatar: "🧑" },
+  judge: { name: "You", avatar: "🙂" },
   system: { name: "Studio", avatar: "⚙" },
 };

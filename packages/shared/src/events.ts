@@ -6,13 +6,18 @@ import { NODE_IDS, TERMINAL_IDS } from "./flow/ids.ts";
 export const EVENT_SCHEMA_VERSION = 1 as const;
 
 export const ROLE_IDS = [
-  "moderator",
-  "product",
-  "architecture",
-  "risk_and_security",
-  "verification",
-  "tech_manager",
+  // Function agents, one per flow step (requirements.md, "Roles and Queue Rules", decided 2026-11-22).
+  "reader",
+  "explorer",
+  "facilitator",
+  "planner",
+  "reviewer",
+  // Meeting_Perspectives: speak only in the meeting.
+  "user_value",
+  "feasibility",
+  "risk",
 ] as const;
+export const MEETING_PERSPECTIVES = ["user_value", "feasibility", "risk"] as const satisfies readonly (typeof ROLE_IDS)[number][];
 export const RoleIdSchema = z.enum(ROLE_IDS);
 export type RoleId = z.infer<typeof RoleIdSchema>;
 
@@ -182,12 +187,12 @@ export const PAYLOADS = {
     attempt: z.number().int().positive(),
     verdict: z.enum(["approve", "request_changes", "escalate"]),
     reasons: z.array(z.string()),
-    label: z.literal("reviewed by Tech_Manager (LLM judgment)"),
+    label: z.literal("reviewed by Reviewer (LLM judgment)"),
   }),
   question_opened: z.object({
     questionId: id,
     from: z.union([z.literal("code_agent"), RoleIdSchema]),
-    askedParty: z.enum(["tech_manager", "judge"]),
+    askedParty: z.enum(["reviewer", "judge"]),
     kind: z.enum(["technical", "feature"]),
     text: nonEmpty,
   }),
@@ -198,7 +203,7 @@ export const PAYLOADS = {
     hash: nonEmpty,
     itemCount: count,
     derivedCheckId: id,
-    label: z.literal("designed by Tech_Manager (LLM judgment)"),
+    label: z.literal("designed by Reviewer (LLM judgment)"),
   }),
   api_write: z.object({
     storyId: id,

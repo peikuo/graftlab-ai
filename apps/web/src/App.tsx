@@ -66,10 +66,12 @@ export function App() {
       {live.error && <div className="banner failure-text" role="alert">{live.error}</div>}
       <main className="workspace">
         <PresenceColumn state={live.state} now={live.now} />
-        <ActivityFeed state={live.state} events={live.events} buffers={live.buffers} onAnswer={answer} />
+        <div className="center">
+          <ActivityFeed state={live.state} events={live.events} buffers={live.buffers} onAnswer={answer} />
+          <InterjectionInput state={live.state} events={live.events} queue={live.queue} onSend={send} />
+        </div>
         <ArtifactArea state={live.state} events={live.events} />
       </main>
-      <InterjectionInput state={live.state} events={live.events} queue={live.queue} onSend={send} />
     </div>
   );
 }

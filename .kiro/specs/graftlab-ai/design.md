@@ -19,7 +19,7 @@ The Studio is one TypeScript monorepo with three parts that matter at run time:
 
 Evidence is gathered before the meeting: the Studio reads the repository and, for an Adapted_Repo, starts the Sandbox and lets the Browser_Use operator experience the target, with live narration and screenshots. The meeting then discusses everything gathered, so it is not interrupted by long waits. A failed Sandbox start or experience is recorded as "experience unavailable" and the meeting proceeds on the reading evidence (R11, R13, R14).
 
-A Task moves through an explicit Flow_Graph stored as data (R36). Agent loops run inside nodes: the meeting roles, planning roles, the Browser_Use operator and the Tech_Manager are pi-agent-core agents inside the backend process; the Code_Agent is `@earendil-works/pi-coding-agent` embedded by a small runner script (our code) that runs inside the Development_Sandbox. All agent roles therefore use one agent family (the pi packages). Leaving a node is decided only by guards over validated, schema-checked outputs, never by free model text (R36.2, R35.6).
+A Task moves through an explicit Flow_Graph stored as data (R36). Agent loops run inside nodes: the Reader, the Explorer (the Browser_Use operator), the Facilitator, the Meeting_Perspectives, the Planner and the Reviewer are pi-agent-core agents inside the backend process; the Code_Agent is `@earendil-works/pi-coding-agent` embedded by a small runner script (our code) that runs inside the Development_Sandbox. All agent roles therefore use one agent family (the pi packages). Leaving a node is decided only by guards over validated, schema-checked outputs, never by free model text (R36.2, R35.6).
 
 Every Studio event passes the secret redactor, is appended to `events.jsonl`, and is then broadcast over Server-Sent Events (SSE). Streamed text is shown live from ephemeral SSE frames and is never persisted; the complete message, including the model-provided reasoning text, is persisted when the stream ends (R3.8, R3.11, R27.7).
 
@@ -32,7 +32,7 @@ Success is decided only by the Verifier, plain TypeScript with no LLM, that runs
 | Language and layout | One npm-workspaces monorepo, TypeScript in all our code, Node >=22.19 | R32, R35.1 |
 | Backend | Fastify, REST for commands, SSE for live events, zod for every schema | R2, R27, R35.6 |
 | Front end | React + Vite SPA, UI state = reducer over ordered events | R1-R8, R26.7, R27.14 |
-| Meeting, planning, Browser_Use operator, Tech_Manager | `@earendil-works/pi-agent-core` with `@earendil-works/pi-ai` DeepSeek provider, in the backend process | R11, R14, R19, R40, R30 |
+| Reader, Explorer (Browser_Use operator), Facilitator, Meeting_Perspectives, Planner, Reviewer | `@earendil-works/pi-agent-core` with `@earendil-works/pi-ai` DeepSeek provider, in the backend process | R11, R14, R19, R40, R30 |
 | Code_Agent | `@earendil-works/pi-coding-agent` 1.5.2 (MIT), embedded by our runner script (`docker/dev-sandbox/runner/`, about 100 lines) inside the Development_Sandbox: allow-listed tools, in-memory session manager, thinking level low, custom `ask_question` tool, JSON-line commands on stdin and normalized JSON-line events on stdout, one long-lived runner process per story attempt | R38, R40 |
 | Runtime swap | Thin `AgentRuntime` interface; fallbacks for the Code_Agent only: DeepSeek Harness runtime, OpenCode, OpenHands SDK (not built in the first version) | Open item 44 |
 | Browser automation | Playwright (Apache-2.0) with headless Chromium in the backend process | R14, R22.2 |
@@ -44,7 +44,7 @@ Success is decided only by the Verifier, plain TypeScript with no LLM, that runs
 | Runtime_Rules (layer B) | `runtime-rules/` with a `VERSION` file | R35, Open item 13 |
 | Output_Docs (layer C) | `data/tasks/<taskId>/docs/` | R20, Open item 13 |
 | Reasoning text | Persisted with `message_completed` | R3.12, Open item 42 |
-| API-operation stories | Tech_Manager designs a Demo_Case with read-only tools; Studio code executes its writes against the Sandbox; the Verifier checks the Demo_Case expected outcome | R18.7-R18.13, R40.18, Open item 50 |
+| API-operation stories | Reviewer designs a Demo_Case with read-only tools; Studio code executes its writes against the Sandbox; the Verifier checks the Demo_Case expected outcome | R18.7-R18.13, R40.18, Open item 50 |
 
 ### Initial values (adjustable by environment variable)
 
@@ -65,7 +65,6 @@ Success is decided only by the Verifier, plain TypeScript with no LLM, that runs
 | Container memory limits | Explicit limit per container; values per deployment, see reference-deployment.md | `GL_MEM_*_MB` | R38.3, Open item 25 |
 | Run_Environment start and health wait | 240 s | `GL_RUN_START_TIMEOUT_S` | R39.11 |
 | Per-node timeouts | see the node table in Flow_Graph | `GL_NODE_TIMEOUT_<NODE>_S` | R36.6, Open item 28 |
-| Agent_Role that performs the Browser_Use operator duty | `product` (to be chosen after the first real run: product or tech_manager) | `GL_BROWSER_ROLE` | Roles and Queue Rules, R14 |
 
 ## Architecture
 
@@ -93,7 +92,7 @@ flowchart LR
             QUEUE["Session and queue lease"]
             RUNNER["Task runner<br/>Flow_Graph stage machine"]
             STORE["Event store<br/>redactor, JSONL, SSE hub"]
-            PIRT["PiRuntime<br/>meeting, planning, operator,<br/>Tech_Manager"]
+            PIRT["PiRuntime<br/>meeting, planning, operator,<br/>Reviewer"]
             HRT["PiCodeRuntime<br/>Code_Agent adapter"]
             READER["Repo_Reader<br/>GitHub REST, cache"]
             EVID["Evidence checker"]
@@ -271,7 +270,7 @@ stateDiagram-v2
     docs_only --> [*]
 ```
 
-API-operation sub-path, used for stories whose confirmed approach executes the workflow by operating the target through its API (R18.2-R18.4, R18.7-R18.13, R15.7, R22.1, R40.18; decided by the user, Open item 50). It is part of the same Flow_Graph data. The read and plan stages of R18.2 are the Tech_Manager designing the Demo_Case: in `api_read` the Tech_Manager reads the relevant target code and the Sandbox test data with read-only tools and submits a Demo_Case with `submit_demo_case`; in `api_plan` Studio code validates it (schema, Item_Count_Cap, Adapter endpoint allow-list, Sandbox target) and derives the Verifier's `api_readback` Acceptance_Check from its expected outcome. Writes in `api_try_one` and `api_write_batch` are executed by Studio code from the validated Demo_Case; no LLM-facing write tool exists, so write capability exists only in the two write stages. Purpose B still needs a schema-valid suggestion with evidence (`api_suggest`) and Judge confirmation (`api_confirm`) before any write. The Verification role does not design a second case; the non-LLM Verifier runs the derived checks:
+API-operation sub-path, used for stories whose confirmed approach executes the workflow by operating the target through its API (R18.2-R18.4, R18.7-R18.13, R15.7, R22.1, R40.18; decided by the user, Open item 50). It is part of the same Flow_Graph data. The read and plan stages of R18.2 are the Reviewer designing the Demo_Case: in `api_read` the Reviewer reads the relevant target code and the Sandbox test data with read-only tools and submits a Demo_Case with `submit_demo_case`; in `api_plan` Studio code validates it (schema, Item_Count_Cap, Adapter endpoint allow-list, Sandbox target) and derives the Verifier's `api_readback` Acceptance_Check from its expected outcome. Writes in `api_try_one` and `api_write_batch` are executed by Studio code from the validated Demo_Case; no LLM-facing write tool exists, so write capability exists only in the two write stages. Purpose B still needs a schema-valid suggestion with evidence (`api_suggest`) and Judge confirmation (`api_confirm`) before any write. No agent designs a second case; the non-LLM Verifier runs the derived checks:
 
 ```mermaid
 stateDiagram-v2
@@ -307,11 +306,11 @@ Node table:
 
 | Node | Kind | Allowed tools (enforced by `beforeToolCall` or by not exposing a tool) | Timeout | Requirements |
 |---|---|---|---|---|
-| reading | agent_loop (evidence gathering) | Studio download (code); Architecture role skim: `read_file`, `search_repo`, `record_finding`; no `ask_judge` | 10 min | R10, R34 |
+| reading | agent_loop (evidence gathering) | Studio download (code); Reader skim: `read_file`, `search_repo`, `record_finding`; no `ask_judge` | 10 min | R10, R34 |
 | adapter_branch | auto | none | 5 s | R25 |
 | sandbox_start | auto (gathering) | none (Studio code: baseline start, provisioning, reset, equality check) | 3 min; timeout or failure takes the edge to `meeting` with `experienceUnavailable` | R13, R29 |
 | browser_experience | agent_loop (gathering) | `browser_open`, `browser_click`, `browser_fill`, `browser_press`, `browser_snapshot`, `browser_screenshot`, `record_note`; no `ask_judge` | 10 min, 40 actions; timeout or failure takes the edge to `meeting` with `experienceUnavailable` | R14 |
-| meeting | agent_loop | `read_file`, `search_repo`, `record_finding`, `submit_statement`; Moderator also `ask_judge`, `submit_meeting_summary` | 25 min | R11, R12, R24 |
+| meeting | agent_loop | `read_file`, `search_repo`, `record_finding`, `submit_statement`; Facilitator also `ask_judge`, `submit_meeting_summary` | 25 min | R11, R12, R24 |
 | prototype | agent_loop (Stretch) | Code_Agent in a separate prototype clone | 15 min | R41 |
 | deciding | agent_loop | `read_file`, `search_repo`, `ask_judge`, `submit_decision_draft` | 20 min | R15, R37 |
 | awaiting_confirmation | wait_user | none (Judge card only) | Task timeout only; no automatic confirmation | R15.3, R15.4 |
@@ -321,14 +320,14 @@ Node table:
 | adapter_branch_2 | auto | none | 5 s | R25 |
 | target_check | auto | none (Studio code: engine ping, baseline image present by digest; if an API-operation story remains, the Sandbox is started or reused, provisioned, reset and verified) | 3 min | R13.4, R25.8, R29.5 |
 | story_develop | agent_loop | Code_Agent's own tools inside the Development_Sandbox only | story budget | R38, R40 |
-| story_review | agent_loop | Tech_Manager: `read_changed_file`, `read_diff`, `submit_review_verdict` | 5 min | R40.6-R40.10 |
-| story_ask | wait_user | Tech_Manager `answer_question` for technical questions; Judge question card for feature questions | 300 s for the Judge | R40.11-R40.14 |
+| story_review | agent_loop | Reviewer: `read_changed_file`, `read_diff`, `submit_review_verdict` | 5 min | R40.6-R40.10 |
+| story_ask | wait_user | Reviewer `answer_question` for technical questions; Judge question card for feature questions | 300 s for the Judge | R40.11-R40.14 |
 | story_run | auto | none (Studio starts the Run_Environment) | 240 s | R39.9-R39.11 |
 | story_checkpoint | wait_user | none | 120 s (demo 30 s) | R21 |
 | verifying | auto | none (Verifier) | 10 min | R22 |
-| api_read | agent_loop | Tech_Manager designs the Demo_Case: `target_api_read` (read-only calls within the Adapter allow-list), `read_file`, `search_repo` (read-only), `submit_demo_case` | 8 min | R18.2, R18.7, R40.18 |
+| api_read | agent_loop | Reviewer designs the Demo_Case: `target_api_read` (read-only calls within the Adapter allow-list), `read_file`, `search_repo` (read-only), `submit_demo_case` | 8 min | R18.2, R18.7, R40.18 |
 | api_plan | auto | none (Studio validates the Demo_Case and derives its `api_readback` check) | 5 s | R18.2, R18.8, R18.10-R18.12 |
-| api_suggest | agent_loop | Tech_Manager: `target_api_read`, `read_file`, `submit_suggestion` (values only for Demo_Case items marked as suggested) | 5 min | R18.3 |
+| api_suggest | agent_loop | Reviewer: `target_api_read`, `read_file`, `submit_suggestion` (values only for Demo_Case items marked as suggested) | 5 min | R18.3 |
 | api_confirm | wait_user | none (Judge card shows the Demo_Case and the suggestion in feature words) | 120 s | R18.4, R15.7 |
 | api_try_one | auto | none (Studio code writes Demo_Case item 1 and reads it back) | 2 min | R18.2, R18.9, R18.10 |
 | api_write_batch | auto | none (Studio code writes the remaining Demo_Case items) | 5 min | R18.2, R18.9, R18.10 |
@@ -394,7 +393,7 @@ Failure review, the user loop for unexpected failures (R36.6, decided by the use
 | `reader/` | Repo_Reader over the GitHub REST API with cache by commit SHA | R10, R34 |
 | `evidence/` | Evidence checker against the downloaded files | R24 |
 | `adapters/` | Loads the Adapters from `adapters/<adapterId>/`, validates them against the Adapter contract at server start, and hands the matching Adapter to the other modules | R9.5, R13.3, R39.10 |
-| `meeting/` | Gathered-evidence summary, delivery of queued Judge messages, Moderator-driven meeting rounds | R11, R12 |
+| `meeting/` | Gathered-evidence summary, delivery of queued Judge messages, Facilitator-driven meeting rounds | R11, R12 |
 | `docs/` | Planning and document-first generation, Output_Docs rendering | R19, R20, R40.1 |
 | `browser/` | Playwright operator tools and scripted browser checks | R14, R22.2 |
 | `containers/` | Docker Engine API wrapper for Sandbox, Development_Sandbox, Run_Environment, test container, LLM_Proxy, networks | R13, R38, R39 |
@@ -483,7 +482,7 @@ export interface AgentRuntime {
 
 export interface RuntimeStartOptions {
   taskId: string;
-  roleId: RoleId;                 // "moderator" | "product" | ... | "tech_manager" | "code_agent"; the operator duty runs as BROWSER_ROLE
+  roleId: RoleId;                 // "reader" | "explorer" | "facilitator" | ... | "reviewer" | "code_agent"
   systemPrompt: string;           // from runtime-rules
   tools: ToolDefinition[];        // already filtered to the node's whitelist
   context: ContextBundle;         // story plus referenced documents only (R19.7)
@@ -508,7 +507,7 @@ export type RuntimeEvent =
   | { t: "final"; reason: "completed" | "error" | "aborted"; text: string };
 ```
 
-### PiRuntime (meeting roles, planning roles, operator, Tech_Manager)
+### PiRuntime (Reader, Explorer, Facilitator, Meeting_Perspectives, Planner, Reviewer)
 
 - Uses `@earendil-works/pi-agent-core` 1.5.2 with the `@earendil-works/pi-ai` DeepSeek provider (`deepseek-flash`, OpenAI-compatible, text and image input). Runs inside the backend process, so the real LLM key never leaves the backend (R30.5).
 - Event mapping from pi to `RuntimeEvent`:
@@ -523,7 +522,7 @@ export type RuntimeEvent =
 | `turn_end`, `agent_end` | none | none |
 | stream error or abort mid-message | `message_broken` | `message_incomplete` plus `failure` (R3.9) |
 
-- `abort()` maps to pi `abort()`. Interjections use `steer()` on the current speaker; if no role is speaking, the message is appended to the shared transcript before the next turn (R12.2). During evidence gathering messages are not steered into the Browser_Use operator; they are queued and delivered at the meeting start (R12.5). `followUp()` is used for the Moderator's follow-up turn after a Judge answer. `steer()` and `followUp()` behavior was not part of the 2026-11-20 smoke test: TO VERIFY.
+- `abort()` maps to pi `abort()`. Interjections use `steer()` on the current speaker; if no role is speaking, the message is appended to the shared transcript before the next turn (R12.2). During evidence gathering messages are not steered into the Browser_Use operator; they are queued and delivered at the meeting start (R12.5). `followUp()` is used for the Facilitator's follow-up turn after a Judge answer. `steer()` and `followUp()` behavior was not part of the 2026-11-20 smoke test: TO VERIFY.
 - `beforeToolCall` enforces the node's tool whitelist; a blocked call is recorded as `failure` with class "rejected by a safety rule" and the agent receives an error result (R18, R19.8, R23.7). The 2026-11-20 smoke test verified a blocked tool through `beforeToolCall`.
 - Structured outputs are produced through a `submit_<stage>` tool whose arguments are validated by zod. Invalid arguments, a missing submit call at the end of the turn, or a finish reason that shows truncation count as "LLM output format invalid" and the output is discarded (R23.6, R30.4, R30.13). One visible retry is allowed per turn and is shown as a separate attempt (R23.5); after that the turn fails (R11.2).
 - `max_tokens` 16384 per role turn leaves room for thinking, which is on by default (R30.12, R30.14).
@@ -549,10 +548,10 @@ export type RuntimeEvent =
 - The ask-question flow replaces the earlier `graftlab_question` JSON fallback. The custom tool `ask_question` takes `{ kind: "technical" | "feature", text: string, options?: string[] }`, validated by zod. A valid call emits the `question` event and ends the turn (the same terminate pattern as the earlier design: the tool result tells the session to stop). The runner then waits for an `answer` command and resumes the same session. Invalid arguments return an error result to the model. Spike evidence shows that none of the tested runtimes stopped to ask on an ambiguous request in unattended mode, so the Studio also opens a question by code when the retry limit is reached (R40.12).
 - Write confinement: the container has a read-only root filesystem, tmpfs for `/tmp` and the session and home directory, and only `/work` writable from the host (R38.2). A tool result that reports a read-only file system error outside `/work` and `/tmp` is recorded as `failure` with class "rejected by a safety rule", shown only in Engineering_Details (R38.8). The embedded runner running with a read-only root filesystem and a tmpfs home is TO VERIFY.
 - LLM access: the runner holds only the per-Task credential for the LLM_Proxy (R30.16). A custom provider and model entry in the runner's model registry sets the base address to the LLM_Proxy (pi-ai supports custom OpenAI-compatible providers). Whether this works through the proxy is TO VERIFY. The earlier 404 was seen with the harness runtime and stays as history.
-- Code_Agent rules (in the Runtime_Rules, R35.9, R40): never special-case code to satisfy tests; report a contradiction between tests, story or documents by asking through `ask_question`; do not edit tests unless the story says so. This is best effort, not a guarantee: in the 2026-11-20 spike pi-coding-agent special-cased the code on the contradictory-tests fixture and did not point out the contradiction. The backstops are the Tech_Manager review and the Verifier.
+- Code_Agent rules (in the Runtime_Rules, R35.9, R40): never special-case code to satisfy tests; report a contradiction between tests, story or documents by asking through `ask_question`; do not edit tests unless the story says so. This is best effort, not a guarantee: in the 2026-11-20 spike pi-coding-agent special-cased the code on the contradictory-tests fixture and did not point out the contradiction. The backstops are the Reviewer review and the Verifier.
 - Steer and abort: `steer` and `abort` arrive over stdin; the runner calls `session.steer()` and `session.abort()` and waits for idle (`waitForIdle()`), and the backend expects the exec to finish within a few seconds of `abort`, otherwise it kills the exec. `dispose()` runs on exit.
 ### Runtime selection (Open item 44)
-Decided with the user on 2026-11-21: one agent family for everything, the pi packages. Meeting roles, planning roles, the Browser_Use operator and the Tech_Manager use `@earendil-works/pi-agent-core` with `@earendil-works/pi-ai` in the backend process; the Code_Agent uses `@earendil-works/pi-coding-agent` embedded by the runner inside the Development_Sandbox. Rationale: one event model, one provider configuration, one steer and abort interface, one learning cost, and TypeScript only. The DeepSeek Harness headless mode emits step-level (not token-level) thinking and text events and has no mid-turn steer or abort, so it cannot serve the streaming meeting UI and is only a Code_Agent alternative.
+Decided with the user on 2026-11-21: one agent family for everything, the pi packages. All agents except the Code_Agent (Reader, Explorer, Facilitator, Meeting_Perspectives, Planner, Reviewer) use `@earendil-works/pi-agent-core` with `@earendil-works/pi-ai` in the backend process; the Code_Agent uses `@earendil-works/pi-coding-agent` embedded by the runner inside the Development_Sandbox. Rationale: one event model, one provider configuration, one steer and abort interface, one learning cost, and TypeScript only. The DeepSeek Harness headless mode emits step-level (not token-level) thinking and text events and has no mid-turn steer or abort, so it cannot serve the streaming meeting UI and is only a Code_Agent alternative.
 Fallbacks for the Code_Agent, behind the `AgentRuntime` interface and not built in the first version: the DeepSeek Harness runtime (official bundled executable, headless JSON events), OpenCode (`opencode run --format json`, MIT) and the OpenHands Software Agent SDK (agent server with REST and WebSocket, MIT TypeScript client `@openhands/typescript-client`, about 587 MB Python 3.12 environment). Fallback trigger: pi-coding-agent fails the real-document comparison at the first development story, or fails its TO VERIFY items (read-only root with tmpfs home, custom base address through the LLM_Proxy, custom `ask_question` tool, steer and abort over stdin). The first fallback is pi RPC mode, the second is the harness runtime. If the harness is ever activated, its license note (MIT per its wheel metadata, third-party notices) is TO VERIFY and must be listed in the README.
 Spike evidence (2026-11-20, macOS, a single run per scenario on a toy Python repository; this is evidence, not a guarantee):
 | Scenario | pi-coding-agent | Harness runtime | OpenCode | OpenHands |
@@ -600,7 +599,7 @@ Second guard, the redactor (a safety net, not the mechanism):
 - Cache: `data/cache/github/<owner>/<repo>/<sha>/` holds the tree and file contents; a repeated request for the same SHA reads only from the cache (R34.2).
 - Rate limit responses (`403` or `429` with rate limit headers) produce a `failure` with the limit state and stop the Task honestly (R34.4). The anonymous rate limit value is not assumed (R34.5).
 - Files are treated as text only and never executed (R10.3). Each file read appends `file_read` with path, size and an artifact reference to the cached content (R10.4, R4.4).
-- After the download, the Architecture role skims the prioritized files with `read_file` and `search_repo` and records findings with `record_finding` (best effort, R10.2).
+- After the download, the Reader skims the prioritized files with `read_file` and `search_repo` and records findings with `record_finding` (best effort, R10.2).
 
 ### Evidence checker (R24)
 
@@ -614,13 +613,13 @@ Second guard, the redactor (a safety net, not the mechanism):
 - The meeting starts when evidence gathering ends: after `reading` for an Other_Repo; after `browser_experience`, or after `sandbox_start` when it failed, for an Adapted_Repo; or when the Judge ends gathering early (R11.1).
 - Gathered-evidence summary: the first meeting event is `evidence_summary`, built by Studio code (no LLM) from recorded events: the reading findings and the skipped parts, the experience notes and screenshot references, or the "experience unavailable" reason; it is labeled "partial" when the Judge ended gathering early. The summary is shown in the Activity_Feed and the Artifact_Area and is put at the top of the shared transcript (R11.9).
 - Queued Judge messages: right after the summary, every Judge message received during gathering is appended to the shared transcript in arrival order, with its addressee, and a `judge_message_delivered` event records the delivery; a message addressed to one role is also prepended to that role's first turn (R11.10, R12.5).
-- No question card is opened during gathering; the Moderator's `ask_judge` exists only from the meeting on (R12.6).
-- Turn order per round is fixed: Moderator opens, then Product, Architecture, Risk_and_Security, Verification; the Moderator closes the round (R11.1). Initial value: 2 rounds.
+- No question card is opened during gathering; the Facilitator's `ask_judge` exists only from the meeting on (R12.6).
+- Turn order per round is fixed: Facilitator opens, then the Meeting_Perspectives User_Value, Feasibility and Risk; the Facilitator closes the round (R11.1). Initial value: 2 rounds. The Reader and the Explorer do not speak in the meeting; their findings and observations reach it through the evidence summary.
 - Each role is a separate pi agent with its own system prompt from `runtime-rules/roles/<role>.md` plus the shared behavior rules. The shared meeting transcript (previous statements and Judge messages, with role names) is in each role's context.
 - A statement is the streamed narration text plus a `submit_statement` call: `{ summary, findings: [{ claim, evidence: EvidenceRef[] }], workflows?: [{ name, purpose: "A" | "B" | "unclear", description, evidence }] }` (R11.5, R11.7, R18.6). The streamed text is narration for the Judge; the validated tool arguments are the machine-readable result.
-- The Moderator asks question cards through `ask_judge` (`{ question, options[], allowFreeText }`), which opens `card_opened` and waits up to the confirmation wait (120 s); without an answer the meeting continues and the question is recorded as unanswered (R5.3, R11.4). Interjections addressed to a role are delivered with `steer()` to the current speaker if it is that role, otherwise they are prepended to that role's next turn (R5.2, R12.2).
-- The Moderator ends the meeting with `submit_meeting_summary` (findings, workflows with A/B tags, open questions); its guard leads to `deciding` (R15.1).
-- If a Judge message conflicts with the Frozen Decision_Doc, the Moderator can call `propose_new_version`, which opens a card stating that a new Decision_Doc version is required (R12.4). Detecting the conflict is an LLM judgment (see Gaps found).
+- The Facilitator asks question cards through `ask_judge` (`{ question, options[], allowFreeText }`), which opens `card_opened` and waits up to the confirmation wait (120 s); without an answer the meeting continues and the question is recorded as unanswered (R5.3, R11.4). Interjections addressed to a role are delivered with `steer()` to the current speaker if it is that role, otherwise they are prepended to that role's next turn (R5.2, R12.2).
+- The Facilitator ends the meeting with `submit_meeting_summary` (findings, workflows with A/B tags, open questions); its guard leads to `deciding` (R15.1).
+- If a Judge message conflicts with the Frozen Decision_Doc, the Facilitator can call `propose_new_version`, which opens a card stating that a new Decision_Doc version is required (R12.4). Detecting the conflict is an LLM judgment (see Gaps found).
 
 ### Sandbox and test data (R13, R29)
 
@@ -633,7 +632,7 @@ Second guard, the redactor (a safety net, not the mechanism):
 
 ### Browser_Use (R14, R4.2)
 
-- The experience runs in `browser_experience` during evidence gathering, before the meeting (R14.12). The Workspace shows the live screenshots and the operator's notes; the meeting roles are idle and the Judge is not asked questions. A failure or timeout (10 min or 40 actions, or 5 consecutive failed actions) ends the experience: it is recorded, the observations made so far are kept, and the flow continues to the meeting with the label "experience unavailable" and the reason. The Judge may end the experience early with "start the meeting now"; the meeting then starts with what was gathered, labeled partial (R14.14).
+- The experience runs in `browser_experience` during evidence gathering, before the meeting (R14.12). The Workspace shows the live screenshots and the operator's notes; the Meeting_Perspectives are not active and the Judge is not asked questions. A failure or timeout (10 min or 40 actions, or 5 consecutive failed actions) ends the experience: it is recorded, the observations made so far are kept, and the flow continues to the meeting with the label "experience unavailable" and the reason. The Judge may end the experience early with "start the meeting now"; the meeting then starts with what was gathered, labeled partial (R14.14).
 - Playwright drives headless Chromium in the backend process against the loopback port of the Sandbox, or the relay port of the Run_Environment (R14.5). A route filter aborts every request to another origin (R14.5, R14.10).
 - Login is performed by Studio code with the generated baseline credentials; the operator role never sees the password.
 - Operator tools: `browser_open(path)` (relative paths only), `browser_click(target)`, `browser_fill(target, text)`, `browser_press(key)`, `browser_snapshot()`, `browser_screenshot()`, `record_note(text)`. Targets are ARIA role and name pairs or text from the last snapshot.
@@ -643,16 +642,16 @@ Second guard, the redactor (a safety net, not the mechanism):
 
 ### Decision step (R15, R16, R37)
 
-- In `deciding`, the roles propose Approach_Options and the Risk_and_Security and Verification roles add Assessments (best effort, R37.1, R37.2). The Moderator submits the draft with `submit_decision_draft`; zod validates every section of R15.2.
+- In `deciding`, the Meeting_Perspectives propose Approach_Options, Feasibility and Risk add Assessments, and the Facilitator adds the executable Acceptance_Checks (best effort, R37.1, R37.2). The Facilitator submits the draft with `submit_decision_draft`; zod validates every section of R15.2.
 - The Studio computes, by code, `assessment.complete = acceptanceChecks.length > 0` per option; an incomplete option cannot be selected in the confirm card (R37.5). Every Assessment is labeled "LLM assessment, not a guarantee" (R37.3).
 - The confirm card shows the draft in feature terms with exactly one selectable approach or one combination (R15.11, R37.4). Confirm freezes: the server computes the content hash, records version, hash, Judge session id and time, and appends `decision_doc_frozen` (R15.3). Frozen versions are immutable; any later change creates version n+1 (R15.6, R16.1-R16.4).
-- Item review (R5.7, decided 2026-11-22; mock `ui/ui-4-decide.svg`): `decision/items.ts` splits a draft into review items by code, one per section of R15.2 (purpose and workflows, scope, approach, UI impact, executable acceptance checks, risks, open questions); evidence sources are shown inside the items they support. Each item has an `itemHash` (sha256 of the canonical JSON of its section). The Judge accepts or rejects each item; a rejection needs a non-empty reason. Each verdict appends `decision_item_reviewed`. "Send back" is enabled only when every item has a verdict and at least one is rejected; it takes the `awaiting_confirmation` to `deciding` edge and gives the Moderator the rejected items and reasons. In the next draft, an item whose `itemHash` is unchanged keeps its verdict; a changed item becomes pending. "Freeze" is enabled only when every item is accepted and the approach item has exactly one complete approach or combination selected; the server checks the same conditions again before it appends `decision_doc_frozen` (R15.3, R15.11).
+- Item review (R5.7, decided 2026-11-22; screenshot `ui/screen-4-decide.png`): `decision/items.ts` splits a draft into review items by code, one per section of R15.2 (purpose and workflows, scope, approach, UI impact, executable acceptance checks, risks, open questions); evidence sources are shown inside the items they support. Each item has an `itemHash` (sha256 of the canonical JSON of its section). The Judge accepts or rejects each item; a rejection needs a non-empty reason. Each verdict appends `decision_item_reviewed`. "Send back" is enabled only when every item has a verdict and at least one is rejected; it takes the `awaiting_confirmation` to `deciding` edge and gives the Facilitator the rejected items and reasons. In the next draft, an item whose `itemHash` is unchanged keeps its verdict; a changed item becomes pending. "Freeze" is enabled only when every item is accepted and the approach item has exactly one complete approach or combination selected; the server checks the same conditions again before it appends `decision_doc_frozen` (R15.3, R15.11).
 - A rejected draft history (drafts, verdicts, reasons) stays visible next to the review list; drafts are not Decision_Doc versions, only a freeze creates a version (R16).
 
 ### Planning and document-first (R19, R20, R40)
 
-- `planning`: Product and Moderator produce the Product_Backlog (stories with priority, acceptance criteria, exactly one demo point and a Feature_Contract), the Sprint_Plan (goal, story ids, Feature_Contract references) and the Definition_of_Done. Each is validated by zod; a backlog with an incomplete story is rejected and the incomplete story is named (R20.1, R20.5-R20.9).
-- `documenting`: requirements, design and tasks documents and the Task_Board for the analyzed repository. The design document includes a `runEnvironment` section proposed by the Architecture role from the target's own files: build and start commands, app port, health path (R39.9). The Studio does not supply a fallback recipe (R39.10).
+- `planning`: the Planner produces the Product_Backlog (stories with priority, acceptance criteria, exactly one demo point and a Feature_Contract), the Sprint_Plan (goal, story ids, Feature_Contract references) and the Definition_of_Done. Each is validated by zod; a backlog with an incomplete story is rejected and the incomplete story is named (R20.1, R20.5-R20.9).
+- `documenting`: requirements, design and tasks documents and the Task_Board for the analyzed repository. The design document includes a `runEnvironment` section proposed by the Planner from the target's own files: build and start commands, app port, health path (R39.9). The Studio does not supply a fallback recipe (R39.10).
 - Every document records the Frozen Decision_Doc version (R19.2, R20.4, R20.11). Documents are stored as JSON plus rendered Markdown in `data/tasks/<id>/docs/` and shown in the Artifact_Area.
 - When a new version is frozen, documents referencing an older version are marked "based on an older version" (R20.10).
 
@@ -663,9 +662,9 @@ Per source-change story:
 1. Context: `dev/context.ts` writes `data/tasks/<id>/context/<storyId>/story.md` containing only the story, its Feature_Contract and the documents the story references (R19.7, R40.2). A unit test checks that nothing else is included (R35.8).
 2. Develop: start or resume the Development_Sandbox (stopping the Sandbox if no API-operation story remains, to save memory), run the Code_Agent, map its events. Attempt time counts against the story budget.
 3. Record change: the backend computes changed files and the diff with git on the host using a temporary index (`GIT_INDEX_FILE`), so untracked files are included and the Code_Agent's own index is untouched. It appends `code_change` (changed files list, diff reference) (R38.5, R40.5).
-4. Review: the Tech_Manager (pi agent) gets the Feature_Contract, the Decision_Doc summary and the diff, and must call `submit_review_verdict` with `{ verdict: "approve" | "request_changes" | "escalate", reasons[], questionForJudge? }`. The verdict is labeled "reviewed by Tech_Manager (LLM judgment)" and shown only in Engineering_Details unless an escalation needs the Judge (R40.6-R40.10).
+4. Review: the Reviewer (pi agent) gets the Feature_Contract, the Decision_Doc summary and the diff, and must call `submit_review_verdict` with `{ verdict: "approve" | "request_changes" | "escalate", reasons[], questionForJudge? }`. The verdict is labeled "reviewed by Reviewer (LLM judgment)" and shown only in Engineering_Details unless an escalation needs the Judge (R40.6-R40.10).
 5. Request changes go back to the Code_Agent with the reasons as the resumed prompt and count as an attempt (R40.7, R40.12).
-6. Questions and escalations: technical questions go to the Tech_Manager's `answer_question`; feature or requirement questions go through the Moderator, which rephrases them in feature words as a question card (R40.8, R40.13, R5.5). The Workspace shows "waiting for answer" with the asked party and elapsed seconds (R2.10, R40.14).
+6. Questions and escalations: technical questions go to the Reviewer's `answer_question`; feature or requirement questions go through the Facilitator, which rephrases them in feature words as a question card (R40.8, R40.13, R5.5). The Workspace shows "waiting for answer" with the asked party and elapsed seconds (R2.10, R40.14).
 7. Run: the Development_Sandbox is stopped, a read-only snapshot of the Worktree is copied to `data/tasks/<id>/snapshots/<storyId>-<attempt>/`, `worktree_handoff` is recorded as an `artifact_updated` event with the snapshot commit (R39.6, R39.7), and a fresh Run_Environment executes the proposed start commands only inside that container. The backend waits for the health path. Failure leads to `failed` (R39.11).
 8. Checkpoint: a confirm card in feature words with the demo (screenshots of the Run_Environment produced by the story's browser check steps, or the API read-back table) (R21.1-R21.3). No response within the wait marks the story Unconfirmed (R21.4); the next Judge input triggers a `reminder` card listing pending Unconfirmed items in feature terms (R21.8, R21.9, R5.8).
 9. Verify: the Verifier runs the story's Acceptance_Checks (R22.2).
@@ -674,10 +673,10 @@ The Patch_Artifact is `git diff <pinned commit>` saved to `data/tasks/<id>/docs/
 
 Per API-operation story (Feature_Contract `executionKind: "api_operation"`; decided by the user, Open item 50):
 
-1. Context: the same context builder writes the story bundle (R19.7). The story goes to the Tech_Manager, not to the Code_Agent; no Development_Sandbox is started (R40.18).
-2. Design (`api_read`): the Tech_Manager (pi agent) reads the relevant target code from the downloaded repository with `read_file` and `search_repo` and the current Sandbox data with `target_api_read` (read endpoints of the Adapter allow-list only, through the Studio; the target credential stays in the backend). It submits a Demo_Case with `submit_demo_case`: endpoints, test-data items, expected outcome, harmlessness reason, reversal statement and evidence. Choosing a meaningful, understandable case and the harmlessness reasoning are best effort (R18.7); the Demo_Case is labeled "designed by Tech_Manager (LLM judgment)" wherever it is shown.
-3. Validate (`api_plan`, Studio code): zod validates the Demo_Case (required fields non-empty, R18.8); `apiops/validate.ts` then checks by code that the item count is at most the Item_Count_Cap (R18.11), that every endpoint is in the Adapter's `api.write` or `api.read` allow-list, that every item's fields pass the Adapter's `api.itemFields` schema, and that the target is the Sandbox (R18.10). A rejected Demo_Case records `failure` (schema problems as `llm_output_format_invalid`, cap, endpoint or target problems as `rejected_by_safety_rule`), executes no write, and allows one visible retry (R23.5). An accepted Demo_Case is stored as an artifact with its hash, and `deriveChecks(demoCase)` turns its expected outcome into one `api_readback` Acceptance_Check with target `sandbox` (R18.12). The Verification role is not asked to design a second case.
-4. Purpose B (`api_suggest`, `api_confirm`): the Tech_Manager fills the fields that the Demo_Case marks as suggested with `submit_suggestion`, each value with evidence (R18.3). The Studio accepts a suggestion only for items of the validated Demo_Case and only for the marked fields, then shows the Demo_Case and the suggestion in feature words on a confirm card. Without a Judge confirmation no write happens (R18.4, R15.7). The derived check is recomputed with the confirmed suggested values.
+1. Context: the same context builder writes the story bundle (R19.7). The story goes to the Reviewer, not to the Code_Agent; no Development_Sandbox is started (R40.18).
+2. Design (`api_read`): the Reviewer (pi agent) reads the relevant target code from the downloaded repository with `read_file` and `search_repo` and the current Sandbox data with `target_api_read` (read endpoints of the Adapter allow-list only, through the Studio; the target credential stays in the backend). It submits a Demo_Case with `submit_demo_case`: endpoints, test-data items, expected outcome, harmlessness reason, reversal statement and evidence. Choosing a meaningful, understandable case and the harmlessness reasoning are best effort (R18.7); the Demo_Case is labeled "designed by Reviewer (LLM judgment)" wherever it is shown.
+3. Validate (`api_plan`, Studio code): zod validates the Demo_Case (required fields non-empty, R18.8); `apiops/validate.ts` then checks by code that the item count is at most the Item_Count_Cap (R18.11), that every endpoint is in the Adapter's `api.write` or `api.read` allow-list, that every item's fields pass the Adapter's `api.itemFields` schema, and that the target is the Sandbox (R18.10). A rejected Demo_Case records `failure` (schema problems as `llm_output_format_invalid`, cap, endpoint or target problems as `rejected_by_safety_rule`), executes no write, and allows one visible retry (R23.5). An accepted Demo_Case is stored as an artifact with its hash, and `deriveChecks(demoCase)` turns its expected outcome into one `api_readback` Acceptance_Check with target `sandbox` (R18.12). No agent designs a second case.
+4. Purpose B (`api_suggest`, `api_confirm`): the Reviewer fills the fields that the Demo_Case marks as suggested with `submit_suggestion`, each value with evidence (R18.3). The Studio accepts a suggestion only for items of the validated Demo_Case and only for the marked fields, then shows the Demo_Case and the suggestion in feature words on a confirm card. Without a Judge confirmation no write happens (R18.4, R15.7). The derived check is recomputed with the confirmed suggested values.
 5. Write (`api_try_one`, `api_write_batch`): `apiops/writer.ts` is the only module that sends writes to the target. It accepts only a validated Demo_Case id, builds requests only from its items, uses the Sandbox origin from the container manager (never a URL from model output), checks each method and path against the Adapter allow-list again, and stops after the Item_Count_Cap. Each write appends `api_write` with the Demo_Case id and item id (R18.9, R18.10). The Verifier takes its pre-state snapshot before item 1.
 6. Read back and checkpoint: `api_read_back` reads every item back; the checkpoint card shows the read-back table in feature words (R21.2).
 7. Verify: the Verifier runs the derived `api_readback` check (R22.2, R22.4, R22.5).
@@ -723,52 +722,55 @@ Plain TypeScript, no LLM (R22.9). Each Acceptance_Check produces a per-item resu
 - Accessibility: `prefers-reduced-motion` disables non-essential animation; all cards are operable by keyboard with visible focus; status always has text, never color alone (R8).
 - Halloween styling is optional and every avatar effect is bound to the derived Role_Status (R1.7, R2.9).
 
-### UI design (R1-R8, R26; reviewed with the user 2026-11-22)
+### UI design (R1-R8, R26; redesigned with the user 2026-11-22)
 
-The mocks are SVG files in `ui/` next to this document. They fix layout, components and wording rules; pixel details, copy and colors may change during implementation. Example texts in the mocks (file names, tags, times) are illustrative only.
+The first dark mocks were replaced after the user tried the clickable demo: too dark, too dense, dated components. The reference is now the running demo at `/demo` (mock data) and its screenshots in `ui/` next to this document. They fix layout, components and wording rules; pixel details and copy may change. Example texts (file names, tags, times) are illustrative only.
 
-| Mock | Screen and state | Main requirements |
+| Screenshot | Screen and state | Main requirements |
 |---|---|---|
-| `ui/ui-1-home.svg` | Home: one URL input, validation feedback, scope line, Replay entry | R9.1, R6, R26.1 |
-| `ui/ui-2-gathering.svg` | Workspace during evidence gathering: file reading, Sandbox, live browser screenshots, queued Judge messages, "Start the meeting now" | R2, R3, R4.2, R11.9, R12.5, R14 |
-| `ui/ui-3-meeting.svg` | Workspace in the meeting: streaming statements, collapsible reasoning, interjection to a role, question card, a blocked role with its failure, evidence check marks | R2, R3, R5.1-R5.3, R12, R23, R24 |
-| `ui/ui-4-decide.svg` | Decision step: draft as review items, accept or reject with reason, one selectable approach, Unverified marks, send back, freeze | R5.7, R15, R16, R37 |
-| `ui/ui-5-build-checkpoint.svg` | Development: Code_Agent question in feature words, Tech_Manager verdict, Feature_Contract, Task_Board, checkpoint demo card, Verifier card with pending checks | R5.4, R5.5, R21, R22, R40 |
-| `ui/ui-6-replay.svg` | Replay: permanent "Replay" label, simulated typing note, seek bar with phase and failure markers, result from the Verifier | R7.4, R26 |
+| `ui/screen-1-home.png` | Home: one URL input, validation feedback, three plain-language steps | R9.1, R6 |
+| `ui/screen-2-trying.png` | Evidence gathering: grouped reading steps, the Explorer using the app, "Start the meeting now" | R2, R3, R11.9, R14 |
+| `ui/screen-3-meeting.png` | Meeting: Facilitator and the three Meeting_Perspectives, streaming text, collapsed reasoning, question card | R2, R3, R5.1-R5.3, R11, R12 |
+| `ui/screen-4-decide.png` | Decision: draft as review items, accept or reject with a reason, one selectable approach, Unverified mark, send back, freeze | R5.7, R15, R16, R37 |
+| `ui/screen-5-checkpoint.png` | Build: question from development, Reviewer verdict, checkpoint card with the changed app | R5.4, R5.5, R21, R40 |
+| `ui/screen-6-result.png` | Result: Verifier checks item by item, success decided by the Verifier only | R22 |
 
-Layout of the Workspace (1280 px reference width): a top bar (product name, repository and pinned version, frozen Decision_Doc version, LIVE or REPLAY label), the Flow_Graph progress line below it, three columns (Presence_Cards about 264 px, Activity_Feed about 520 px, Artifact_Area with tabs about 432 px), and the Interjection_Input with addressee selector fixed at the bottom. Interaction_Cards (question, confirm, checkpoint, reminder) appear inline in the Activity_Feed, so the Judge sees them where the work happens. The decision step widens the middle column to the review list and narrows the Presence_Cards to a compact column.
+Principles:
 
-Presence_Cards:
+- Plain language first. Steps are named for people ("Read the code", "Try the app", "Meeting", "Decide", "Plan", "Build and check", "Result"); flow node ids appear only in small muted text and in Engineering_Details.
+- One place says what is happening now and whether the Judge must act ("Now" bar; it turns into "Your turn" with a "Go there" button when a card or the decision review waits).
+- Low density. Consecutive steps of the same kind by the same agent fold into one expandable line ("Read 6 files"). A step change is a section divider, not a feed line. Timestamps show on hover. Descriptions of agents show on hover; status text is always visible.
+- Conversation looks like a modern chat: avatar circle, name, message bubble; streaming text with a caret; reasoning collapsed as "Model-provided reasoning · N s" (R3.12, R3.13).
+- Interaction_Cards are the most visible element on the screen while they wait (soft amber card, large buttons, free text).
 
-| Card | Avatar | Notes |
+Layout of the Workspace (1440 px reference width): header (product, repository chip, LIVE / REPLAY / DEMO label, controls), stepper, "Now" bar, then three columns: Team (about 260 px), Timeline (flexible), Details with segmented tabs (about 380 px). The composer (addressee chip, message field, round send button) sits at the bottom of the Timeline column.
+
+Team panel:
+
+| Group | Agents (avatar) | Shown |
 |---|---|---|
-| Moderator | 🧙 | |
-| Product | 🎃 | |
-| Architecture | 🦇 | |
-| Risk_and_Security | 💀 | |
-| Verification | 👻 | |
-| Tech_Manager | 🐈 | Development stage; its verdicts carry "LLM judgment, not a guarantee" |
-| Code_Agent | 🧪 | Development stage; shows attempt count and the container per Task |
-| Verifier | ⚖ | Different card style: square corners, dashed steel border, monospace, label "code, no LLM", no reasoning section, a list of checks with per-item state |
+| Working on this Task | Reader 🦇, Explorer 🕷, Facilitator 🧙, Planner 📜, Code_Agent 🧪, Reviewer 🐈 | Always |
+| Meeting | User_Value 🎃, Feasibility 🧟, Risk 💀 | While the meeting and the decision run; otherwise one collapsed line |
+| Checker | Verifier ⚖ | Always; different style: slate outline, monospace, label "code, no AI", no reasoning, a list of checks with per-item state |
 
-There is no separate operator card. The role named by `GL_BROWSER_ROLE` shows "using the browser" on its own card while it runs the experience. Cards of roles that are not active in the current stage may be hidden or compacted.
-
-Status and theme tokens (dark theme; text always accompanies color, R8):
+Theme tokens (light; text always accompanies color, R8):
 
 | Token | Value | Use |
 |---|---|---|
-| `bg` / `panel` / `border` | #0f0b14 / #1a1422 / #3a2d4a | Background, panels, borders |
-| `text` / `muted` | #e9e3f0 / #9b8fae | Main and secondary text |
-| `accent` | #ff8a1f | Primary action, Judge messages, checkpoint card |
-| `working` | #7cff6b | speaking, reading, passed checks, LIVE |
-| `thinking` | #8fd3ff | thinking, reasoning sections |
-| `waiting` | #ffc857 | waiting for user, waiting for answer, waiting for LLM, question cards, REPLAY |
-| `failure` | #ff5468 | blocked, failures, rejected items, Unverified marks |
-| `verifier` | #c9d1d9 | Verifier card |
+| `bg` / `surface` / `surface-2` / `border` | #f5f8f7 / #ffffff / #f0f4f3 / #e2e8e6 | Page, cards, inner areas, borders |
+| `text` / `muted` | #1c2421 / #66736e | Main and secondary text |
+| `accent` / `accent-soft` | #0d9488 / #ccfbf1 | Primary action, current step, Judge messages |
+| `working` / soft | #16a34a / #dcfce7 | speaking, reading, using the browser, passed checks, LIVE |
+| `thinking` / soft | #6366f1 / #e0e7ff | thinking, reasoning |
+| `waiting` / soft | #d97706 / #fef3c7 | waiting for you, waiting for an answer or the model, cards, REPLAY, DEMO |
+| `failure` / soft | #dc2626 / #fee2e2 | blocked, failures, rejected items, Unverified marks |
+| `verifier` | #334155 | Verifier card |
+| radius / shadow | 14 px cards, pill buttons; 0 1px 2px and 0 6px 20px at 4 to 6 % black | All cards |
+| type | 15 px base, line height 1.6, system UI font with PingFang SC | All text |
 
-Avatar effect rules (R1.7, R2.9): only a Role_Status with "Working indicator: yes" in the Role_Status derivation table (speaking, thinking, using the browser, reading) gets a glow, in the color of that status. Waiting, blocked and idle get no glow. The effect is computed from `roleStatus(state, roleId, now)` only, so Live and Replay render the same effect at the same event (Property 4), and `prefers-reduced-motion` replaces animation with a static border.
+Activity effect rules (R1.7, R2.9): only a Role_Status with "Working indicator: yes" in the Role_Status derivation table (speaking, thinking, using the browser, reading) gets the activity effect: a soft background in the status color and a pulsing dot. Waiting, blocked and idle get no effect. The effect is computed from `roleStatus(state, roleId, now)` only, so Live and Replay render the same effect at the same event (Property 4), and `prefers-reduced-motion` turns the pulse into a static dot. Halloween avatars stay as costume styling only.
 
-Wording rules: Interaction_Cards for the Judge use feature words without file names, paths or diffs (R5.4, R5.5, R21.2); those details live in the collapsed Engineering_Details tab. Every LLM assessment, verdict or Demo_Case carries its label. Results come only from the Verifier card and the result panel.
+Wording rules: Interaction_Cards for the Judge use feature words without file names, paths or diffs (R5.4, R5.5, R21.2); those details live in the collapsed Engineering_Details section. Every LLM assessment, verdict or Demo_Case carries its label. Results come only from the Verifier card and the result banner.
 
 ## Data Models
 
@@ -778,9 +780,9 @@ All models are zod schemas in `packages/shared`. Field lists below are the first
 
 ```ts
 type Actor =
-  | { kind: "role"; roleId: RoleId }      // moderator, product, architecture, risk_and_security,
-                                          // verification, tech_manager; the Browser_Use operator duty
-                                          // is performed by one of these (BROWSER_ROLE, product or tech_manager)
+  | { kind: "role"; roleId: RoleId }      // function agents: reader, explorer (the Browser_Use operator),
+                                          // facilitator, planner, reviewer; Meeting_Perspectives:
+                                          // user_value, feasibility, risk
   | { kind: "judge" } | { kind: "system" } | { kind: "verifier" } | { kind: "code_agent" };
 
 interface StudioEvent<T extends EventType = EventType> {
@@ -821,7 +823,7 @@ Event types and payloads:
 | `browser_observation` | snapshotSummary, screenshotRef | R14.2, R14.7 |
 | `code_change` | storyId, attempt, changedFiles[], diffRef | R38.5, R40.5 |
 | `review_verdict` | storyId, attempt, verdict, reasons[], label | R40.6, R40.9 |
-| `question_opened` / `question_answered` | questionId, from (code_agent or role), askedParty (tech_manager or judge), kind, text in feature words; answer | R2.10, R40.13 |
+| `question_opened` / `question_answered` | questionId, from (code_agent or role), askedParty (reviewer or judge), kind, text in feature words; answer | R2.10, R40.13 |
 | `demo_case_validated` | storyId, demoCaseId, hash, itemCount, derivedCheckId, label | R18.8, R18.12 |
 | `api_write` | storyId, demoCaseId, itemId, method, endpoint (path template), status | R18.9, R18.10 |
 | `verifier_result` | storyId, checkId, items[{ item, pass, expected, actual }], pass | R22.7 |
@@ -854,8 +856,8 @@ Failure_Class values: `interface_call_failure`, `readback_mismatch`, `llm_output
 | Open message, recent `message_progress` with phase speaking or tool_call | speaking | yes |
 | Open message, no recent event for it | waiting for LLM, no output for N s | no |
 | Open `tool_started` without `tool_finished` | waiting for tool `<name>`, elapsed seconds | no |
-| Recent `browser_action` or `browser_observation` by the role (the Browser_Use operator duty), and it is the role's latest event | using the browser | yes |
-| Recent `file_read` by the role, and it is the role's latest event | reading | yes |
+| Recent `browser_action` or `browser_observation` by the role (the Explorer), it is the role's latest event, and the current node is `browser_experience` | using the browser | yes |
+| Recent `file_read` by the role, it is the role's latest event, and the flow has not moved on to the gathering or meeting nodes | reading | yes |
 | Otherwise | idle | no |
 
 "Open message" means a `message_started` without a later `message_completed` or `message_incomplete` for the same `messageId`. In Replay, `now` is the timestamp at the playhead, so the same function gives the same result (R26.7).
@@ -981,7 +983,7 @@ type AcceptanceCheckSpec =
 
 ### Review_Verdict (R40.6)
 
-`{ storyId, attempt, verdict: "approve" | "request_changes" | "escalate", reasons: string[] (at least one), questionForJudge?: string, label: "reviewed by Tech_Manager (LLM judgment)" }`.
+`{ storyId, attempt, verdict: "approve" | "request_changes" | "escalate", reasons: string[] (at least one), questionForJudge?: string, label: "reviewed by Reviewer (LLM judgment)" }`.
 
 ### Demo_Case and suggestion (R18.7-R18.13, Open item 50)
 
@@ -991,7 +993,7 @@ The Demo_Case replaces the earlier "API plan". It is the only input from which S
 interface DemoCase {                       // zod .strict()
   id: string;                              // assigned by the Studio on acceptance
   storyId: string;
-  label: "designed by Tech_Manager (LLM judgment)";
+  label: "designed by Reviewer (LLM judgment)";
   summary: string;                         // feature words, shown on the cards
   endpoints: { method: "GET" | "POST" | "PATCH"; path: string }[];   // at least one; each in the Adapter allow-list
   items: {                                 // 1..Item_Count_Cap (initial 10); item 1 is the "try one item"
@@ -1008,7 +1010,7 @@ interface DemoCase {                       // zod .strict()
   }[];
   harmlessReason: string;                  // non-empty, best effort reasoning
   reversal: string;                        // non-empty; the mechanism is the Sandbox reset and restore (R18.13)
-  evidence: EvidenceRef[];                 // code read by the Tech_Manager, checked as in R24
+  evidence: EvidenceRef[];                 // code read by the Reviewer, checked as in R24
 }
 ```
 
@@ -1318,7 +1320,6 @@ Decisions the user made for the first version that are to be revisited. Each ite
 |---|---|---|---|
 | Failure review choices | Retry the failed step, skip the story, end the Task | Collect failure cases from test and demo runs: failed step, Failure_Class, the Judge's choice, whether it helped. The Retrospective of each Task records them. Add or change choices when new cases show a need | R36.6, Open item 52 |
 | Verifier mismatch | A result: ends the Task in `failed` directly | Decide whether a mismatch should stop in `failure_review` (for example "send the story back to development"); success stays Verifier-only | R22, R36.6, Open item 53 |
-| Browser_Use role | `GL_BROWSER_ROLE=product` | Choose Product or Tech_Manager after the first real run | Roles and Queue Rules |
 | Security of analyzed repositories | Read-only analysis, no execution of repository code | See "Security of analyzed repositories", section "Future" | Open item 51 |
 
 ## Deliberately left out
@@ -1350,14 +1351,14 @@ These are capabilities or clarifications the design needed that the requirements
 2. Sandbox start failure terminal (R13.4, R29.5): "mark the Task as not executed" and "SHALL NOT start the Task" did not name a Terminal_State, and the Task already exists. Updated for the evidence-gathering order: a Sandbox start or reset failure during gathering no longer ends the Task; it is recorded, the experience is labeled "experience unavailable", and the flow continues to the meeting. The Task ends in `failed` with the "not executed" label only when the pre-execution check `target_check` finds that the target baseline still cannot start before the first execution story. Status: applied to requirements.md (R13.4, R29.5).
 3. Unanswered Code_Agent question (Open item 39): the requirements chart has no edge for an unanswered question and no terminal for a story blocked this way. The design adds `story_ask` edges to the next story, or to `failed` when no story is left. Status: applied to requirements.md.
 4. Failure_Class for budget and unanswered question (R23.2, R38.7): none of the four named classes fits "budget exceeded" or "blocked by an unanswered question". The design adds `budget_exceeded` and `blocked_unanswered_question`, which "at least four" allows. Status: applied to requirements.md.
-5. Flow_Graph nodes for the A/B stages (R18.2, R18.3): the decided node list has no nodes for the read, plan, try one, write in batch and read back stages, which R18.2 says are entered only through the Flow_Graph. The design adds the `api_*` nodes. Status: DECIDED by the user (requirements Open item 50): the Tech_Manager designs a Demo_Case with read-only tools in `api_read`, Studio code validates it in `api_plan` and executes its writes in `api_try_one` and `api_write_batch` against the Sandbox only, and the Verifier checks the Demo_Case expected outcome; applied to requirements.md as R18.7-R18.13 and R40.18.
+5. Flow_Graph nodes for the A/B stages (R18.2, R18.3): the decided node list has no nodes for the read, plan, try one, write in batch and read back stages, which R18.2 says are entered only through the Flow_Graph. The design adds the `api_*` nodes. Status: DECIDED by the user (requirements Open item 50): the Reviewer designs a Demo_Case with read-only tools in `api_read`, Studio code validates it in `api_plan` and executes its writes in `api_try_one` and `api_write_batch` against the Sandbox only, and the Verifier checks the Demo_Case expected outcome; applied to requirements.md as R18.7-R18.13 and R40.18.
 6. Worktree creation timing (R38.9 versus R39.4): R38.9 creates a Worktree at every Task start, but an Other_Repo Task needs none. The design creates it only for Adapted_Repo. Suggested change: scope R38.9 with "WHERE the Task is Adapted_Repo". Status: applied to requirements.md.
 7. Who proposes the Run_Environment start commands and when (R39.9): the requirements say the Agent_Roles analyze them but not in which stage. The design puts a `runEnvironment` section into the design Output_Doc in `documenting`. Status: applied to requirements.md.
 8. Browser checks "through Browser_Use" (R14.11) versus a Verifier without LLM (R22.9): the design uses scripted Playwright with no LLM. Suggested wording: "through the Browser_Use automation, scripted, without an LLM". Status: applied to requirements.md.
 9. Test suite "in the Development_Sandbox" (R22.2): the design runs the Verifier's test command in a fresh container from the same image with a read-only snapshot, not in the Code_Agent's container. Suggested wording to allow a fresh Development_Sandbox container. Status: applied to requirements.md.
 10. Network policy of the Run_Environment: R38.4 covers only the Development_Sandbox. The design applies the same internal network to the Run_Environment and the test container. Status: applied to requirements.md.
 11. Judge-supplied LLM configuration (R30.2, Must-have) ships behind a feature flag that is off by default until Open items 6 and 20 are settled. Status: applied to requirements.md.
-12. Conflict detection for R12.4 is an LLM judgment by the Moderator; the requirement reads as a Studio guarantee. Suggested marking as best effort. Status: applied to requirements.md.
+12. Conflict detection for R12.4 is an LLM judgment by the Facilitator; the requirement reads as a Studio guarantee. Suggested marking as best effort. Status: applied to requirements.md.
 13. Restore operation (R29.2) has no stated actor. The design allows only the operator and the admin. Status: applied to requirements.md.
 14. Adapted_Repo while live execution is unavailable (backend without a container engine): the requirements defined no analysis-only path for an Adapted_Repo. Updated for the evidence-gathering order: the Sandbox start fails during gathering and the experience is labeled "experience unavailable"; meeting, decision, planning and documents run normally; `target_check` then ends the Task in `failed` "not executed" before the first execution story, and the home page warns in advance. Status: applied to requirements.md (R25.8, R13.4).
 
@@ -1382,6 +1383,6 @@ Each item is verified by an early spike task in `tasks.md` (task group 1; item 1
 | 13 | Reachability of package sources, nodejs.org, the npm registry, GitHub and the Playwright browser download from the deployment host at image build time | First setup task | Download on another machine and transfer, as for images | Done (tasks 1.2, 1.6): reachable except Docker Hub; slow official sources replaced by configurable mirrors with integrity checks; large git clones unreliable, sources transferred; the Playwright browser download is not recorded in the spike note and is checked when Playwright is installed (task 11.2); reference-deployment.md, "Network facts", "Integrity rules" |
 | 14 | SSE through the tunnel of a separately served front end (buffering, idle timeout) | Deployment task | Long polling of `/api/tasks/:id/events?after=<seq>` | Pending: task 17.1 |
 | 15 | Steer and abort through stdin commands reach the running pi-coding-agent session, and abort ends the exec within a few seconds | Spike A part 2 | Kill the exec on abort; interjections only between turns | Done (task 1.8): `steer` queued and applied in the same run; `abort` stopped the session in 15 ms |
-| 16 | The Code_Agent follows the rule "report contradictions by asking, never special-case code to satisfy tests" on the toy-trap fixture in `spike/bench` (the result is recorded, not treated as a guarantee) | Spike A part 2 | Rely on the Tech_Manager review and the Verifier; harness runtime fallback if the real-document comparison shows it is clearly better | Recorded (task 1.8): with the rules, the agent asked about the contradiction and left the outdated test failing, no special case; best effort, one run |
+| 16 | The Code_Agent follows the rule "report contradictions by asking, never special-case code to satisfy tests" on the toy-trap fixture in `spike/bench` (the result is recorded, not treated as a guarantee) | Spike A part 2 | Rely on the Reviewer review and the Verifier; harness runtime fallback if the real-document comparison shows it is clearly better | Recorded (task 1.8): with the rules, the agent asked about the contradiction and left the outdated test failing, no special case; best effort, one run |
 
 The spike results of 2026-11-21 that were first appended here are now recorded in the references: the first target's facts (image pins, provisioning, API, write semantics, running from source, tests) in reference-target-linkding.md, and the host facts (internal network and relay, bind mounts, package sources, image transfer, operational notes) in reference-deployment.md.

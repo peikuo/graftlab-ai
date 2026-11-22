@@ -120,7 +120,7 @@ export class DemoEngine {
   async message(to: string, text: string): Promise<{ ok: true; clientMsgId: string } | { ok: false; error: string }> {
     const clientMsgId = `j${++this.#msgId}`;
     const gathering = this.#node === "reading" || this.#node === "sandbox_start" || this.#node === "browser_experience";
-    this.emit("judge_message", { clientMsgId, to: to as "all", text, status: gathering ? "queued" : "delivered", deliveredTo: gathering ? [] : ["moderator"] }, { kind: "judge" });
+    this.emit("judge_message", { clientMsgId, to: to as "all", text, status: gathering ? "queued" : "delivered", deliveredTo: gathering ? [] : ["facilitator"] }, { kind: "judge" });
     this.#pendingMessages.push({ clientMsgId, text });
     return { ok: true, clientMsgId };
   }

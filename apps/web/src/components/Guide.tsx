@@ -12,6 +12,32 @@ export const STEPS = [
   { id: "result", label: "Result", nodes: ["success", "failed", "aborted", "analysis_only", "docs_only"] },
 ] as const satisfies readonly { id: string; label: string; nodes: readonly NodeId[] }[];
 
+/** Short plain names of flow nodes, for the timeline. */
+export const NODE_SHORT: Partial<Record<NodeId, string>> = {
+  reading: "Reading the code",
+  adapter_branch: "Checking what can run here",
+  sandbox_start: "Starting the app",
+  browser_experience: "Trying the app",
+  meeting: "Meeting",
+  deciding: "Writing the decision",
+  awaiting_confirmation: "Waiting for your review",
+  frozen: "Decision locked",
+  planning: "Planning stories",
+  documenting: "Writing documents",
+  adapter_branch_2: "Preparing to build",
+  target_check: "Checking the app starts",
+  story_develop: "Building",
+  story_review: "Reviewing the change",
+  story_ask: "Waiting for an answer",
+  story_run: "Starting the changed app",
+  story_checkpoint: "Showing you the result",
+  verifying: "Verifier checking",
+  failure_review: "Waiting for your decision after a failure",
+  success: "Success",
+  failed: "Ended without success",
+  aborted: "Stopped",
+};
+
 export function stepIndex(node: NodeId | null): number {
   if (!node) return -1;
   return STEPS.findIndex((s) => (s.nodes as readonly NodeId[]).includes(node));
@@ -34,19 +60,19 @@ export function Stepper({ state }: { state: UiState }) {
 }
 
 const NOW: Partial<Record<NodeId, string>> = {
-  reading: "The team is reading the repository's code and documents.",
+  reading: "The Reader is going through the code and documents.",
   adapter_branch: "Checking whether this software can also be run here.",
   sandbox_start: "Starting a private copy of the app with test data.",
-  browser_experience: "Product is using the app in a browser, like a new user would.",
-  meeting: "The team is discussing how AI could help this software.",
-  deciding: "The team is writing a decision draft for you.",
+  browser_experience: "The Explorer is using the app in a browser, like a new user would.",
+  meeting: "The meeting is on: three viewpoints discuss how AI could help this software.",
+  deciding: "The Facilitator is writing the decision draft for you.",
   awaiting_confirmation: "The decision draft is ready.",
   frozen: "The decision is locked.",
-  planning: "The team is splitting the work into small stories.",
-  documenting: "The team is writing the requirements, design and task documents.",
+  planning: "The Planner is splitting the work into small stories.",
+  documenting: "The Planner is writing the requirements, design and task documents.",
   target_check: "Checking that the app still starts before building.",
   story_develop: "The Code_Agent is changing a private copy of the code.",
-  story_review: "Tech_Manager is reviewing the change against the story's contract.",
+  story_review: "The Reviewer checks the change against the story contract.",
   story_ask: "Development stopped to ask a question.",
   story_run: "Starting the changed app.",
   story_checkpoint: "The new feature is ready to look at.",

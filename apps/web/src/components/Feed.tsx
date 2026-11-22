@@ -1,21 +1,98 @@
-// Activity_Feed (R3.1-R3.13): one entry per narrated event with role, time and source path; messages stream
-// with a "live" marker and are replaced by the persisted Complete_Message; reasoning is collapsible and labeled.
-// Interaction_Cards appear inline where the work happens (design.md, "UI design").
+// Timeline (Activity_Feed, R3.1-R3.13) in a low-density layout (design.md, "UI design"): step changes are
+// dividers, consecutive steps of the same kind by the same agent fold into one expandable line, messages are
+// chat bubbles that stream with a caret and are replaced by the persisted Complete_Message, and reasoning is
+// collapsed and labeled. Every row still maps to its events (Property 5 holds on the reducer's feed).
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { FeedEntry, MessageState, StudioEvent, UiState } from "@graftlab/shared";
 import { ACTOR_LABEL } from "../roles.ts";
 import type { LiveBuffer } from "../useStudio.ts";
 import { CardView, type AnswerFn } from "./Cards.tsx";
+import { NODE_SHORT, STEPS, stepIndex } from "./Guide.tsx";
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+const who = (actor: string) => ACTOR_LABEL[actor] ?? { name: actor, avatar: "•" };
+
+/** Entries of these kinds fold together when they follow each other with the same actor. */
+const FOLD: Partial<Record<StudioEvent["type"], { one: string; many: (n: number) => string }>> = {
+  file_read: { one: "Read a file", many: (n) => `Read ${n} files` },
+  finding_recorded: { one: "Noted a finding", many: (n) => `Noted ${n} findings` },
+  browser_action: { one: "Did a step in the app", many: (n) => `Did ${n} steps in the app` },
+  tool_started: { one: "Ran a step", many: (n) => `Ran ${n} steps` },
+  decision_item_reviewed: { one: "Reviewed an item", many: (n) => `Reviewed ${n} items` },
+  verifier_result: { one: "Ran a check", many: (n) => `Ran ${n} checks` },
+};
+
+/** Plain names for Studio tool steps shown in the timeline. */
+const TOOL_PLAIN: Record<string, string> = {
+  sandbox_start: "Started a private copy of the app",
+  target_check: "Checked that the app starts",
+  "start changed app": "Started the changed app",
+};
+
+type Row =
+  | { kind: "divider"; key: string; label: string; ts: string }
+  | { kind: "node"; key: string; label: string; ts: string }
+  | { kind: "message"; key: string; entry: FeedEntry }
+  | { kind: "card"; key: string; entry: FeedEntry }
+  | { kind: "judge"; key: string; entry: FeedEntry }
+  | { kind: "group"; key: string; actor: string; type: StudioEvent["type"]; entries: FeedEntry[] }
+  | { kind: "line"; key: string; entry: FeedEntry };
+
+function toRows(feed: FeedEntry[], events: StudioEvent[]): Row[] {
+  const bySeq = new Map(events.map((e) => [e.seq, e]));
+  const rows: Row[] = [];
+  let step = -1;
+  for (let i = 0; i < feed.length; i++) {
+    const entry = feed[i]!;
+    const e = bySeq.get(entry.seq);
+    const next = feed[i + 1];
+    // A failed browser step is followed by its failure event: show it once, as the failure.
+    if (entry.type === "browser_action" && entry.failure && next?.type === "failure" && next.actor === entry.actor) continue;
+    if (entry.type === "card_answered" || entry.type === "task_created") continue;
+    if (entry.type === "node_entered" && e?.type === "node_entered") {
+      const idx = stepIndex(e.payload.to);
+      if (idx !== step && idx >= 0) {
+        step = idx;
+        rows.push({ kind: "divider", key: `d${entry.seq}`, label: STEPS[idx]!.label, ts: entry.ts });
+      } else {
+        rows.push({ kind: "node", key: `n${entry.seq}`, label: NODE_SHORT[e.payload.to] ?? e.payload.to, ts: entry.ts });
+      }
+      continue;
+    }
+    if (entry.type === "message_completed" || entry.type === "message_incomplete") {
+      rows.push({ kind: "message", key: `m${entry.seq}`, entry });
+      continue;
+    }
+    if (entry.type === "card_opened") {
+      rows.push({ kind: "card", key: `c${entry.seq}`, entry });
+      continue;
+    }
+    if (entry.type === "judge_message") {
+      rows.push({ kind: "judge", key: `j${entry.seq}`, entry });
+      continue;
+    }
+    const fold = FOLD[entry.type];
+    const last = rows.at(-1);
+    if (fold && !entry.failure && last?.kind === "group" && last.actor === entry.actor && last.type === entry.type) {
+      last.entries.push(entry);
+      continue;
+    }
+    if (fold && !entry.failure) {
+      rows.push({ kind: "group", key: `g${entry.seq}`, actor: entry.actor, type: entry.type, entries: [entry] });
+      continue;
+    }
+    rows.push({ kind: "line", key: `l${entry.seq}`, entry });
+  }
+  return rows;
+}
 
 function Reasoning({ text, seconds, live }: { text: string | undefined; seconds: number; live: boolean }) {
   const [open, setOpen] = useState(false);
-  if (!text) return seconds > 0 ? <div className="reasoning-none">thinking, {seconds} s</div> : null;
+  if (!text) return seconds > 0 ? <div className="thinking-chip">Thinking · {seconds} s</div> : null;
   return (
     <div className="reasoning">
-      <button type="button" className="reasoning-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        {open ? "▾" : "▸"} model-provided reasoning{live ? " · live" : ""} · {seconds} s
+      <button type="button" className="thinking-chip" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <span aria-hidden="true">{open ? "▾" : "▸"}</span> model-provided reasoning{live ? " · live" : ""} · {seconds} s
       </button>
       {open && <p className="reasoning-text">{text}</p>}
     </div>
@@ -23,73 +100,110 @@ function Reasoning({ text, seconds, live }: { text: string | undefined; seconds:
 }
 
 function MessageBubble({ m, live, events }: { m: MessageState; live?: LiveBuffer; events: StudioEvent[] }) {
-  const who = ACTOR_LABEL[m.actor] ?? { name: m.actor, avatar: "•" };
-  const end = m.status === "open" ? Date.now() : Date.parse(events.find((e) => (e.type === "message_completed" || e.type === "message_incomplete") && e.payload.messageId === m.messageId)?.ts ?? m.startedTs);
+  const w = who(m.actor);
+  const endEvent = events.find((e) => (e.type === "message_completed" || e.type === "message_incomplete") && e.payload.messageId === m.messageId);
+  const end = m.status === "open" ? Date.now() : Date.parse(endEvent?.ts ?? m.startedTs);
   const seconds = Math.max(0, Math.round((end - Date.parse(m.startedTs)) / 1000));
-  const text = m.status === "open" ? live?.text ?? "" : m.text ?? "";
+  const text = m.status === "open" ? (live?.text ?? "") : (m.text ?? "");
   const reasoning = m.status === "open" ? live?.reasoning : m.reasoning;
   return (
-    <div className={`bubble ${m.status}`}>
-      <div className="bubble-head">
-        <span aria-hidden="true">{who.avatar}</span> <strong>{who.name}</strong>
-        {m.status === "open" && <span className="live-mark">● live</span>}
-        {m.status === "incomplete" && <span className="incomplete-mark">incomplete: {m.reason}</span>}
+    <div className={`msg ${m.status}`} title={time(m.startedTs)}>
+      <span className="msg-avatar" aria-hidden="true">{w.avatar}</span>
+      <div className="msg-main">
+        <div className="msg-head">
+          <strong>{w.name}</strong>
+          {m.status === "open" && <span className="live-pill">● live</span>}
+          {m.status === "incomplete" && <span className="fail-pill">incomplete: {m.reason}</span>}
+        </div>
+        <Reasoning text={reasoning} seconds={reasoning || m.status !== "open" ? seconds : 0} live={m.status === "open"} />
+        <div className="msg-bubble">
+          {text ? (
+            <p>
+              {text}
+              {m.status === "open" && <span className="caret" aria-hidden="true" />}
+            </p>
+          ) : m.status === "open" ? (
+            <p className="msg-wait">
+              <span className="typing" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>{" "}
+              waiting for the first words
+            </p>
+          ) : null}
+        </div>
       </div>
-      <Reasoning text={reasoning} seconds={reasoning || m.status !== "open" ? seconds : 0} live={m.status === "open"} />
-      {text ? (
-        <p className="bubble-text">
-          {text}
-          {m.status === "open" && <span className="caret" aria-hidden="true">▍</span>}
-        </p>
-      ) : m.status === "open" ? (
-        <p className="bubble-wait">waiting for the first words…</p>
-      ) : null}
     </div>
   );
 }
 
-interface EntryProps {
-  entry: FeedEntry;
-  state: UiState;
-  events: StudioEvent[];
-  onAnswer: AnswerFn;
-  cardExtra?: (cardId: string) => ReactNode;
-}
-
-function Entry({ entry, state, events, onAnswer, cardExtra }: EntryProps) {
-  if ((entry.type === "message_completed" || entry.type === "message_incomplete") && entry.ref) {
-    const m = state.messages[entry.ref];
-    if (m) return <MessageBubble m={m} events={events} />;
-  }
-  if (entry.type === "card_opened" && entry.ref) {
-    const opened = events.find((e) => e.seq === entry.seq);
-    if (opened?.type === "card_opened")
-      return <CardView event={opened} answered={state.cards[entry.ref]?.answered ?? false} events={events} onAnswer={onAnswer} extra={cardExtra?.(entry.ref)} />;
-  }
-  if (entry.type === "card_answered" || entry.type === "message_completed") return null;
-  const who = ACTOR_LABEL[entry.actor] ?? { name: entry.actor, avatar: "•" };
+function GroupRow({ row }: { row: Extract<Row, { kind: "group" }> }) {
+  const [open, setOpen] = useState(false);
+  const w = who(row.actor);
+  const fold = FOLD[row.type]!;
+  const n = row.entries.length;
+  const first = row.entries[0]!;
+  const plain = row.type === "tool_started" ? TOOL_PLAIN[first.text.split(" ")[0] ?? ""] ?? TOOL_PLAIN[first.text] : undefined;
+  const title = n === 1 ? (plain ?? first.text) : fold.many(n);
   return (
-    <div className={`entry${entry.failure ? " failure" : ""}${entry.type === "judge_message" ? " judge" : ""}`}>
-      <time className="ts" dateTime={entry.ts}>{time(entry.ts)}</time>
-      <span className="who" aria-hidden="true">{who.avatar}</span>
-      <span className="what">
-        {entry.failure && <span className="sr-only">Failure: </span>}
-        {entry.failure ? "✗ " : ""}
-        <span className="actor">{who.name}</span> {entry.text}
-        {entry.path && entry.type !== "file_read" && <span className="path mono"> · {entry.path}</span>}
-      </span>
+    <div className="step" title={time(first.ts)}>
+      <span className="step-avatar" aria-hidden="true">{w.avatar}</span>
+      <div className="step-main">
+        <button type="button" className="step-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)} disabled={n === 1 && !first.path}>
+          <span className="step-who">{w.name}</span> {title}
+          {(n > 1 || first.path) && <span className="step-caret">{open ? "Hide" : "Show"}</span>}
+        </button>
+        {open && (
+          <ul className="step-items">
+            {row.entries.map((x) => (
+              <li key={x.seq}>
+                {x.type === "file_read" ? <span className="mono">{x.path}</span> : x.text}
+                {x.type !== "file_read" && x.path && <span className="mono muted"> · {x.path}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
 
-export function ActivityFeed({
-  state,
-  events,
-  buffers,
-  onAnswer,
-  cardExtra,
-  inline,
-}: {
+/** Plain names for Failure_Classes; the class itself stays visible as a small badge (R23.2). */
+const FAILURE_PLAIN: Record<string, string> = {
+  interface_call_failure: "a call failed",
+  readback_mismatch: "the result did not match",
+  llm_output_format_invalid: "the model answered in the wrong format",
+  rejected_by_safety_rule: "blocked by a safety rule",
+  budget_exceeded: "out of time or budget",
+  blocked_unanswered_question: "a question was not answered",
+};
+
+
+function LineRow({ entry, event }: { entry: FeedEntry; event: StudioEvent | undefined }) {
+  const w = who(entry.actor);
+  let text = entry.text;
+  let badge: string | null = null;
+  if (event?.type === "failure") {
+    text = event.payload.detail.charAt(0).toUpperCase() + event.payload.detail.slice(1);
+    badge = `${FAILURE_PLAIN[event.payload.failureClass] ?? ""} · ${event.payload.failureClass}`;
+  }
+  return (
+    <div className={`step${entry.failure ? " step-fail" : ""}`} title={time(entry.ts)}>
+      <span className="step-avatar" aria-hidden="true">{entry.failure ? "⚠" : w.avatar}</span>
+      <div className="step-main">
+        <span className="step-text">
+          {entry.failure && <span className="sr-only">Failure: </span>}
+          <span className="step-who">{w.name}</span> {text}
+          {entry.path && <span className="mono muted"> · {entry.path}</span>}
+          {badge && <span className="badge red fail-class">{badge}</span>}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+interface FeedProps {
   state: UiState;
   events: StudioEvent[];
   buffers: Record<string, LiveBuffer>;
@@ -97,28 +211,72 @@ export function ActivityFeed({
   cardExtra?: (cardId: string) => ReactNode;
   /** Extra content placed after the entries, for example the decision review. */
   inline?: ReactNode;
-}) {
+}
+
+export function ActivityFeed({ state, events, buffers, onAnswer, cardExtra, inline }: FeedProps) {
   const end = useRef<HTMLDivElement>(null);
-  const open = Object.values(state.messages).filter((m) => m.status === "open").sort((a, b) => a.startedSeq - b.startedSeq);
+  const open = Object.values(state.messages)
+    .filter((m) => m.status === "open")
+    .sort((a, b) => a.startedSeq - b.startedSeq);
   const [follow, setFollow] = useState(true);
   useEffect(() => {
     if (follow) end.current?.scrollIntoView?.({ block: "end" });
   });
+  const rows = toRows(state.feed, events);
+  const bySeq = new Map(events.map((e) => [e.seq, e]));
   return (
-    <section className="feed" aria-label="Activity">
-      <h2 className="area-title">Activity</h2>
-      <div className="feed-scroll" onScroll={(e) => {
-        const el = e.currentTarget;
-        setFollow(el.scrollHeight - el.scrollTop - el.clientHeight < 80);
-      }}>
-        {state.feed.length === 0 && <p className="empty">No Task yet. Paste a repository on the home page, or play a fixture in development.</p>}
-        {state.feed.map((entry) => (
-          <Entry key={entry.seq} entry={entry} state={state} events={events} onAnswer={onAnswer} {...(cardExtra ? { cardExtra } : {})} />
-        ))}
-        {inline}
+    <section className="panel timeline" aria-label="Activity">
+      <div
+        className="timeline-scroll"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          setFollow(el.scrollHeight - el.scrollTop - el.clientHeight < 120);
+        }}
+      >
+        {rows.length === 0 && <p className="empty">Nothing yet. When a Task starts, every step of the team shows up here.</p>}
+        {rows.map((r) => {
+          switch (r.kind) {
+            case "divider":
+              return (
+                <div key={r.key} className="divider" title={time(r.ts)}>
+                  <span>{r.label}</span>
+                </div>
+              );
+            case "node":
+              return (
+                <div key={r.key} className="node-line" title={time(r.ts)}>
+                  {r.label}
+                </div>
+              );
+            case "message": {
+              const m = r.entry.ref ? state.messages[r.entry.ref] : undefined;
+              return m ? <MessageBubble key={r.key} m={m} events={events} /> : <LineRow key={r.key} entry={r.entry} event={bySeq.get(r.entry.seq)} />;
+            }
+            case "card": {
+              const opened = events.find((e) => e.seq === r.entry.seq);
+              if (opened?.type !== "card_opened" || !r.entry.ref) return null;
+              return <CardView key={r.key} event={opened} answered={state.cards[r.entry.ref]?.answered ?? false} events={events} onAnswer={onAnswer} extra={cardExtra?.(r.entry.ref)} />;
+            }
+            case "judge":
+              return (
+                <div key={r.key} className="msg mine" title={time(r.entry.ts)}>
+                  <div className="msg-main">
+                    <div className="msg-bubble">
+                      <p>{r.entry.text}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            case "group":
+              return <GroupRow key={r.key} row={r} />;
+            case "line":
+              return <LineRow key={r.key} entry={r.entry} event={bySeq.get(r.entry.seq)} />;
+          }
+        })}
         {open.map((m) => (
           <MessageBubble key={m.messageId} m={m} live={buffers[m.messageId]} events={events} />
         ))}
+        {inline}
         <div ref={end} />
       </div>
     </section>

@@ -250,7 +250,7 @@ Conventions:
     - Design: LLM configuration and SSRF validation
     - _Requirements: 30.1, 30.2, 30.3, 30.5, 30.12, 30.14_
   - [ ] 6.2 Implement the Runtime_Rules loader and role prompts
-    - `runtime-rules/roles/*.md` for Moderator, Product, Architecture, Risk_and_Security, Verification, Tech_Manager, operator; shared behavior rules; `VERSION`; schema export script into `runtime-rules/schemas/`; loader records the version at Task start
+    - `runtime-rules/roles/*.md` for the function agents (Reader, Explorer, Facilitator, Planner, Reviewer) and the Meeting_Perspectives (User_Value, Feasibility, Risk); shared behavior rules; `VERSION`; schema export script into `runtime-rules/schemas/`; loader records the version at Task start
     - Design: Repository layout, apps/server modules (`roles/`)
     - _Requirements: 35.2, 35.3, 35.4, 35.6, 35.10_
   - [ ] 6.3 Implement the evidence checker
@@ -275,7 +275,7 @@ Conventions:
     - Stream break keeps partial text and records the failure; truncation is discarded; blocked tool recorded as rejected by a safety rule; reasoning persisted with the complete message
     - _Requirements: 3.9, 3.12, 23.7, 30.13_
   - [ ] 6.9 Implement the reading skim and the meeting
-    - Architecture skim in `reading` (`read_file`, `search_repo`, `record_finding`, no `ask_judge`) leading to `adapter_branch`; the meeting starts after evidence gathering with the `evidence_summary` built by code (reading findings and skipped parts; experience notes, screenshots, "experience unavailable" and partial labels once milestone 11 adds them); meeting rounds (fixed order, 2 rounds), `submit_statement` with findings, evidence and A/B/unclear workflows, Unverified marks, Moderator `ask_judge` with 120 s wait, `submit_meeting_summary` leading to `deciding`
+    - Reader skim in `reading` (`read_file`, `search_repo`, `record_finding`, no `ask_judge`) leading to `adapter_branch`; the meeting starts after evidence gathering with the `evidence_summary` built by code (reading findings and skipped parts; experience notes, screenshots, "experience unavailable" and partial labels once milestone 11 adds them); meeting rounds (fixed order, 2 rounds), `submit_statement` with findings, evidence and A/B/unclear workflows, Unverified marks, Facilitator `ask_judge` with 120 s wait, `submit_meeting_summary` leading to `deciding`
     - Note: until milestone 11 wires `sandbox_start` and `browser_experience`, an Adapted_Repo Task records the experience as "experience unavailable (not built yet)" and goes from `adapter_branch` to `meeting`, so the label stays honest
     - Design: Meeting, Repo_Reader, Flow_Graph
     - _Requirements: 10.2, 11.1, 11.3, 11.4, 11.5, 11.6, 11.7, 11.8, 11.9, 15.1, 18.1, 18.6_
@@ -308,11 +308,11 @@ Conventions:
     - **Property 8: Decision_Doc hash recomputation**
     - **Validates: Requirements 16.5**
   - [ ] 7.3 Implement the deciding node
-    - Roles propose Approach_Options; Risk_and_Security and Verification add Assessments labeled "LLM assessment, not a guarantee"; `submit_decision_draft`; `assessment.complete` computed by code; evidence check of claims and endpoints
+    - Meeting_Perspectives propose Approach_Options; Feasibility and Risk add Assessments and the Facilitator adds the executable Acceptance_Checks labeled "LLM assessment, not a guarantee"; `submit_decision_draft`; `assessment.complete` computed by code; evidence check of claims and endpoints
     - Design: Decision step
     - _Requirements: 15.1, 15.2, 15.8, 15.9, 15.10, 24.4, 37.1, 37.2, 37.3, 37.5, 37.6, 37.7_
   - [ ] 7.4 Implement confirmation and freeze
-    - Item review per `ui/ui-4-decide.svg`: draft split into review items by code, accept or reject with a reason (`decision_item_reviewed`), send back only when every item has a verdict, unchanged items keep their verdict by `itemHash`, freeze only when every item is accepted
+    - Item review per `ui/screen-4-decide.png`: draft split into review items by code, accept or reject with a reason (`decision_item_reviewed`), send back only when every item has a verdict, unchanged items keep their verdict by `itemHash`, freeze only when every item is accepted
     - Confirm card in feature words with exactly one selectable approach or combination; freeze records version, hash, session and time (`decision_doc_frozen`); request changes back to `deciding`; Other_Repo end before freeze to `analysis_only`; guards block planning while unconfirmed
     - Design: Decision step, Flow_Graph
     - _Requirements: 5.7, 15.3, 15.4, 15.5, 15.11, 16.2, 16.3, 25.1, 37.4_
@@ -468,7 +468,7 @@ Conventions:
     - Design: Planning and document-first
     - _Requirements: 19.1, 19.3, 19.9, 19.10, 20.1, 20.4, 20.11, 40.1_
   - [ ] 13.4 Implement the documenting node
-    - Requirements, design and tasks documents and the Task_Board for the analyzed repository; `runEnvironment` section proposed by the Architecture role; version recorded; JSON plus Markdown in `data/tasks/<id>/docs/`; Other_Repo ends as Docs only
+    - Requirements, design and tasks documents and the Task_Board for the analyzed repository; `runEnvironment` section proposed by the Planner; version recorded; JSON plus Markdown in `data/tasks/<id>/docs/`; Other_Repo ends as Docs only
     - Design: Planning and document-first
     - _Requirements: 19.2, 19.4, 19.6, 20.4, 25.2, 39.9, 39.10_
   - [ ] 13.5 Mark documents based on an older version
@@ -486,9 +486,9 @@ Conventions:
     - Show the user the backlog with Feature_Contracts and the `runEnvironment` section generated from the M1 Decision_Doc, and an Other_Repo ending as Docs only; check every document records the Frozen version and that a story without a Feature_Contract is rejected
     - _Requirements: 20.4, 20.9, 25.2_
 
-- [ ] 14. F10: pre-execution target check, PiCodeRuntime, development, Tech_Manager review, stop and ask, Run_Environment, checkpoints, Verifier and API-operation path (target 2026-11-30)
+- [ ] 14. F10: pre-execution target check, PiCodeRuntime, development, Reviewer review, stop and ask, Run_Environment, checkpoints, Verifier and API-operation path (target 2026-11-30)
   - [ ] 14.1 Implement the context builder and the development rules
-    - `apps/server/src/dev/context.ts` writes only the story, its Feature_Contract and the referenced documents; Runtime_Rules rules "small scope per Agent" and "no decision power, stop and ask, reviewed by the Tech_Manager"
+    - `apps/server/src/dev/context.ts` writes only the story, its Feature_Contract and the referenced documents; Runtime_Rules rules "small scope per Agent" and "no decision power, stop and ask, reviewed by the Reviewer"
     - Design: Development stage
     - _Requirements: 19.5, 19.7, 19.8, 35.8, 35.9, 40.2_
   - [ ] 14.2 Implement the PiCodeRuntime
@@ -513,12 +513,12 @@ Conventions:
   - [ ]* 14.7 Write property test for change recording
     - **Property 18: Every Code_Agent change is recorded and reviewed**
     - **Validates: Requirements 40.5, 38.5**
-  - [ ] 14.8 Implement the Tech_Manager review
-    - `story_review`: `read_changed_file`, `read_diff`, `submit_review_verdict`; label "reviewed by Tech_Manager (LLM judgment)"; request changes back with reasons; escalate to the Moderator; approach change returns to `deciding`
+  - [ ] 14.8 Implement the Reviewer review
+    - `story_review`: `read_changed_file`, `read_diff`, `submit_review_verdict`; label "reviewed by Reviewer (LLM judgment)"; request changes back with reasons; escalate to the Facilitator; approach change returns to `deciding`
     - Design: Development stage, Review_Verdict
     - _Requirements: 37.8, 37.9, 40.6, 40.7, 40.8, 40.9, 40.10, 40.15_
   - [ ] 14.9 Implement stop and ask
-    - `story_ask`: attempts counted, retry limit 3 opens a question; technical questions to Tech_Manager `answer_question`; feature questions through the Moderator as a question card; "waiting for answer" status; 300 s unanswered marks the story Unconfirmed-blocked and continues or ends `failed`
+    - `story_ask`: attempts counted, retry limit 3 opens a question; technical questions to Reviewer `answer_question`; feature questions through the Facilitator as a question card; "waiting for answer" status; 300 s unanswered marks the story Unconfirmed-blocked and continues or ends `failed`
     - Design: Development stage, Flow_Graph
     - _Requirements: 2.10, 5.5, 40.11, 40.12, 40.13, 40.14, 40.17_
   - [ ]* 14.10 Write unit tests for development routing with a fake runtime
@@ -543,7 +543,7 @@ Conventions:
     - Design: Verifier
     - _Requirements: 14.11, 20.3, 22.1, 22.2, 22.3, 22.6, 22.7, 22.8, 22.9_
   - [ ] 14.16 Implement the API-operation path with the Demo_Case
-    - `api_read` Tech_Manager loop with `target_api_read` (read-only calls within the Adapter allow-list), `read_file`, `search_repo`, `submit_demo_case`; `api_plan` validation; `api_suggest` and `api_confirm` for purpose B; `apiops/writer.ts` as the only code path that writes to the target (Sandbox origin, allow-list, per item, `api_write` events); `api_try_one`, `api_write_batch`, `api_read_back`; label "designed by Tech_Manager (LLM judgment)"; checkpoint shows the read-back table
+    - `api_read` Reviewer loop with `target_api_read` (read-only calls within the Adapter allow-list), `read_file`, `search_repo`, `submit_demo_case`; `api_plan` validation; `api_suggest` and `api_confirm` for purpose B; `apiops/writer.ts` as the only code path that writes to the target (Sandbox origin, allow-list, per item, `api_write` events); `api_try_one`, `api_write_batch`, `api_read_back`; label "designed by Reviewer (LLM judgment)"; checkpoint shows the read-back table
     - Design: Flow_Graph (API-operation sub-path), Development stage (per API-operation story)
     - _Requirements: 15.7, 18.2, 18.3, 18.4, 18.7, 18.9, 18.10, 18.13, 22.1, 40.18_
   - [ ]* 14.17 Write property test for success only from the Verifier

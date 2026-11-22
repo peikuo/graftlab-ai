@@ -22,7 +22,7 @@ await p.getByRole("button", { name: "Start" }).click();
 await p.getByRole("button", { name: "4×" }).click();
 await p.waitForTimeout(2500);
 await snap("2-reading");
-await p.getByText("Product is using the app").waitFor(T);
+await p.getByText("The Explorer is using the app").waitFor(T);
 await p.waitForTimeout(1500);
 await snap("3-trying");
 
@@ -63,7 +63,7 @@ await snap("8-dev-question");
 await p.getByRole("button", { name: "Yes, all my tags" }).click();
 
 await p.getByRole("button", { name: "Yes, this is right" }).waitFor(T);
-await p.getByRole("button", { name: /Suggest tags/ }).last().click();
+await p.locator(".mock-suggest").click();
 await p.locator(".mock-suggestions .chip").first().click();
 await p.waitForTimeout(300);
 await snap("9-checkpoint");

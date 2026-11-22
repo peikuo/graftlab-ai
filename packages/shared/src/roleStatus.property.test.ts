@@ -41,29 +41,29 @@ describe("roleStatus", () => {
 
 describe("roleStatus examples", () => {
   const t = (s: number) => new Date(Date.UTC(2026, 10, 22, 10, 0, s)).toISOString();
-  const arch = { kind: "role" as const, roleId: "architecture" as const };
+  const arch = { kind: "role" as const, roleId: "reader" as const };
   const ev = (seq: number, s: number, rest: Pick<StudioEvent, "type" | "payload">, actor: StudioEvent["actor"] = arch) =>
     ({ v: 1, seq, ts: t(s), taskId: "t1", node: "meeting", actor, ...rest }) as StudioEvent;
   const now = (s: number) => Date.parse(t(s));
 
-  const started = ev(1, 0, { type: "message_started", payload: { messageId: "m1", roleId: "architecture", purpose: "statement" } });
+  const started = ev(1, 0, { type: "message_started", payload: { messageId: "m1", roleId: "reader", purpose: "statement" } });
   const speaking = ev(2, 2, { type: "message_progress", payload: { messageId: "m1", phase: "speaking", textChars: 10, reasoningChars: 0 } });
 
   it("waiting for LLM with elapsed seconds before the first progress", () => {
-    expect(roleStatus(foldEvents([started]), "architecture", now(7))).toMatchObject({ kind: "waiting_for_llm", text: "waiting for LLM, 7 s", working: false });
+    expect(roleStatus(foldEvents([started]), "reader", now(7))).toMatchObject({ kind: "waiting_for_llm", text: "waiting for LLM, 7 s", working: false });
   });
 
   it("speaking while progress is recent, then waiting with no output for N s", () => {
     const s = foldEvents([started, speaking]);
-    expect(roleStatus(s, "architecture", now(10))).toMatchObject({ kind: "speaking", working: true });
-    expect(roleStatus(s, "architecture", now(30))).toMatchObject({ kind: "waiting_for_llm", text: "waiting for LLM, no output for 28 s" });
+    expect(roleStatus(s, "reader", now(10))).toMatchObject({ kind: "speaking", working: true });
+    expect(roleStatus(s, "reader", now(30))).toMatchObject({ kind: "waiting_for_llm", text: "waiting for LLM, no output for 28 s" });
   });
 
   it("blocked with the reason after a failure, idle after a later event", () => {
     const fail = ev(3, 3, { type: "failure", payload: { failureClass: "interface_call_failure", source: "llm", detail: "stream closed" } });
-    expect(roleStatus(foldEvents([started, speaking, fail]), "architecture", now(4))).toMatchObject({ kind: "blocked", text: "blocked: stream closed" });
+    expect(roleStatus(foldEvents([started, speaking, fail]), "reader", now(4))).toMatchObject({ kind: "blocked", text: "blocked: stream closed" });
     const done = ev(4, 5, { type: "message_incomplete", payload: { messageId: "m1", partialText: "x", reason: "stream closed" } });
-    expect(roleStatus(foldEvents([started, speaking, fail, done]), "architecture", now(6)).kind).toBe("idle");
+    expect(roleStatus(foldEvents([started, speaking, fail, done]), "reader", now(6)).kind).toBe("idle");
   });
 
   it("waiting for answer names the asked party", () => {
@@ -82,14 +82,14 @@ describe("roleStatus examples", () => {
 
   it("reading stops as soon as the role does something else", () => {
     const read = ev(1, 0, { type: "file_read", payload: { path: "a.py", bytes: 1 } });
-    expect(roleStatus(foldEvents([read]), "architecture", now(2)).kind).toBe("reading");
-    const said = ev(2, 1, { type: "message_started", payload: { messageId: "m9", roleId: "architecture", purpose: "statement" } });
+    expect(roleStatus(foldEvents([read]), "reader", now(2)).kind).toBe("reading");
+    const said = ev(2, 1, { type: "message_started", payload: { messageId: "m9", roleId: "reader", purpose: "statement" } });
     const done = ev(3, 2, { type: "message_completed", payload: { messageId: "m9", text: "x", finishReason: "stop" } });
-    expect(roleStatus(foldEvents([read, said, done]), "architecture", now(3)).kind).toBe("idle");
+    expect(roleStatus(foldEvents([read, said, done]), "reader", now(3)).kind).toBe("idle");
   });
 
   it("progress from another actor does not make a role look active", () => {
     const foreign = ev(2, 2, { type: "message_progress", payload: { messageId: "m1", phase: "speaking", textChars: 1, reasoningChars: 0 } }, { kind: "system" });
-    expect(roleStatus(foldEvents([started, foreign]), "architecture", now(3)).kind).toBe("waiting_for_llm");
+    expect(roleStatus(foldEvents([started, foreign]), "reader", now(3)).kind).toBe("waiting_for_llm");
   });
 });

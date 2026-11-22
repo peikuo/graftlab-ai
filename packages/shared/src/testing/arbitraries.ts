@@ -135,12 +135,12 @@ const P: { [K in EventType]: fc.Arbitrary<PayloadOf<K>> } = {
     attempt: pos,
     verdict: fc.constantFrom("approve" as const, "request_changes" as const, "escalate" as const),
     reasons: fc.array(str, { maxLength: 3 }),
-    label: fc.constant("reviewed by Tech_Manager (LLM judgment)" as const),
+    label: fc.constant("reviewed by Reviewer (LLM judgment)" as const),
   }),
   question_opened: fc.record({
     questionId: idA,
     from: fc.oneof(fc.constant("code_agent" as const), role),
-    askedParty: fc.constantFrom("tech_manager" as const, "judge" as const),
+    askedParty: fc.constantFrom("reviewer" as const, "judge" as const),
     kind: fc.constantFrom("technical" as const, "feature" as const),
     text: ne,
   }),
@@ -151,7 +151,7 @@ const P: { [K in EventType]: fc.Arbitrary<PayloadOf<K>> } = {
     hash: ne,
     itemCount: fc.nat({ max: 10 }),
     derivedCheckId: idA,
-    label: fc.constant("designed by Tech_Manager (LLM judgment)" as const),
+    label: fc.constant("designed by Reviewer (LLM judgment)" as const),
   }),
   api_write: fc.record({
     storyId: idA,

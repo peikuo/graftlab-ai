@@ -24,7 +24,7 @@ function Home({ onStart }: { onStart: (url: string) => void }) {
       <h1>
         GraftLab <span className="accent">AI</span>
       </h1>
-      <p className="home-sub">Paste a GitHub repository. A team of AI roles reads it, tries it, meets with you, and you decide together how to make it AI-powered.</p>
+      <p className="home-sub">Paste a GitHub repository. Decide together with an AI team how to make it AI-powered.</p>
       <form
         className="home-form"
         onSubmit={(e) => {
@@ -40,13 +40,25 @@ function Home({ onStart }: { onStart: (url: string) => void }) {
         {!valid
           ? "Enter a GitHub repository address, for example https://github.com/sissbruecker/linkding"
           : linkding
-            ? "✓ linkding is supported for everything: reading, trying it, building and checking."
-            : "This demo only plays the linkding story. Other repositories get reading and the meeting in the real product."}
+            ? "✓ linkding is fully supported: read, try, build and check."
+            : "This demo plays the linkding story only."}
       </p>
       <ol className="home-steps">
-        <li><strong>1 Read and try.</strong> The team reads the code and uses the app like a new user. You can watch every step.</li>
-        <li><strong>2 Meet and decide.</strong> The team proposes ideas and asks you questions. You accept or reject the decision item by item, then lock it.</li>
-        <li><strong>3 Build and check.</strong> A developer agent builds it in a private copy. An independent checker (code, no AI) decides if it works.</li>
+        <li>
+          <span className="step-icon" aria-hidden="true">🔍</span>
+          <strong>Read and try</strong>
+          Agents read the code and use the app like a new user. You watch every step.
+        </li>
+        <li>
+          <span className="step-icon" aria-hidden="true">💬</span>
+          <strong>Meet and decide</strong>
+          Three viewpoints discuss ideas and ask you. You accept the decision item by item.
+        </li>
+        <li>
+          <span className="step-icon" aria-hidden="true">✅</span>
+          <strong>Build and check</strong>
+          An agent builds it in a private copy. A checker (code, no AI) decides if it works.
+        </li>
       </ol>
     </div>
   );
@@ -106,8 +118,10 @@ export function DemoApp() {
   return (
     <div className="app demo">
       <header className="topbar">
-        <span className="brand">🧪 GraftLab AI</span>
-        <span className="repo mono">sissbruecker/linkding</span>
+        <span className="brand">
+          <span className="brand-mark" aria-hidden="true">🧪</span> GraftLab <b>AI</b>
+        </span>
+        <span className="chip mono">sissbruecker/linkding</span>
         <span className="demo-flag">DEMO · mock data</span>
         <span className="spacer" />
         <span className="speed" role="group" aria-label="Demo speed">
@@ -134,6 +148,7 @@ export function DemoApp() {
       )}
       <main className="workspace">
         <PresenceColumn state={state} now={snap.now} />
+        <div className="center">
         <ActivityFeed
           state={state}
           events={snap.events}
@@ -156,9 +171,10 @@ export function DemoApp() {
             ) : null
           }
         />
+        <InterjectionInput state={state} events={snap.events} queue={{ role: "operator", queueLength: 0, open: true }} onSend={(to, text) => engine.message(to, text)} />
+        </div>
         <ArtifactArea state={state} events={snap.events} />
       </main>
-      <InterjectionInput state={state} events={snap.events} queue={{ role: "operator", queueLength: 0, open: true }} onSend={(to, text) => engine.message(to, text)} />
     </div>
   );
 }

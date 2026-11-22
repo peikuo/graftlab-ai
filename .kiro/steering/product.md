@@ -14,8 +14,8 @@ The spec in `.kiro/specs/graftlab-ai/` is the single source of truth. Change the
 - Every working indicator in the UI is backed by a recent event. No fake activity, no fake progress numbers.
 - Failures are shown when they happen, with their Failure_Class. No hidden retries; a retry is a visible event.
 - Replay is always labeled "Replay".
-- Success is decided only by the Verifier (code, no LLM). A role statement or a Tech_Manager approval is never success.
-- LLM judgments carry their label: "LLM assessment, not a guarantee", "reviewed by Tech_Manager (LLM judgment)", "designed by Tech_Manager (LLM judgment)".
+- Success is decided only by the Verifier (code, no LLM). A role statement or a Reviewer approval is never success.
+- LLM judgments carry their label: "LLM assessment, not a guarantee", "reviewed by Reviewer (LLM judgment)", "designed by Reviewer (LLM judgment)".
 
 ## What the Studio guarantees versus best effort
 
@@ -26,7 +26,7 @@ Best effort, and measured instead of promised: the quality of role statements, d
 ## Agent rules
 
 - Development agents have no decision power. Decisions are made in the meeting and frozen in the Decision_Doc.
-- Each story has a feature-level Feature_Contract (no file lists). The Tech_Manager reviews the changed files against it.
+- Each story has a feature-level Feature_Contract (no file lists). The Reviewer reviews the changed files against it.
 - An agent that cannot resolve a problem stops and asks. It does not improvise or retry forever.
 
 ## Scope

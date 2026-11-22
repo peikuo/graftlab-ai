@@ -54,16 +54,16 @@ for (const [path, bytes] of [
   ["bookmarks/services/tags.py", 1810],
   ["bookmarks/services/bookmarks.py", 11220],
 ] as const) {
-  ev("file_read", { path, bytes }, role("architecture"), 900);
+  ev("file_read", { path, bytes }, role("reader"), 900);
 }
-ev("finding_recorded", { kind: "endpoint", text: "REST API: /api/bookmarks/ supports create, PATCH and archive with token auth", evidence: [{ path: "bookmarks/api/routes.py", snippet: "class BookmarkViewSet" }], evidenceStatus: "passed" }, role("architecture"));
-ev("finding_recorded", { kind: "finding", text: "Tags are free text per user; nothing suggests them", evidence: [{ path: "bookmarks/services/tags.py", snippet: "def get_or_create_tags" }], evidenceStatus: "passed" }, role("architecture"));
+ev("finding_recorded", { kind: "endpoint", text: "REST API: /api/bookmarks/ supports create, PATCH and archive with token auth", evidence: [{ path: "bookmarks/api/routes.py", snippet: "class BookmarkViewSet" }], evidenceStatus: "passed" }, role("reader"));
+ev("finding_recorded", { kind: "finding", text: "Tags are free text per user; nothing suggests them", evidence: [{ path: "bookmarks/services/tags.py", snippet: "def get_or_create_tags" }], evidenceStatus: "passed" }, role("reader"));
 enter("adapter_branch", "reading_done");
 enter("sandbox_start", "adapted_repo");
 ev("tool_started", { callId: "sb1", tool: "sandbox_start", inputSummary: "linkding 1.47.0 (pinned digest)" }, system, 300);
 ev("tool_finished", { callId: "sb1", tool: "sandbox_start", ok: true, outputSummary: "health in 34 s, test data seeded, equality check passed" }, system, 4000);
 enter("browser_experience", "sandbox_ready");
-const op = role("product");
+const op = role("explorer");
 ev("browser_action", { action: "browser_open", target: "/bookmarks", ok: true }, op, 1500);
 ev("browser_observation", { snapshotSummary: "Bookmarks list with search, tag cloud and 12 items", screenshotRef: "shots/1.jpg" }, op, 900);
 ev("browser_action", { action: "browser_click", target: 'button "Add bookmark"', ok: false }, op, 1500);
@@ -74,15 +74,15 @@ ev("browser_observation", { snapshotSummary: "Add form: URL, title, description,
 ev("judge_message", { clientMsgId: "j1", to: "all", text: "Look at how tags are entered.", status: "queued", deliveredTo: [] }, { kind: "judge" }, 800);
 enter("meeting", "experience_done", 1200);
 ev("evidence_summary", { findings: ["REST API with token auth", "Tags are free text per user"], skipped: [], experienceNotes: ["Add form needs manual tags", "One failed click, recovered"], screenshotRefs: ["shots/1.jpg", "shots/2.jpg"], partial: false }, system, 300);
-ev("judge_message_delivered", { clientMsgIds: ["j1"], deliveredTo: ["moderator", "product", "architecture", "risk_and_security", "verification"] }, system, 200);
-say("moderator", "m1", "", "Evidence summary: 6 files read, browser experience complete with one failed click. The Judge asked us to look at how tags are entered. Product, please start.");
+ev("judge_message_delivered", { clientMsgIds: ["j1"], deliveredTo: ["facilitator", "user_value", "reader", "risk"] }, system, 200);
+say("facilitator", "m1", "", "Evidence summary: 6 files read, browser experience complete with one failed click. The Judge asked us to look at how tags are entered. Product, please start.");
 say(
-  "product",
+  "user_value",
   "m2",
   "Tags are user-specific. A suggestion has to come from the user's own vocabulary, otherwise it adds noise. The add form is the place where the user decides.",
   "Suggest tags on the add form, taken only from the user's existing tags, and let the user confirm each one. Evidence: bookmarks/services/tags.py and the add form in browser step 5.",
 );
-ev("card_opened", { cardId: "q1", kind: "question", title: "Should suggested tags be applied automatically or only after you confirm?", body: "The roles disagree. Product prefers confirmation; Architecture says automatic is simpler.", options: [{ id: "confirm", label: "After I confirm" }, { id: "auto", label: "Automatically" }], allowFreeText: true }, role("moderator"), 700);
+ev("card_opened", { cardId: "q1", kind: "question", title: "Should suggested tags be applied automatically or only after you confirm?", body: "The roles disagree. Product prefers confirmation; Architecture says automatic is simpler.", options: [{ id: "confirm", label: "After I confirm" }, { id: "auto", label: "Automatically" }], allowFreeText: true }, role("facilitator"), 700);
 
 const out = join(import.meta.dirname, "../../packages/shared/test/fixtures/synthetic-gathering-meeting.jsonl");
 writeFileSync(out, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");

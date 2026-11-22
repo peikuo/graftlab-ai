@@ -22,7 +22,7 @@ async function setup(secrets = new SecretRegistry()) {
   return { store, hub, leaks };
 }
 
-const started = { type: "message_started", node: "meeting", actor: { kind: "role", roleId: "product" }, payload: { messageId: "m1", roleId: "product", purpose: "statement" } } as const;
+const started = { type: "message_started", node: "meeting", actor: { kind: "role", roleId: "user_value" }, payload: { messageId: "m1", roleId: "user_value", purpose: "statement" } } as const;
 
 describe("SseHub", () => {
   it("resumes after Last-Event-ID and forwards new events with id = seq", async () => {

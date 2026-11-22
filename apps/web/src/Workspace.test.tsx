@@ -37,19 +37,19 @@ describe("Workspace skeleton", () => {
     render(<Workspace />);
     expect(screen.getByRole("region", { name: "Team" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Activity" })).toBeTruthy();
-    expect(screen.getByRole("region", { name: "Artifacts" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Details" })).toBeTruthy();
   });
 
   it("every Presence_Card has an avatar, a name and a status in text, not color alone", () => {
     render(<Workspace />);
     const team = screen.getByRole("region", { name: "Team" });
-    const cards = within(team).getAllByRole("listitem");
+    const cards = within(team).getAllByRole("listitem").filter((li) => li.classList.contains("agent"));
     expect(cards).toHaveLength(ROLE_CARDS.length);
     for (const c of cards) {
       expect(c.getAttribute("aria-label")).toMatch(/^.+: .+$/);
-      expect(c.querySelector(".status")?.textContent?.trim().length).toBeGreaterThan(0);
+      expect(c.querySelector(".agent-status")?.textContent?.trim().length).toBeGreaterThan(0);
     }
-    expect(within(team).getByText("Verifier · code, no LLM")).toBeTruthy();
+    expect(within(team).getByText("code, no AI")).toBeTruthy();
   });
 
   it("keeps Engineering_Details closed until the Judge opens it", () => {
