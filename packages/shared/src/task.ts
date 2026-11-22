@@ -27,6 +27,10 @@ export const NODE_OUTCOMES = [
   "answered",
   "unanswered",
   "passed", // Verifier: every item passed
+  // failure review choices of the Judge (R36.6)
+  "retry",
+  "skip_story",
+  "end_task",
 ] as const;
 export type NodeOutcome = (typeof NODE_OUTCOMES)[number];
 
@@ -76,6 +80,8 @@ export interface TaskState {
     queuedJudgeMessages: string[];
   };
   targetCheckPassed: boolean;
+  /** Set by the runner, with the failure event, before a failure edge into failure_review (R36.6). */
+  failure?: { node: NodeId; storyId?: string; failureClass: FailureClass; detail: string };
   flags: { prototypeEnabled: boolean; judgeLlm: boolean };
   limits: { storyAttempts: number; demoCaseRetries: number };
   startedAt: string;

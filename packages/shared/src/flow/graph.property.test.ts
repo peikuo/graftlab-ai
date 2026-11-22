@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { NODE_OUTCOMES, type NodeOutcome, type TaskState } from "../task.ts";
-import { taskStateArb } from "../testing/taskArb.ts";
+import { placeAt, taskStateArb } from "../testing/taskArb.ts";
 import { ALL_EDGES, EDGES, NODES, edgesFrom } from "./graph.ts";
 import { NODE_IDS, isTerminal, type NodeId } from "./ids.ts";
 import { enabledEdges, transition } from "./transition.ts";
@@ -33,8 +33,19 @@ describe("Flow_Graph structure", () => {
   it("no edge leaves a terminal, and every node except terminals has the global edges", () => {
     for (const n of NODE_IDS) {
       const out = edgesFrom(n);
-      if (isTerminal(n)) expect(out).toEqual([]);
-      else expect(out.filter((x) => x.global).map((x) => x.id).sort()).toEqual(["judge_abort", "timeout", "unrecoverable_error"]);
+      if (isTerminal(n)) {
+        expect(out).toEqual([]);
+        continue;
+      }
+      const globals = out.filter((x) => x.global).map((x) => x.id).sort();
+      const ownTimeout = n !== "failure_review" && n !== "sandbox_start" && n !== "browser_experience";
+      expect(globals).toEqual(ownTimeout ? ["judge_abort", "task_timeout", "timeout", "unrecoverable_error"] : ["judge_abort", "task_timeout", "unrecoverable_error"]);
+      // The Task timeout always ends the Task; nothing else global goes to failed except from failure_review.
+      for (const x of out.filter((y) => y.global)) {
+        if (x.id === "task_timeout") expect(x.to).toBe("failed");
+        else if (x.id === "judge_abort") expect(x.to).toBe("aborted");
+        else expect(x.to).toBe(n === "failure_review" ? "failed" : "failure_review");
+      }
     }
   });
 
@@ -70,8 +81,7 @@ describe("Flow_Graph structure", () => {
           if (isTerminal(t.node)) break;
           // New facts arrive from the runner; the node and the story list stay.
           t = {
-            ...s.facts,
-            node: t.node,
+            ...placeAt(s.facts, t.node),
             stories: t.stories.length > 0 ? t.stories : s.facts.stories,
             outcome: s.outcome,
           };
@@ -79,7 +89,7 @@ describe("Flow_Graph structure", () => {
           if (enabled.length > 0) t = transition(t, enabled[0]!).task;
         }
         // Force an end the way the runner does at the Task deadline.
-        if (!isTerminal(t.node)) t = transition({ ...t, outcome: "task_timeout" }, "timeout").task;
+        if (!isTerminal(t.node)) t = transition({ ...t, outcome: "task_timeout" }, "task_timeout").task;
         expect(isTerminal(t.node)).toBe(true);
         expect(t.terminal).toBe(t.node);
         for (const edge of ALL_EDGES) {

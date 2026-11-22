@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { NODE_OUTCOMES, currentStory, initialTaskState, type TaskState } from "../task.ts";
-import { taskStateArb } from "../testing/taskArb.ts";
+import { placeAt, taskStateArb } from "../testing/taskArb.ts";
 import { entryInvariant } from "./guards.ts";
 import { ALL_EDGES, findEdge, type FlowEdge } from "./graph.ts";
 import { GATHERING_NODES, type NodeId } from "./ids.ts";
@@ -14,8 +14,19 @@ const POST_FREEZE: NodeId[] = [
 ];
 const EXECUTION = POST_FREEZE.filter((n) => n.startsWith("story_") || n.startsWith("api_") || n === "verifying");
 const SAME_STORY_BACK_EDGES = ["request_changes", "answered", "checkpoint_feedback"];
+// Results, not unexpected failures, plus the Task timeout (design.md, "Failure review").
+const RESULT_EDGES_TO_FAILED = [
+  "task_timeout",
+  "verify_failed",
+  "verified_last_partial",
+  "unanswered_last",
+  "answered_at_limit_last",
+  "confirm_unanswered_last",
+  "judge_rejected_final",
+  "checkpoint_feedback_api_final",
+];
 
-const atSource = (node: NodeId) => taskStateArb.map((t): TaskState => ({ ...t, node }));
+const atSource = (node: NodeId) => taskStateArb.map((t): TaskState => placeAt(t, node));
 
 /** A state at the edge's source whose outcome satisfies the edge guard when some outcome can (80%). */
 const guardSatisfyingAt = (edge: FlowEdge): fc.Arbitrary<TaskState> =>
@@ -68,22 +79,36 @@ describe("transition", () => {
           expect(task.repoKind).toBe("adapted");
           expect(task.targetCheckPassed).toBe(true);
         }
+        const judgeRetry = task.node === "failure_review" && edgeId === `retry_${to}`;
         if (to === "meeting") {
           const fromOk =
             (task.node === "adapter_branch" && task.repoKind === "other") ||
-            (GATHERING_NODES as readonly NodeId[]).includes(task.node);
+            (GATHERING_NODES as readonly NodeId[]).includes(task.node) ||
+            judgeRetry;
           expect(fromOk).toBe(true);
         }
         if ((GATHERING_NODES as readonly NodeId[]).includes(task.node) && !edge!.global) {
           expect(to).not.toMatch(/^(success|failed|aborted|analysis_only|docs_only)$/);
         }
         if (to === "api_try_one" && currentStory(task)?.purpose === "B") {
-          expect(task.node === "api_confirm" && task.outcome === "confirmed").toBe(true);
+          const confirmedNow = task.node === "api_confirm" && task.outcome === "confirmed";
+          expect(confirmedNow || (judgeRetry && currentStory(task)!.suggestionConfirmed)).toBe(true);
         }
         if (SAME_STORY_BACK_EDGES.includes(edgeId)) {
           expect(currentStory(task)!.attempts).toBeLessThan(task.limits.storyAttempts);
         }
-        if (to === "frozen") {
+        // Failure review (R36.6): unexpected failures stop for the Judge; only results and the Task timeout end directly.
+        if (to === "failure_review") {
+          expect(task.failure?.node).toBe(task.node);
+          expect(["failed", "node_timeout", "unrecoverable_error", "rejected"]).toContain(task.outcome);
+        }
+        if (to === "failed" && task.node !== "failure_review") {
+          expect(RESULT_EDGES_TO_FAILED).toContain(edgeId);
+        }
+        if (task.node === "failure_review" && edgeId.startsWith("retry_")) {
+          expect(to).toBe(task.failure!.node);
+        }
+        if (edgeId === "freeze") {
           expect(task.review!.accepted).toBe(task.review!.total);
           expect(task.review!.approachComplete).toBe(true);
         }
@@ -140,6 +165,18 @@ describe("transition examples", () => {
     const t: TaskState = { ...base, node: "sandbox_start", outcome: "failed", gathering: { ...base.gathering, experienceUnavailable: "start failed" } };
     expect(transition(t, "sandbox_unavailable").task.node).toBe("meeting");
     expect(transition({ ...t, outcome: "node_timeout" }, "timeout").ok).toBe(false);
+  });
+
+  it("a failed download stops for the Judge, who can retry, and the Task timeout still ends it", () => {
+    const failure = { node: "reading" as const, failureClass: "interface_call_failure" as const, detail: "GitHub 502" };
+    const failed: TaskState = { ...base, outcome: "failed", failure };
+    expect(transition({ ...base, outcome: "failed" }, "reading_failed")).toMatchObject({ ok: false });
+    const review = transition(failed, "reading_failed");
+    expect(review).toMatchObject({ ok: true, task: { node: "failure_review" } });
+    expect(transition({ ...review.task, outcome: "retry" }, "retry_reading")).toMatchObject({ ok: true, task: { node: "reading" } });
+    expect(transition({ ...review.task, outcome: "retry" }, "retry_meeting")).toMatchObject({ ok: false });
+    expect(transition({ ...review.task, outcome: "end_task" }, "end_task")).toMatchObject({ ok: true, task: { node: "failed", terminal: "failed" } });
+    expect(transition({ ...review.task, outcome: "task_timeout" }, "task_timeout")).toMatchObject({ ok: true, task: { node: "failed" } });
   });
 
   it("planning cannot start without a frozen version", () => {

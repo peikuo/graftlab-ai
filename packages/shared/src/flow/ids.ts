@@ -35,6 +35,8 @@ export const NODE_IDS = [
   "api_try_one",
   "api_write_batch",
   "api_read_back",
+  // user loop after an unexpected failure (R36.6)
+  "failure_review",
   // terminals
   ...TERMINAL_IDS,
 ] as const;

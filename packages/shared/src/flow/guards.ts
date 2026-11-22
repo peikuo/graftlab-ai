@@ -93,6 +93,8 @@ export function entryInvariant(target: NodeId, t: TaskState): string | null {
     if (!isAdapted(t)) return "not an Adapted_Repo (R25)";
     if (!t.targetCheckPassed) return "target_check has not passed (R13.4)";
   }
+  if (target === "failure_review" && t.failure?.node !== t.node)
+    return "no recorded failure for the node being left (R36.6)";
   if (target === "api_try_one" && currentPurposeIs("B")(t) && !currentStory(t)?.suggestionConfirmed)
     return "purpose B write without a confirmed suggestion (R15.7, R18.4)";
   return null;

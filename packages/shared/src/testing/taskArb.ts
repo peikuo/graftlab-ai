@@ -1,6 +1,7 @@
 // fast-check arbitrary for TaskState at any node, with random facts (Properties 1 and 2).
 import fc from "fast-check";
-import { NODE_IDS } from "../flow/ids.ts";
+import { FAILURE_CLASSES } from "../events.ts";
+import { NODE_IDS, type NodeId } from "../flow/ids.ts";
 import { NODE_OUTCOMES, type StoryProgress, type TaskState } from "../task.ts";
 
 const story = (i: number): fc.Arbitrary<StoryProgress> =>
@@ -43,6 +44,11 @@ export const taskStateArb: fc.Arbitrary<TaskState> = fc
     prototypeEnabled: fc.boolean(),
     // Half of the states satisfy every execution prerequisite, so story and API edges are exercised.
     consistent: fc.boolean(),
+    failure: fc.option(
+      fc.record({ node: fc.constantFrom(...NODE_IDS), failureClass: fc.constantFrom(...FAILURE_CLASSES), detail: fc.constant("test failure") }),
+      { nil: undefined },
+    ),
+    failureAtNode: fc.boolean(),
   })
   .map((r) =>
     r.consistent
@@ -73,7 +79,15 @@ export const taskStateArb: fc.Arbitrary<TaskState> = fc
     };
     if (r.outcome !== undefined) t.outcome = r.outcome;
     if (r.review !== undefined) t.review = r.review;
+    if (r.failure !== undefined) t.failure = r.failureAtNode ? { ...r.failure, node: r.node } : r.failure;
     const cur = r.stories[r.currentIndex];
     if (cur) t.currentStoryId = cur.storyId;
     return t;
   });
+
+/** Moves a generated state to `node`; a failure recorded "at the current node" moves with it. */
+export function placeAt(t: TaskState, node: NodeId): TaskState {
+  const moved: TaskState = { ...t, node };
+  if (t.failure && t.failure.node === t.node) moved.failure = { ...t.failure, node };
+  return moved;
+}

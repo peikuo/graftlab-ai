@@ -140,6 +140,7 @@ Conventions:
     - `packages/shared/src/flow/graph.ts`, `guards.ts`, `transition.ts`: all nodes of the main graph (evidence gathering before `meeting`, the gathering edges to `meeting` with `experienceUnavailable` and `gatheringPartial`, `target_check`) and the API-operation sub-path with kind, tool whitelist and timeout; guarded edges; global edges `timeout`, `unrecoverable_error`, `judge_abort`; `transition()` appends `node_entered` or `transition_rejected`
     - Design: Flow_Graph (node table, rules)
     - _Requirements: 36.1, 36.2, 36.3, 36.4, 36.6, 36.9, 15.4, 15.5, 19.4_
+    - Added 2026-11-22 (R36.6): `failure_review` user loop; unexpected failures and node timeouts stop for the Judge (retry, skip story, end Task); the Task timeout still ends the Task
   - [x] 2.9 Write property test for terminal reachability
     - **Property 1: A terminal is reachable from every node, and terminals are absorbing**
     - Exhaustive over the graph plus 100 random walks; also wired as the build-time check used by the hook

@@ -18,6 +18,7 @@ import {
   reviewSendBack,
   type Guard,
 } from "./guards.ts";
+import { currentStory } from "../task.ts";
 import { GATHERING_NODES, NODE_IDS, type NodeId } from "./ids.ts";
 
 export type NodeKind = "auto" | "agent_loop" | "wait_user" | "terminal";
@@ -87,6 +88,7 @@ export const NODES: Record<NodeId, FlowNode> = {
   api_try_one: { id: "api_try_one", kind: "auto", tools: [], timeoutS: min(2), requirements: "R18.2, R18.9, R18.10" },
   api_write_batch: { id: "api_write_batch", kind: "auto", tools: [], timeoutS: min(5), requirements: "R18.2, R18.9, R18.10" },
   api_read_back: { id: "api_read_back", kind: "auto", tools: [], timeoutS: min(3), requirements: "R18.2" },
+  failure_review: { id: "failure_review", kind: "wait_user", tools: [], timeoutS: null, requirements: "R36.6" },
   success: { id: "success", kind: "terminal", tools: [], timeoutS: null, requirements: "R36.5" },
   failed: { id: "failed", kind: "terminal", tools: [], timeoutS: null, requirements: "R36.5" },
   aborted: { id: "aborted", kind: "terminal", tools: [], timeoutS: null, requirements: "R36.5" },
@@ -104,7 +106,7 @@ const e = (id: string, from: NodeId, to: NodeId, guard: Guard, label: string): F
 export const EDGES: readonly FlowEdge[] = [
   // evidence gathering
   e("reading_done", "reading", "adapter_branch", outcomeIs("done"), "F2 download and skim done"),
-  e("reading_failed", "reading", "failed", outcomeIs("failed"), "download failed"),
+  e("reading_failed", "reading", "failure_review", outcomeIs("failed"), "download failed"),
   e("adapted_repo", "adapter_branch", "sandbox_start", isAdapted, "Adapted_Repo"),
   e("other_repo", "adapter_branch", "meeting", isOther, "Other_Repo, Analysis only label"),
   e("sandbox_ready", "sandbox_start", "browser_experience", outcomeIs("done"), "F4 baseline ready, reset verified"),
@@ -129,11 +131,11 @@ export const EDGES: readonly FlowEdge[] = [
   e("adapted_execute", "adapter_branch_2", "target_check", isAdapted, "Adapted_Repo"),
   e("check_passed_source", "target_check", "story_develop", and(outcomeIs("done"), (t) => t.targetCheckPassed, nextKindIs("source_change")), "baseline check passed, next story is source change"),
   e("check_passed_api", "target_check", "api_read", and(outcomeIs("done"), (t) => t.targetCheckPassed, nextKindIs("api_operation")), "baseline ready and reset verified, next story is API operation"),
-  e("target_unavailable", "target_check", "failed", outcomeIs("failed", "node_timeout"), "target baseline cannot start, not executed"),
+  e("target_unavailable", "target_check", "failure_review", outcomeIs("failed", "node_timeout"), "target baseline cannot start, not executed"),
   // source-change stories
   e("attempt_finished", "story_develop", "story_review", outcomeIs("done"), "F10 attempt finished, change recorded"),
   e("develop_ask", "story_develop", "story_ask", outcomeIs("question", "retry_limit"), "question, or retry limit reached"),
-  e("develop_failed", "story_develop", "failed", outcomeIs("failed"), "story budget exceeded or Code_Agent failure"),
+  e("develop_failed", "story_develop", "failure_review", outcomeIs("failed"), "story budget exceeded or Code_Agent failure"),
   e("approve", "story_review", "story_run", outcomeIs("approve"), "approve"),
   e("request_changes", "story_review", "story_develop", and(outcomeIs("request_changes"), belowRetryLimit), "request changes, below retry limit"),
   e("escalate", "story_review", "story_ask", (t) => t.outcome === "escalate" || (t.outcome === "request_changes" && atRetryLimit(t)), "escalate, or request changes at retry limit"),
@@ -146,7 +148,7 @@ export const EDGES: readonly FlowEdge[] = [
   e("unanswered_next_api", "story_ask", "api_read", unansweredNext("api_operation"), "unanswered, story blocked, next story is API operation"),
   e("unanswered_last", "story_ask", "failed", unansweredLast, "unanswered, story blocked, no next story"),
   e("run_healthy", "story_run", "story_checkpoint", outcomeIs("done"), "Run_Environment healthy"),
-  e("run_failed", "story_run", "failed", outcomeIs("failed", "node_timeout"), "modified target failed to start"),
+  e("run_failed", "story_run", "failure_review", outcomeIs("failed", "node_timeout"), "modified target failed to start"),
   e("checkpoint_feedback", "story_checkpoint", "story_develop", and(outcomeIs("feedback"), currentKindIs("source_change"), belowRetryLimit), "Judge feedback, below retry limit"),
   e("checkpoint_feedback_at_limit", "story_checkpoint", "story_ask", and(outcomeIs("feedback"), currentKindIs("source_change"), atRetryLimit), "Judge feedback at retry limit"),
   e("checkpoint_feedback_api", "story_checkpoint", "api_read", and(outcomeIs("feedback"), currentKindIs("api_operation"), (t) => demoCaseRetryLeft(t)), "Judge feedback, Demo_Case redesigned"),
@@ -159,13 +161,13 @@ export const EDGES: readonly FlowEdge[] = [
   e("verify_failed", "verifying", "failed", outcomeIs("failed"), "mismatch or check failure"),
   // API-operation stories
   e("demo_case_submitted", "api_read", "api_plan", outcomeIs("done"), "Demo_Case submitted"),
-  e("no_demo_case", "api_read", "failed", outcomeIs("failed"), "no Demo_Case submitted after one visible retry"),
+  e("no_demo_case", "api_read", "failure_review", outcomeIs("failed"), "no Demo_Case submitted after one visible retry"),
   e("demo_case_retry", "api_plan", "api_read", and(outcomeIs("rejected"), demoCaseRetryLeft), "Demo_Case rejected, one visible retry left"),
-  e("demo_case_rejected_final", "api_plan", "failed", and(outcomeIs("rejected"), not(demoCaseRetryLeft)), "Demo_Case rejected, no retry left"),
+  e("demo_case_rejected_final", "api_plan", "failure_review", and(outcomeIs("rejected"), not(demoCaseRetryLeft)), "Demo_Case rejected, no retry left"),
   e("plan_valid_a", "api_plan", "api_try_one", and(outcomeIs("done"), currentPurposeIs("A")), "purpose A, Demo_Case valid"),
   e("plan_valid_b", "api_plan", "api_suggest", and(outcomeIs("done"), currentPurposeIs("B")), "purpose B, Demo_Case valid"),
   e("suggestion_valid", "api_suggest", "api_confirm", outcomeIs("done"), "suggestion valid with evidence"),
-  e("suggestion_failed", "api_suggest", "failed", outcomeIs("failed"), "no valid suggestion"),
+  e("suggestion_failed", "api_suggest", "failure_review", outcomeIs("failed"), "no valid suggestion"),
   e("judge_confirmed", "api_confirm", "api_try_one", outcomeIs("confirmed"), "Judge confirmed"),
   e("judge_rejected", "api_confirm", "api_read", and(outcomeIs("rejected"), demoCaseRetryLeft), "Judge rejected with feedback, Demo_Case redesigned"),
   e("judge_rejected_final", "api_confirm", "failed", and(outcomeIs("rejected"), not(demoCaseRetryLeft)), "Judge rejected, no Demo_Case retry left"),
@@ -173,28 +175,39 @@ export const EDGES: readonly FlowEdge[] = [
   e("confirm_unanswered_next_api", "api_confirm", "api_read", unansweredNext("api_operation"), "no response, write not allowed, story blocked, next story is API operation"),
   e("confirm_unanswered_last", "api_confirm", "failed", unansweredLast, "no response, write not allowed, story blocked, no next story"),
   e("one_written", "api_try_one", "api_write_batch", outcomeIs("done"), "one item written and read back"),
-  e("try_one_failed", "api_try_one", "failed", outcomeIs("failed"), "write failed or read-back mismatch"),
+  e("try_one_failed", "api_try_one", "failure_review", outcomeIs("failed"), "write failed or read-back mismatch"),
   e("batch_written", "api_write_batch", "api_read_back", outcomeIs("done"), "batch written"),
-  e("batch_failed", "api_write_batch", "failed", outcomeIs("failed"), "write failed"),
+  e("batch_failed", "api_write_batch", "failure_review", outcomeIs("failed"), "write failed"),
   e("read_back_recorded", "api_read_back", "story_checkpoint", outcomeIs("done"), "read-back recorded"),
-  e("read_back_failed", "api_read_back", "failed", outcomeIs("failed"), "read-back failed"),
+  e("read_back_failed", "api_read_back", "failure_review", outcomeIs("failed"), "read-back failed"),
+  // failure review: the Judge decides after an unexpected failure (R36.6)
+  ...NODE_IDS.filter((n) => NODES[n].kind !== "terminal" && n !== "failure_review").map((n) =>
+    e(`retry_${n}`, "failure_review", n, (t) => t.outcome === "retry" && t.failure?.node === n, `Judge retries ${n}`),
+  ),
+  e("skip_story_source", "failure_review", "story_develop", and(outcomeIs("skip_story"), (t) => currentStory(t) !== undefined, nextKindIs("source_change")), "Judge skips the story, next story is source change"),
+  e("skip_story_api", "failure_review", "api_read", and(outcomeIs("skip_story"), (t) => currentStory(t) !== undefined, nextKindIs("api_operation")), "Judge skips the story, next story is API operation"),
+  e("end_task", "failure_review", "failed", outcomeIs("end_task"), "Judge ends the Task"),
 ];
 
 const isGathering = (n: NodeId) => (GATHERING_NODES as readonly NodeId[]).includes(n);
 
-/** Global edges for every non-terminal node (R36.6). Gathering nodes handle their own node timeout. */
-export const GLOBAL_EDGES: readonly FlowEdge[] = NODE_IDS.filter((n) => NODES[n].kind !== "terminal").flatMap((n) => [
-  {
-    id: "timeout",
-    from: n,
-    to: "failed" as NodeId,
-    guard: (t) => t.outcome === "task_timeout" || (t.outcome === "node_timeout" && !isGathering(n)),
-    label: "timeout",
-    global: true as const,
-  },
-  { id: "unrecoverable_error", from: n, to: "failed" as NodeId, guard: outcomeIs("unrecoverable_error"), label: "unrecoverable error", global: true as const },
-  { id: "judge_abort", from: n, to: "aborted" as NodeId, guard: outcomeIs("judge_abort"), label: "Judge aborts", global: true as const },
-]);
+const g = (id: string, from: NodeId, to: NodeId, guard: Guard, label: string): FlowEdge => ({ id, from, to, guard, label, global: true });
+
+/**
+ * Global edges for every non-terminal node (R36.6). A node timeout or an unrecoverable error stops in
+ * failure_review for the Judge to decide; inside failure_review an unrecoverable error ends the Task.
+ * Gathering nodes handle their own node timeout (edge to meeting). The Task timeout always ends the Task.
+ */
+export const GLOBAL_EDGES: readonly FlowEdge[] = NODE_IDS.filter((n) => NODES[n].kind !== "terminal").flatMap((n) => {
+  const review: NodeId = n === "failure_review" ? "failed" : "failure_review";
+  const edges = [
+    g("task_timeout", n, "failed", outcomeIs("task_timeout"), "Task timeout"),
+    g("unrecoverable_error", n, review, outcomeIs("unrecoverable_error"), "unrecoverable error"),
+    g("judge_abort", n, "aborted", outcomeIs("judge_abort"), "Judge aborts"),
+  ];
+  if (n !== "failure_review" && !isGathering(n)) edges.unshift(g("timeout", n, "failure_review", outcomeIs("node_timeout"), "node timeout"));
+  return edges;
+});
 
 export const ALL_EDGES: readonly FlowEdge[] = [...EDGES, ...GLOBAL_EDGES];
 

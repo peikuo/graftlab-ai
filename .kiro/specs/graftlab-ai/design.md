@@ -333,6 +333,7 @@ Node table:
 | api_try_one | auto | none (Studio code writes Demo_Case item 1 and reads it back) | 2 min | R18.2, R18.9, R18.10 |
 | api_write_batch | auto | none (Studio code writes the remaining Demo_Case items) | 5 min | R18.2, R18.9, R18.10 |
 | api_read_back | auto | none (Studio code reads back all Demo_Case items) | 3 min | R18.2 |
+| failure_review | wait_user | none (Judge failure card: retry, skip story, end Task) | Task timeout only | R36.6 |
 | success, failed, aborted, analysis_only, docs_only | terminal | none | none | R36.5 |
 
 Rules that keep the graph honest:
@@ -342,7 +343,7 @@ Rules that keep the graph honest:
 - Terms: evidence gathering is `reading`, `sandbox_start` and `browser_experience`; the gathering nodes are `sandbox_start` and `browser_experience`.
 - Gathering nodes never end the Task by themselves: a failure or timeout in `sandbox_start` or `browser_experience` is recorded as `failure` and takes the node's own edge to `meeting` with `task.gathering.experienceUnavailable` set to the reason. A Judge "start the meeting now" command (`POST /api/tasks/:id/gathering/end`) is accepted only in a gathering node; it aborts the running gathering work and takes the edge to `meeting` with `task.gathering.partial = true`. `reading` itself keeps its failure edge (without the downloaded files there is nothing to discuss).
 - No question card is opened during evidence gathering: `ask_judge` is not exposed in `reading`, `sandbox_start` or `browser_experience`. Judge messages received during evidence gathering are accepted, acknowledged, recorded and queued in `task.gathering.queuedJudgeMessages` and delivered at the start of `meeting` (see "Meeting").
-- The pre-execution check `target_check` runs once, after `adapter_branch_2` and before the first execution story of an Adapted_Repo. It is the only place where an unavailable target baseline ends the Task: its failure edge leads to `failed` with the label "not executed" (R13.4, R25.8, R29.5).
+- The pre-execution check `target_check` runs once, after `adapter_branch_2` and before the first execution story of an Adapted_Repo. It is the only place where an unavailable target baseline ends the Task: its failure edge leads to `failure_review`, and ending there gives `failed` with the label "not executed" (R13.4, R25.8, R29.5, R36.6).
 - A build-time test computes reachability over the graph data and fails the build if any node cannot reach a terminal through non-global edges (R36.7). The gathering nodes reach a terminal through `meeting`, so the test also covers the path where every gathering step failed.
 - Guards on `frozen` and later nodes require `task.frozenVersion != null` (R15.4, R15.5); `adapter_branch_2` to `target_check` also requires all Output_Docs present and valid (R19.4); `target_check` to a story node requires the check to have passed.
 
@@ -351,7 +352,20 @@ Implementation notes (task 2.8, 2026-11-22; `packages/shared/src/flow/`):
 - Node outcome: the runner records the validated result of the current node's work in `task.outcome` (for example `done`, `failed`, `node_timeout`, `judge_end`, `confirmed`, `send_back`, `approve`, `request_changes`, `answered`, `unanswered`, `passed`) and then asks for an edge. Guards read the outcome and the other TaskState fields; `transition()` clears the outcome on every accepted transition. The outcome is set by code from validated output, never from free model text (R36.2).
 - Entry invariants: besides the edge guard, `transition()` checks invariants of the target node for every edge into it: nodes from `frozen` onward need a frozen version; `documenting` needs a valid Product_Backlog; `adapter_branch_2`, `target_check`, `docs_only` and all story nodes need complete Output_Docs; story nodes and `verifying` need an Adapted_Repo and a passed `target_check`; `api_try_one` for purpose B needs a confirmed suggestion. The invariants keep the honest-flow rules true whichever edge is used.
 - Edges found missing in the first chart and added above: an answer at the retry limit blocks the story and continues like an unanswered question; Judge feedback at a checkpoint at the retry limit goes to `story_ask`; for an API-operation story, checkpoint feedback and an `api_confirm` rejection redesign the Demo_Case only while a Demo_Case retry is left (one retry, the same budget as R23.5), otherwise `failed`; `api_suggest` and `api_read_back` have failure edges; an unanswered question or confirmation continues to `api_read` when the next story is an API-operation story; `verifying` reaches `success` only when every story is verified, otherwise the last pass ends in `failed` with the summary label "partial" (Property 3).
-- Edge ids are unique across the graph; the global edges `timeout`, `unrecoverable_error` and `judge_abort` exist on every non-terminal node. `npm run flow:print` prints the node list with each node's edges.
+- Edge ids are unique across the graph; the global edges exist on every non-terminal node. `npm run flow:print` prints the node list with each node's edges.
+
+Failure review, the user loop for unexpected failures (R36.6, decided by the user 2026-11-22):
+
+- Node `failure_review` (kind `wait_user`, no tools, no node timeout; only the Task timeout applies). Before it takes a failure edge, the runner records the `failure` event and sets `task.failure = { node, storyId?, failureClass, detail }` for the node that failed. The entry invariant requires `task.failure.node` to equal the node being left.
+- Edges into it: the work-failure edges `reading_failed`, `target_unavailable`, `develop_failed`, `run_failed`, `no_demo_case`, `demo_case_rejected_final`, `suggestion_failed`, `try_one_failed`, `batch_failed`, `read_back_failed`; the global `timeout` for a node timeout outside the gathering nodes; and the global `unrecoverable_error`. The gathering nodes keep their own edges to `meeting`.
+- Results are not unexpected failures and still go to `failed` directly: `verify_failed`, `verified_last_partial`, the unanswered and answered-at-limit edges with no story left, and the Judge rejections without a Demo_Case retry.
+- Edges out of it, chosen by the Judge on a failure card (`card_opened` kind `confirm` with the options below; outcome set from `card_answered`):
+  - `retry_<node>`: back to the failed node, for every non-terminal node; guard `outcome = retry` and `task.failure.node = <node>`. The target's entry invariants still apply. The retry is a visible event (`node_entered` with that edge id); for story nodes it counts against the story's attempts and budget as before.
+  - `skip_story_source` / `skip_story_api`: the current story is marked blocked and the next pending story starts (`story_develop` or `api_read`); only when a current story exists and another story is pending.
+  - `end_task`: to `failed`. After `target_check` the summary label is "not executed".
+- Global edges on `failure_review`: `task_timeout` and `unrecoverable_error` go to `failed`, `judge_abort` goes to `aborted`. So the loop can never hang: the Task timeout still ends it.
+- The global edges are now `timeout` (node timeout, to `failure_review`), `task_timeout` (to `failed`), `unrecoverable_error` (to `failure_review`, or to `failed` from `failure_review`) and `judge_abort` (to `aborted`).
+- The Workspace shows the failure card inline with the Failure_Class, the failed step in plain words and the three choices; the current node line shows "waiting for your decision after a failure".
 
 ## Components and Interfaces
 
