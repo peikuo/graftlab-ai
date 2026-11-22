@@ -275,11 +275,13 @@ Conventions:
     - `apps/server/src/reader/map.ts`: path, size, lines, language, top-level symbols by per-language regular expressions; map-only classification for tests, vendored and generated files; tools `read_file` with line ranges (400 lines or 16 KB), `search_repo` (30 matches with context), `read_memo`, `search_memo`, all confined to the download
     - Design: Repo_Memo
     - _Requirements: 10.3, 10.7_
-  - [ ] 6.4b Implement the Repo_Memo builder
+  - [x] 6.4b Implement the Repo_Memo builder
+    - Done 2026-11-23 (builder and pi memo writer; wiring into the `reading` handler follows): first live run on the cached linkding download (300 files, 27 directories) took 388 s with 64 model messages and 0 failures; 166 LLM memos, 154 map-only, 7 marked "no memo" (root-level config files the model left out of one batch); 304k input tokens of which 18 % cached (provider cache behavior, see the controlled cache test), 75k output tokens
     - Bottom-up: batched file memos per directory (48 KB), directory rollups from children only, root memo; zod schemas; `memo_written` events; concurrency 4; time-short fallback to map-only rollups with the root memo still written; cache by commit and prompt version
     - Design: Repo_Memo
     - _Requirements: 10.7, 10.8, 10.9_
-  - [ ]* 6.4c Write tests for the Repo_Memo
+  - [x]* 6.4c Write tests for the Repo_Memo
+    - Done 2026-11-23: 8 tests with a scripted fake model
     - Every read file covered by a memo or a map entry; every directory memo covers its children; root exists; cache hit on the same commit; a memo is never accepted as evidence; a missing file memo is marked, not invented (scripted fake model)
     - _Requirements: 10.7, 10.9, 24_
   - [ ]* 6.5 Write property test for evidence marks
