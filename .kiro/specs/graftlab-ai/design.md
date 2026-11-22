@@ -766,7 +766,7 @@ Status and theme tokens (dark theme; text always accompanies color, R8):
 | `failure` | #ff5468 | blocked, failures, rejected items, Unverified marks |
 | `verifier` | #c9d1d9 | Verifier card |
 
-Avatar effect rules (R1.7, R2.9): only a Role_Status with "Working indicator: yes" in the Role_Status derivation table (speaking, thinking, reading) gets a glow, in the color of that status. Waiting, blocked and idle get no glow. The effect is computed from `roleStatus(state, roleId, now)` only, so Live and Replay render the same effect at the same event (Property 4), and `prefers-reduced-motion` replaces animation with a static border.
+Avatar effect rules (R1.7, R2.9): only a Role_Status with "Working indicator: yes" in the Role_Status derivation table (speaking, thinking, using the browser, reading) gets a glow, in the color of that status. Waiting, blocked and idle get no glow. The effect is computed from `roleStatus(state, roleId, now)` only, so Live and Replay render the same effect at the same event (Property 4), and `prefers-reduced-motion` replaces animation with a static border.
 
 Wording rules: Interaction_Cards for the Judge use feature words without file names, paths or diffs (R5.4, R5.5, R21.2); those details live in the collapsed Engineering_Details tab. Every LLM assessment, verdict or Demo_Case carries its label. Results come only from the Verifier card and the result panel.
 
@@ -854,6 +854,7 @@ Failure_Class values: `interface_call_failure`, `readback_mismatch`, `llm_output
 | Open message, recent `message_progress` with phase speaking or tool_call | speaking | yes |
 | Open message, no recent event for it | waiting for LLM, no output for N s | no |
 | Open `tool_started` without `tool_finished` | waiting for tool `<name>`, elapsed seconds | no |
+| Recent `browser_action` or `browser_observation` by the role (the Browser_Use operator duty) | using the browser | yes |
 | Recent `file_read` by the role | reading | yes |
 | Otherwise | idle | no |
 

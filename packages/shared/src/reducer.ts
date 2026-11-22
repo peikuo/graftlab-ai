@@ -19,6 +19,8 @@ export interface FeedEntry {
   text: string;
   path?: string; // source file path for file_read and evidence-carrying events (R3.5)
   failure?: boolean;
+  /** messageId for message entries, clientMsgId for Judge messages, cardId for cards. */
+  ref?: string;
 }
 
 export interface MessageState {
@@ -62,6 +64,7 @@ export interface UiState {
   lastFailureByActor: Partial<Record<ActorKey, { seq: number; ts: string; detail: string }>>;
   lastOtherByActor: Partial<Record<ActorKey, { seq: number; ts: string }>>;
   lastFileReadByActor: Partial<Record<ActorKey, { seq: number; ts: string; path: string }>>;
+  lastBrowserByActor: Partial<Record<ActorKey, { seq: number; ts: string; what: string }>>;
 }
 
 export const initialUiState: UiState = {
@@ -79,9 +82,33 @@ export const initialUiState: UiState = {
   lastFailureByActor: {},
   lastOtherByActor: {},
   lastFileReadByActor: {},
+  lastBrowserByActor: {},
 };
 
-function feedText(e: StudioEvent): { text: string; path?: string; failure?: boolean } | null {
+/** Event types that always produce exactly one Activity_Feed entry (Property 5). */
+export const ALWAYS_NARRATED: ReadonlySet<StudioEvent["type"]> = new Set([
+  "task_created", "node_entered", "transition_rejected", "file_read", "finding_recorded", "message_completed",
+  "message_incomplete", "tool_started", "judge_message", "card_opened", "card_answered", "decision_doc_frozen",
+  "decision_item_reviewed", "browser_action", "code_change", "review_verdict", "question_opened", "question_answered",
+  "verifier_result", "failure", "terminal_reached",
+]);
+
+function refOf(e: StudioEvent): string | undefined {
+  switch (e.type) {
+    case "message_completed":
+    case "message_incomplete":
+      return e.payload.messageId;
+    case "judge_message":
+      return e.payload.clientMsgId;
+    case "card_opened":
+    case "card_answered":
+      return e.payload.cardId;
+    default:
+      return undefined;
+  }
+}
+
+export function narrate(e: StudioEvent): { text: string; path?: string; failure?: boolean } | null {
   switch (e.type) {
     case "task_created":
       return { text: `Task created for ${e.payload.owner}/${e.payload.repo}` };
@@ -143,8 +170,11 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
     lastEventByActor: { ...state.lastEventByActor, [actor]: { seq: e.seq, ts: e.ts, type: e.type } },
   };
 
-  const entry = feedText(e);
-  if (entry) s.feed = [...state.feed, { seq: e.seq, ts: e.ts, actor, type: e.type, ...entry }];
+  const entry = narrate(e);
+  if (entry) {
+    const ref = refOf(e);
+    s.feed = [...state.feed, { seq: e.seq, ts: e.ts, actor, type: e.type, ...entry, ...(ref === undefined ? {} : { ref }) }];
+  }
 
   if (e.type === "failure") {
     s.lastFailureByActor = { ...state.lastFailureByActor, [actor]: { seq: e.seq, ts: e.ts, detail: e.payload.detail } };
@@ -204,6 +234,12 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
     }
     case "file_read":
       s.lastFileReadByActor = { ...state.lastFileReadByActor, [actor]: { seq: e.seq, ts: e.ts, path: e.payload.path } };
+      break;
+    case "browser_action":
+      s.lastBrowserByActor = { ...state.lastBrowserByActor, [actor]: { seq: e.seq, ts: e.ts, what: `${e.payload.action} ${e.payload.target}`.trim() } };
+      break;
+    case "browser_observation":
+      s.lastBrowserByActor = { ...state.lastBrowserByActor, [actor]: { seq: e.seq, ts: e.ts, what: "looking at the page" } };
       break;
     case "question_opened": {
       const from: ActorKey = e.payload.from;

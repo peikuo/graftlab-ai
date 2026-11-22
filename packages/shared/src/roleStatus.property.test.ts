@@ -32,7 +32,7 @@ describe("roleStatus", () => {
         const recentOwn = events.some((e) => actorKey(e.actor) === actor && now - Date.parse(e.ts) <= W && Date.parse(e.ts) <= now);
         expect(recentOwn).toBe(true);
         if (st.kind === "speaking" || st.kind === "thinking") expect(openMessageFor(events, actor)).toBe(true);
-        expect(["reading", "speaking", "thinking"]).toContain(st.kind);
+        expect(["reading", "using_browser", "speaking", "thinking"]).toContain(st.kind);
       }),
       { numRuns: 500 },
     );

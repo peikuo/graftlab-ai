@@ -153,56 +153,57 @@ Conventions:
     - _Requirements: 36.4, 35.1_
 
 - [ ] 3. Event store, SSE, redactor, queue lease and Workspace UI skeleton (target 2026-11-22)
-  - [ ] 3.1 Implement the secret redactor
+  - [x] 3.1 Implement the secret redactor
     - `packages/shared/src/redact.ts`: registry of known secret values (refuses values shorter than 8 characters), `redact(event)` over every payload string, the same function for SSE `delta` frames
     - Design: Secret redactor
     - _Requirements: 30.15, 28.4, 30.5_
   - [ ] 3.2 Create sanitized fixture events
+    - Status 2026-11-22: a SYNTHETIC fixture (`synthetic-gathering-meeting.jsonl`, labeled as such) drives the Workspace for now. The real spike outputs (pi-coding-agent runner traces, ARIA snapshots) are on the PC; copying them to the Mac needs the user (see the session notes)
     - Turn the spike outputs (pi event traces, runner protocol output) into sanitized Studio event fixtures in `packages/shared/test/fixtures/`, one per stage kind; run the secret scan over them
     - Design: Recorded-event fixture suite
     - _Requirements: 27.1, 30.5_
-  - [ ] 3.3 Implement the event store
+  - [x] 3.3 Implement the event store
     - `apps/server/src/events/store.ts`: single writer per Task, seq assignment, redaction before append and broadcast, JSONL append, fsync after decisions, card answers, terminals and failures, append failure marks the Task incomplete and takes the `unrecoverable_error` edge
     - Design: Persistence and live delivery
     - _Requirements: 27.1, 27.6, 27.9, 30.15_
-  - [ ] 3.4 Implement Role_Status derivation
+  - [x] 3.4 Implement Role_Status derivation
     - `roleStatus(state, roleId, now)` with the rule table, Recency_Window 15 s (`GL_RECENCY_WINDOW_S`), waiting for LLM with elapsed seconds, waiting for answer, blocked with reason
     - Design: Role_Status derivation
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.6, 2.8, 2.10_
-  - [ ] 3.5 Implement the SSE hub
+  - [x] 3.5 Implement the SSE hub
     - `apps/server/src/sse/`: event frames with `id: seq`, ephemeral `delta` frames, `buffer` on connect from in-progress buffers, `queue` and `error` frames, 15 s comment heartbeats, resume with `Last-Event-ID`
     - Design: Persistence and live delivery, HTTP API
     - _Requirements: 2.8, 3.6, 3.11, 27.3, 28.3_
-  - [ ]* 3.6 Write property test for Role_Status
+  - [x]* 3.6 Write property test for Role_Status
     - **Property 6: Role_Status never shows work without a recent event**
     - **Validates: Requirements 2.1, 2.2, 2.4, 2.8**
-  - [ ] 3.7 Write property test for secret redaction (persisted and broadcast forms)
+  - [x] 3.7 Write property test for secret redaction (persisted and broadcast forms)
     - **Property 12: Secret redaction**
     - Covers the JSONL line and the SSE frame now; the Replay_File part is added in 9.2 to the same test
     - **Validates: Requirements 30.15, 27.12, 28.4, 30.5, 13.5**
-  - [ ] 3.8 Implement session and queue lease
+  - [x] 3.8 Implement session and queue lease
     - `apps/server/src/queue/` and `http/`: anonymous session cookie, join, heartbeat, leave, single operator lease held during an active Task, idle release 120 s, promotion at Task end, Origin and lease checks on every command endpoint (HTTP 403), admin switch
     - Design: Queue, HTTP API
     - _Requirements: 28.1, 28.2, 28.3, 28.5, 28.6_
-  - [ ]* 3.9 Write integration tests for the queue
+  - [x]* 3.9 Write integration tests for the queue
     - A queued session is rejected server-side on every command endpoint; a Viewer receives the stream read-only; promotion after Task end
     - _Requirements: 28.2, 28.5, 28.6_
-  - [ ] 3.10 Build Presence_Cards and the Activity_Feed driven by fixture events
+  - [x] 3.10 Build Presence_Cards and the Activity_Feed driven by fixture events
     - `apps/web`: Presence_Card per role with avatar, name, description and status text; Activity_Feed entries with role, timestamp and source path; the web app loads fixture events from a file in development
     - Design: Web app
     - _Requirements: 1.1, 1.2, 1.4, 1.6, 2.7, 3.1, 3.2, 3.3, 3.5, 8.4_
-  - [ ] 3.11 Build the Artifact_Area with the collapsed Engineering details view
+  - [x] 3.11 Build the Artifact_Area with the collapsed Engineering details view
     - Tabs for files, diagram, Decision_Doc and browser view; notifications that do not take focus; unavailable reason; Engineering details closed by default and opened only by a Judge action; current Flow_Graph node and progress line (real value or indeterminate with reason)
     - Design: Web app
     - _Requirements: 1.3, 4.1, 4.3, 4.6, 4.7, 4.8, 7.1, 7.2, 7.3, 36.8_
-  - [ ] 3.12 Build Interaction_Cards and the Interjection_Input
+  - [x] 3.12 Build Interaction_Cards and the Interjection_Input
     - Question card (options plus free text), confirm/reject card in feature words, reminder card; Interjection_Input with addressee selector; "received", "delivered" and failure states next to the input; keyboard operation and visible focus
     - Design: Web app, HTTP API (acknowledgement)
     - _Requirements: 5.1, 5.3, 5.4, 5.8, 6.1, 6.4, 6.5, 8.2, 8.3_
-  - [ ]* 3.13 Write property test for feed entries
+  - [x]* 3.13 Write property test for feed entries
     - **Property 5: Every Activity_Feed entry maps to an event**
     - **Validates: Requirements 3.1, 3.3, 3.5**
-  - [ ]* 3.14 Write UI example tests for the Workspace skeleton
+  - [x]* 3.14 Write UI example tests for the Workspace skeleton
     - All areas present; Engineering details collapsed by default; cards contain no file names, paths or diffs; reduced motion disables non-essential animation; keyboard-only card operation; status text present
     - _Requirements: 1.3, 4.7, 4.8, 5.4, 8.1, 8.2, 8.4_
   - [ ] 3.15 Demo and verify: Workspace skeleton

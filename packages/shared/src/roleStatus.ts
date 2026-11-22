@@ -13,6 +13,7 @@ export type RoleStatusKind =
   | "thinking"
   | "speaking"
   | "waiting_for_tool"
+  | "using_browser"
   | "reading"
   | "idle";
 
@@ -20,7 +21,7 @@ export interface RoleStatus {
   kind: RoleStatusKind;
   /** Plain status text; status is never shown by color alone (R8.4). */
   text: string;
-  /** True only for reading, speaking and thinking, each backed by an event inside the Recency_Window. */
+  /** True only for reading, using the browser, speaking and thinking, each backed by an event inside the Recency_Window. */
   working: boolean;
   /** Seq of the event that backs the status, when there is one. */
   backedBySeq?: number;
@@ -77,7 +78,11 @@ export function roleStatus(state: UiState, actor: ActorKey, now: number, recency
   const tool = Object.values(state.openTools).find((t) => t.actor === actor);
   if (tool) return { kind: "waiting_for_tool", text: `waiting for tool ${tool.tool}, ${secs(tool.ts, now)} s`, working: false };
 
-  // 9. A recent file read.
+  // 9. A recent browser action or observation (the Browser_Use operator duty).
+  const browser = state.lastBrowserByActor[actor];
+  if (browser && recent(browser.ts)) return { kind: "using_browser", text: `using the browser: ${browser.what}`, working: true, backedBySeq: browser.seq };
+
+  // 10. A recent file read.
   const read = state.lastFileReadByActor[actor];
   if (read && recent(read.ts)) return { kind: "reading", text: `reading ${read.path}`, working: true, backedBySeq: read.seq };
 
