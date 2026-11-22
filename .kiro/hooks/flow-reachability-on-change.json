@@ -4,11 +4,11 @@
     {
       "name": "Flow_Graph reachability check",
       "trigger": "PostFileSave",
-      "description": "Runs the Flow_Graph reachability property test when the graph changes (R36.7).",
+      "description": "After the agent changes a Flow_Graph file, runs the reachability property test (R36.7). Logged to data/hook-runs.log.",
       "matcher": "packages/shared/src/flow/",
       "action": {
         "type": "command",
-        "command": "npm run flow:check",
+        "command": "node scripts/hooks/run.mjs flow-check",
         "timeout": 120
       }
     }

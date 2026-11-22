@@ -1313,7 +1313,7 @@ Would build: the `prototype` node, enabled by a flag, running the Code_Agent in 
 
 - Spec: `.kiro/specs/graftlab-ai/` holds requirements, this design and the tasks; the spec is the single source of truth and code follows it (AGENTS.md).
 - Steering: `product.md` (product purpose, honesty rules, UI priority), `tech.md` (stack, versions, commands, testing rules), `structure.md` (repository layout and layers). Created in the first tasks.
-- Hooks: run the related vitest tests on save of TypeScript files; run the secret scan on save and before commits; run the Flow_Graph reachability test when `packages/shared/src/flow/` changes. Created in the first tasks.
+- Hooks: run the related vitest tests on save of TypeScript files; run the secret scan on save and before commits; run the Flow_Graph reachability test when `packages/shared/src/flow/` changes. Created in task 2.2. Facts verified 2026-11-22: Kiro's file triggers fire only for files the agent writes, not for manual saves in the editor; the file-event matcher receives the absolute path; a successful hook shows no output. Every hook therefore runs through `scripts/hooks/run.mjs`, which appends one line per run (time, hook, exit code, duration, saved paths or tool name, never command text) to `data/hook-runs.log`. A failing hook (exit code not 0) shows its stderr; the commit scan blocks with exit code 2.
 - Write-up: the Devpost write-up describes how the spec drove the build, how steering kept rules stable across sessions, how hooks enforced tests and the secret scan, and how spike results fed the design decisions.
 
 ## Deferred for later

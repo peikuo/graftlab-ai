@@ -107,7 +107,7 @@ Conventions:
     - Show the user the pass or fail table per spike with the chosen fallbacks; check that every result file exists and that the secret scan finds nothing in `spike/results/`
     - _Requirements: 23.1, 33.4_
 
-- [ ] 2. Foundations (target 2026-11-21)
+- [x] 2. Foundations (target 2026-11-21)
   - [x] 2.1 Create the steering files
     - `.kiro/steering/product.md` (purpose, honesty rules, UI priority, Studio guarantees versus best effort), `tech.md` (stack, versions, commands, testing rules, fast-check tag format), `structure.md` (repository layout, three document layers)
     - Design: Kiro usage plan, Repository layout
@@ -148,7 +148,7 @@ Conventions:
   - [x] 2.10 Write property test for transition validity
     - **Property 2: Transitions happen only along edges whose guard holds**
     - **Validates: Requirements 36.2, 36.3, 36.4, 36.9, 15.4, 15.5, 15.7, 18.2, 18.3, 18.4, 19.4, 21.1, 25.3, 40.12**
-  - [ ] 2.11 Demo and verify: foundations
+  - [x] 2.11 Demo and verify: foundations
     - Show the user the steering files, the hooks firing on save, and a printed node list with one accepted and one rejected transition; check that `npm test` passes and the secret scan is clean
     - _Requirements: 36.4, 35.1_
 
