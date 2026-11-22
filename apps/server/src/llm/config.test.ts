@@ -41,3 +41,12 @@ describe("resolveLlmConfig", () => {
     expect(c.missingKey).toBe("LLM_API_KEY");
   });
 });
+
+describe("reasoning parameter", () => {
+  it("defaults to send, accepts omit per profile, refuses other values", () => {
+    expect(resolveLlmConfig(base).reasoningParam).toBe("send");
+    expect(resolveLlmConfig({ ...base, LLM_REASONING_PARAM: "omit" }).reasoningParam).toBe("omit");
+    expect(() => resolveLlmConfig({ ...base, LLM_REASONING_PARAM: "maybe" })).toThrow(/send or omit/);
+    expect(resolveLlmConfig(base).keyVar).toBe("LLM_API_KEY");
+  });
+});

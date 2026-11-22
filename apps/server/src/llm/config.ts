@@ -13,6 +13,10 @@ export interface LlmConfig {
   missingKey?: string;
   /** Every LLM key found in the environment (all profiles), for the redactor. */
   allKeys: { name: string; value: string }[];
+  /** Name of the key variable of the active profile (never its value). */
+  keyVar: string;
+  /** "omit": no reasoning request parameter is sent (it can turn prompt caching off on some endpoints). */
+  reasoningParam: "send" | "omit";
 }
 
 export class LlmConfigError extends Error {}
@@ -22,7 +26,7 @@ const DEFAULTS = { baseUrl: "https://api.deepseek.com", model: "deepseek-flash" 
 
 function vars(profile: string) {
   const p = profile === "default" ? "LLM" : `LLM_${profile.toUpperCase()}`;
-  return { base: `${p}_BASE_URL`, model: `${p}_MODEL`, key: `${p}_API_KEY` };
+  return { base: `${p}_BASE_URL`, model: `${p}_MODEL`, key: `${p}_API_KEY`, reasoning: `${p}_REASONING_PARAM` };
 }
 
 export function resolveLlmConfig(env: Record<string, string | undefined>): LlmConfig {
@@ -46,5 +50,7 @@ export function resolveLlmConfig(env: Record<string, string | undefined>): LlmCo
     .filter(([name, value]) => /^LLM(_[A-Z0-9]+)?_API_KEY$/.test(name) && !!value)
     .map(([name, value]) => ({ name: name.toLowerCase(), value: value! }));
   const apiKey = env[v.key] || undefined;
-  return { profile, baseUrl: baseUrl.replace(/\/$/, ""), model, apiKey, ...(apiKey ? {} : { missingKey: v.key }), allKeys };
+  const rp = (env[v.reasoning] ?? "send").trim().toLowerCase();
+  if (rp !== "send" && rp !== "omit") throw new LlmConfigError(`${v.reasoning} must be send or omit`);
+  return { profile, baseUrl: baseUrl.replace(/\/$/, ""), model, apiKey, ...(apiKey ? {} : { missingKey: v.key }), allKeys, keyVar: v.key, reasoningParam: rp };
 }
