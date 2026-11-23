@@ -17,4 +17,7 @@ export const THINKING = {
   planAssessment: "off",
   planFinal: "low",
   documents: "off",
+  techDraft: "low",
+  techReview: "off",
+  techFinal: "low",
 } as const satisfies Record<string, Thinking>;

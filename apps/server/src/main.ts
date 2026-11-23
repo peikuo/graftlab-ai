@@ -42,7 +42,7 @@ const port = Number(process.env.GL_PORT ?? 8080);
 const host = process.env.GL_HOST ?? "127.0.0.1";
 
 const runtimeRulesVersion = (await readFile(join(root, "runtime-rules/VERSION"), "utf8")).trim();
-const rules = await loadRuntimeRules(join(root, "runtime-rules"), ["reader", "facilitator", "user_value", "feasibility", "risk", "planner"]);
+const rules = await loadRuntimeRules(join(root, "runtime-rules"), ["reader", "facilitator", "user_value", "feasibility", "risk", "planner", "reviewer"]);
 // The Reader needs a key; without one the reading step stops honestly after the download.
 const model = llm.apiKey ? buildStudioModel(llm, process.env.GL_MAX_TOKENS ? { maxTokens: Number(process.env.GL_MAX_TOKENS) } : {}) : null;
 const envInt = (name: string) => (process.env[name] ? Number(process.env[name]) : undefined);

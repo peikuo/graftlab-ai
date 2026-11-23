@@ -1,6 +1,6 @@
 // Markdown of the Agile_Docs and the analyzed-repository documents (layer C, data/tasks/<id>/docs/). Every
 // document states the Frozen Decision_Doc version it is based on (R20.4).
-import { describeCheck, storyEffort, type DefinitionOfDone, type DesignDoc, type Plan, type ProductBacklog, type RequirementsDoc, type SprintPlan, type TaskBoard, type TasksDoc } from "@graftlab/shared";
+import { describeCheck, RUBRIC, storyEffort, type DefinitionOfDone, type Plan, type ProductBacklog, type RequirementsDoc, type SprintPlan, type TaskBoard, type TechArchitecture, type TechDesign } from "@graftlab/shared";
 
 const header = (title: string, v: number) => `# ${title}\n\nBased on Decision_Doc version ${v}.`;
 const list = (xs: string[]) => (xs.length ? xs.map((x) => `- ${x}`).join("\n") : "- none");
@@ -43,23 +43,54 @@ export function renderRequirements(r: RequirementsDoc): string {
   return [header("Requirements", r.decisionVersion), r.introduction, ...r.items.map((i) => `## ${i.id} (story ${i.storyId})\n${i.text}\n\nAcceptance:\n${list(i.acceptance)}`)].join("\n\n") + "\n";
 }
 
-export function renderDesign(d: DesignDoc): string {
-  const re = d.runEnvironment;
+export function renderArchitecture(a: TechArchitecture): string {
+  const re = a.runEnvironment;
+  const q = (x: { path: string; line?: number | undefined; snippet: string; status?: string | undefined }) => `${x.path}${x.line ? `:${x.line}` : ""} — ${x.status === "passed" ? "found" : "Unverified"}: \`${x.snippet.trim().slice(0, 140)}\``;
   return [
-    header("Design", d.decisionVersion),
-    d.overview,
-    ...d.changes.map((c) => `## ${c.area} (story ${c.storyId})\n${c.description}`),
+    header("Technical Architecture", a.decisionVersion),
+    a.overview,
+    `## Affected parts of the existing software\n\n${a.affected.map((p) => `### ${p.part}\n${p.how}${p.quotes.length ? `\n\nSources (checked by Studio code):\n${list(p.quotes.map(q))}` : ""}`).join("\n\n")}`,
+    a.newComponents.length ? `## New components\n${list(a.newComponents.map((c) => `**${c.name}**: ${c.purpose}${c.connectsTo.length ? ` (connects to ${c.connectsTo.join(", ")})` : ""}`))}` : "",
+    a.dataChanges.length ? `## Data and configuration changes\n${list(a.dataChanges)}` : "",
+    `## Technical decisions\n\n${a.decisions.map((d, n) => `### Decision ${n + 1}: ${d.decision}\n**Why:** ${d.why}${d.rejected.length ? `\n\n**Rejected alternatives:**\n${list(d.rejected)}` : ""}`).join("\n\n")}`,
     re
-      ? `## Run environment (proposed by the Planner from the software's own files; not a Studio recipe)\n\nBuild:\n${list(re.buildCommands.map((c) => `\`${c}\``))}\n\nStart:\n${list(re.startCommands.map((c) => `\`${c}\``))}\n\nApp port ${re.port}, health path \`${re.healthPath}\`.\n\nSources (checked by Studio code):\n${list(re.evidence.map((e) => `${e.path}${e.line ? `:${e.line}` : ""} — ${e.status === "passed" ? "found" : "Unverified"}: \`${e.snippet.slice(0, 160)}\``))}`
+      ? `## Run environment (proposed by the Planner from the software's own files; not a Studio recipe)\n\nBuild:\n${list(re.buildCommands.map((c) => `\`${c}\``))}\n\nStart:\n${list(re.startCommands.map((c) => `\`${c}\``))}\n\nApp port ${re.port}, health path \`${re.healthPath}\`.\n\nSources (checked by Studio code):\n${list(re.evidence.map(q))}`
       : "",
   ]
     .filter(Boolean)
     .join("\n\n") + "\n";
 }
 
-export function renderTasks(t: TasksDoc): string {
-  return [header("Tasks", t.decisionVersion), ...t.items.map((i) => `## ${i.id} ${i.title} (story ${i.storyId})\n${i.steps.map((s, n) => `${n + 1}. ${s}`).join("\n")}`)].join("\n\n") + "\n";
+export function renderFeatures(d: TechDesign): string {
+  const grade = (id: string) => d.grades.find((g) => g.featureId === id);
+  const rev = (id: string) => d.review.find((r) => r.featureId === id);
+  return [
+    header("Feature Breakdown", d.decisionVersion),
+    "Each Feature is built on its own branch, reviewed, verified by its tests and merged into main before the next one starts.",
+    ...d.breakdown.features.map((f) => {
+      const g = grade(f.id);
+      const r = rev(f.id);
+      return [
+        `## ${f.id} ${f.title} (story ${f.storyId}, size ${f.size})`,
+        f.summary,
+        `**Scope**\n- Modules: ${f.scope.modules.join(", ")}\n- Files expected to change: ${f.scope.files.map((x) => `\`${x}\``).join(", ")}${f.scope.notTouch.length ? `\n- Must not touch: ${f.scope.notTouch.join("; ")}` : ""}`,
+        f.interfaces.length ? `**Interfaces**\n${list(f.interfaces)}` : "",
+        `**Tests**\n- Files: ${f.tests.files.map((x) => `\`${x}\``).join(", ")}\n- Command: \`${f.tests.command.join(" ")}\``,
+        f.dependsOn.length ? `**After:** ${f.dependsOn.join(", ")}` : "",
+        f.servesChecks.length ? `**Serves acceptance checks:** ${f.servesChecks.join(", ")}` : "",
+        g ? `**Quality (LLM assessment, not a guarantee):** ${RUBRIC.map((k) => `${RUBRIC_LABEL[k]} ${g[k] === "pass" ? "✓" : "⚠"}`).join(" · ")}${g.note ? ` — ${g.note}` : ""}` : "",
+        r ? `**Feasibility:** fits ${r.fits}, size ${r.sizeRight ? "right" : "questioned"}${r.missing ? `; missing: ${r.missing}` : ""}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+    }),
+    d.reviewerNote ? `## Reviewer's decision\n\n${d.reviewerNote}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n") + "\n";
 }
+
+const RUBRIC_LABEL: Record<(typeof RUBRIC)[number], string> = { verticalSlice: "vertical slice", independent: "independent", testable: "testable", small: "small", inScope: "in scope" };
 
 /** The plan as the Planner and the Judge see it (backlog, sprint goal, Definition_of_Done, assessments). */
 export function renderPlanMarkdown(p: Plan): string {

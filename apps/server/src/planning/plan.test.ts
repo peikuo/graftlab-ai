@@ -2,11 +2,9 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { describe, expect, it } from "vitest";
 import { content, check } from "../decision/fixtures.ts";
-import { filesFrom } from "../evidence/check.ts";
 import type { RuntimeRules } from "../roles/rules.ts";
-import { checkDocuments, runDocuments } from "./docs.ts";
 import { allowedKinds, runPlanning, type PlanningOptions } from "./plan.ts";
-import { renderBacklog, renderDesign } from "./render.ts";
+import { renderBacklog } from "./render.ts";
 
 const rules: RuntimeRules = { version: "t", shared: "S", roles: { planner: "PL", facilitator: "F", feasibility: "FE", risk: "R" } };
 const decision = content({ chosenApproachIds: ["src"] });
@@ -109,50 +107,4 @@ describe("runPlanning", () => {
   });
 });
 
-describe("documents", () => {
-  const planResult = async () => {
-    const { o } = setup(async (role, t) => {
-      if (role === "planner") return void (await call(t, "submit_plan", planInput));
-      if (role === "facilitator") return void (await call(t, "submit_final_plan", { ...planInput, note: "no changes" }));
-      await assess(role, t);
-    });
-    const r = await runPlanning(o);
-    if (!r.ok) throw new Error(r.reason);
-    return r.plan;
-  };
-  const docs = {
-    requirements: { introduction: "Tag suggestions", items: [{ id: "R1", storyId: "S1", text: "suggest tags", acceptance: ["tags appear"] }, { id: "R2", storyId: "S2", text: "suggest", acceptance: ["x"] }] },
-    design: {
-      overview: "A suggestion call in the save step",
-      changes: [{ storyId: "S1", area: "save step", description: "call the model" }, { storyId: "S2", area: "forms", description: "show chips" }],
-      runEnvironment: { buildCommands: [], startCommands: ["./bootstrap.sh"], port: 9090, healthPath: "/health", evidence: [{ path: "Dockerfile", snippet: "EXPOSE 9090" }, { path: "Dockerfile", snippet: "RUN make" }] },
-    },
-    tasks: { items: [{ id: "T1", storyId: "S1", title: "add the call", steps: ["write it"] }, { id: "T2", storyId: "S2", title: "chips", steps: ["draw"] }] },
-  };
-
-  it("needs every story covered and a run environment for source changes; quotes are checked by code", async () => {
-    const plan = await planResult();
-    const evidence = filesFrom(files);
-    const missing = checkDocuments({ ...docs, tasks: { items: [docs.tasks.items[0]] }, design: { ...docs.design, runEnvironment: undefined } }, { plan, needsRunEnvironment: true, evidence });
-    expect(missing.ok).toBe(false);
-    if (!missing.ok) expect(missing.problems).toEqual(["tasks: no item for story S2", "design: runEnvironment is required (how to build and start the changed software, from its own files)"]);
-    const ok = checkDocuments(docs, { plan, needsRunEnvironment: true, evidence });
-    expect(ok.ok).toBe(true);
-    if (!ok.ok) return;
-    expect(ok.design.decisionVersion).toBe(1);
-    expect(ok.design.runEnvironment!.evidence.map((e) => e.status)).toEqual(["passed", "unverified"]);
-    expect(renderDesign(ok.design)).toMatch(/not a Studio recipe[\s\S]*Dockerfile — found[\s\S]*Unverified/);
-  });
-
-  it("runDocuments takes one submission", async () => {
-    const plan = await planResult();
-    const r = await runDocuments({
-      rules, context: "CTX", decisionMarkdown: "# D", plan, needsRunEnvironment: false, files, evidence: filesFrom(files), emit: async () => {}, signal: new AbortController().signal, idPrefix: "p",
-      runTurn: async (t) => {
-        await call(new Map(t.tools.map((x) => [x.name, x])), "submit_documents", { ...docs, design: { overview: "o", changes: docs.design.changes } });
-        return { stopReason: "stop", text: "", toolCalls: 1, truncated: false };
-      },
-    });
-    expect(r.ok).toBe(true);
-  });
-});
+export { setup, assess, call, planInput, story, files, rules };

@@ -173,35 +173,10 @@ export function storyEffort(plan: Pick<Plan, "assessments">, storyId: string): s
 
 // ---- documents for the analyzed repository (documenting) ----
 
-const Quote = z.object({ path: text, line: z.number().int().positive().optional(), snippet: z.string() }).strict();
-export const RunEnvironmentSchema = z
-  .object({
-    buildCommands: z.array(text).max(10),
-    startCommands: z.array(text).min(1).max(5),
-    port: z.number().int().min(1).max(65535),
-    healthPath: text.regex(/^\//),
-    /** Quotes from the target's own files that the commands come from; checked by code. */
-    evidence: z.array(Quote.extend({ status: z.enum(["passed", "unverified"]).optional() })).max(10),
-  })
-  .strict();
-export type RunEnvironment = z.infer<typeof RunEnvironmentSchema>;
 export const RequirementsDocSchema = z
   .object({ decisionVersion: z.number().int().positive(), introduction: text, items: z.array(z.object({ id: text, storyId: text, text, acceptance: z.array(text).min(1) }).strict()).min(1) })
   .strict();
-export const DesignDocSchema = z
-  .object({
-    decisionVersion: z.number().int().positive(),
-    overview: text,
-    changes: z.array(z.object({ storyId: text, area: text, description: text }).strict()).min(1),
-    runEnvironment: RunEnvironmentSchema.optional(),
-  })
-  .strict();
-export const TasksDocSchema = z
-  .object({ decisionVersion: z.number().int().positive(), items: z.array(z.object({ id: text, storyId: text, title: text, steps: z.array(text).min(1) }).strict()).min(1) })
-  .strict();
 export type RequirementsDoc = z.infer<typeof RequirementsDocSchema>;
-export type DesignDoc = z.infer<typeof DesignDocSchema>;
-export type TasksDoc = z.infer<typeof TasksDocSchema>;
 
 export type OutputDocKind = (typeof OUTPUT_DOC_KINDS)[number];
 export const OUTPUT_DOC_TITLES: Record<OutputDocKind, string> = {
@@ -210,8 +185,8 @@ export const OUTPUT_DOC_TITLES: Record<OutputDocKind, string> = {
   definition_of_done: "Definition of Done",
   task_board: "Task Board",
   requirements: "Requirements",
-  design: "Design",
-  tasks: "Tasks",
+  architecture: "Technical Architecture",
+  features: "Feature Breakdown",
   demo_review_note: "Demo and Review Notes",
   retrospective: "Retrospective",
 };

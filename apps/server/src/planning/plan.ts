@@ -59,7 +59,8 @@ export function allowedKinds(decision: DecisionDocContent): Set<string> {
 export async function runPlanning(o: PlanningOptions): Promise<PlanningResult> {
   const system = sharedSystemPrompt(o.rules, o.context);
   const kinds = allowedKinds(o.decision);
-  const base = `# Frozen Decision_Doc (version ${o.decisionVersion}; the decisions are made)\n\n${o.decisionMarkdown}\n\n---\n\n${CHECK_FORMATS}${o.checkHints ? `\n\n${o.checkHints}` : ""}`;
+  const skill = o.rules.skills?.["story-splitting"];
+  const base = `# Frozen Decision_Doc (version ${o.decisionVersion}; the decisions are made)\n\n${o.decisionMarkdown}\n\n---\n\n${CHECK_FORMATS}${o.checkHints ? `\n\n${o.checkHints}` : ""}${skill ? `\n\n---\n\n# Skill\n\n${skill}` : ""}`;
   let turnNo = 0;
   async function turn(roleId: RoleId, ask: string, tools: AgentTool<any>[], accepted: () => boolean, thinkingLevel: "off" | "low"): Promise<boolean> {
     if (o.signal.aborted) return false;

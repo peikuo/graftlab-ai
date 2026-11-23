@@ -63,6 +63,7 @@ const POST_FREEZE: readonly NodeId[] = [
   "planning",
   "plan_review",
   "documenting",
+  "tech_design",
   "adapter_branch_2",
   "target_check",
   "docs_only",

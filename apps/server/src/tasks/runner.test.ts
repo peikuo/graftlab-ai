@@ -167,7 +167,8 @@ describe("document-first (tasks.md 13.7; R19.4, R19.6, R19.11, R19.12, R25.2)", 
         if (a.optionId === "send_back") return (ctx.patch({ planSentBackReason: a.text ?? "", backlogValid: false }), "send_back");
         return (ctx.patch({ planConfirmed: true }), "confirmed");
       },
-      documenting: async (ctx) => (docs ? (ctx.patch({ docsComplete: true }), "done") : "done"),
+      documenting: async () => "done",
+      tech_design: async (ctx) => (docs ? (ctx.patch({ docsComplete: true }), "done") : "done"),
       adapter_branch_2: async () => "done",
       // The meeting after a send back waits (the test only checks that the flow got there).
       meeting: (ctx) => new Promise((res) => ctx.signal.addEventListener("abort", () => res(reviews > 0 ? "failed" : "failed"), { once: true })),
@@ -183,7 +184,7 @@ describe("document-first (tasks.md 13.7; R19.4, R19.6, R19.11, R19.12, R25.2)", 
     await until(() => runner.openCards().length === 1);
     runner.answer(runner.openCards()[0]!, { optionId: "confirm" });
     expect(await done).toBe("docs_only");
-    expect(nodes(store)).toEqual(["planning", "plan_review", "documenting", "adapter_branch_2", "docs_only"]);
+    expect(nodes(store)).toEqual(["planning", "plan_review", "documenting", "tech_design", "adapter_branch_2", "docs_only"]);
   });
 
   it("a send back goes to the meeting; documents are never written before the confirmation", async () => {
@@ -207,7 +208,7 @@ describe("document-first (tasks.md 13.7; R19.4, R19.6, R19.11, R19.12, R25.2)", 
     runner.answer(runner.openCards()[0]!, { optionId: "confirm" });
     await until(() => store.events().some((e) => e.type === "transition_rejected"));
     const rejected = store.events().find((e) => e.type === "transition_rejected");
-    expect(rejected?.payload).toMatchObject({ from: "documenting" });
+    expect(rejected?.payload).toMatchObject({ from: "tech_design" });
     runner.abort();
     await done;
     expect(nodes(store)).not.toContain("adapter_branch_2");

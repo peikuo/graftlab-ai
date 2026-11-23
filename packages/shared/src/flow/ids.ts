@@ -19,6 +19,7 @@ export const NODE_IDS = [
   "planning",
   "plan_review",
   "documenting",
+  "tech_design",
   "adapter_branch_2",
   "target_check",
   // source-change stories

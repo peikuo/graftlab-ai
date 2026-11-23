@@ -1,0 +1,222 @@
+{
+  "version": "0.9.0",
+  "model": "deepseek-flash",
+  "runs": [
+    {
+      "taskId": "linkding-mwtdbltc",
+      "variant": "with skill",
+      "ok": true,
+      "seconds": 192,
+      "retries": 0,
+      "rejections": [
+        "Not accepted: architecture: affected Too big: expected array to have <=8 items; Feature F4: check c1 is not an acceptance check of story S2; Feature F4: check c…",
+        "Not accepted: architecture: affected Too big: expected array to have <=8 items; architecture: decisions Too big: expected array to have <=6 items. Submit again."
+      ],
+      "features": [
+        {
+          "id": "F1",
+          "storyId": "S1",
+          "size": "S",
+          "files": 5,
+          "tests": 1,
+          "dependsOn": []
+        },
+        {
+          "id": "F2",
+          "storyId": "S1",
+          "size": "S",
+          "files": 2,
+          "tests": 1,
+          "dependsOn": [
+            "F1"
+          ]
+        },
+        {
+          "id": "F3",
+          "storyId": "S1",
+          "size": "M",
+          "files": 5,
+          "tests": 2,
+          "dependsOn": [
+            "F1",
+            "F2"
+          ]
+        },
+        {
+          "id": "F4",
+          "storyId": "S2",
+          "size": "S",
+          "files": 2,
+          "tests": 1,
+          "dependsOn": [
+            "F3"
+          ]
+        }
+      ],
+      "gradesTotal": 20,
+      "concerns": 2,
+      "quotesPassed": "19/20",
+      "feasibilityDoubts": 4
+    },
+    {
+      "taskId": "linkding-mwtdbltc",
+      "variant": "without skill",
+      "ok": true,
+      "seconds": 325,
+      "retries": 1,
+      "rejections": [
+        "Invalid arguments for tool \"submit_tech_design\": Unexpected non-whitespace character after JSON at position 15797 (line 1 column 15798)\n\nReceived arguments:\n{\"a…",
+        "Invalid arguments for tool \"submit_tech_design\": Unexpected non-whitespace character after JSON at position 15155 (line 1 column 15156)\n\nReceived arguments:\n{\"a…",
+        "Invalid arguments for tool \"submit_tech_design\": Unexpected non-whitespace character after JSON at position 15144 (line 1 column 15145)\n\nReceived arguments:\n{\"a…",
+        "Not accepted: architecture: affected.2.quotes Too big: expected array to have <=4 items; architecture: decisions Too big: expected array to have <=6 items; Feat…",
+        "Not accepted: Feature F4: check c2 is not an acceptance check of story S2. Submit again.",
+        "Not accepted: architecture: decisions Too big: expected array to have <=6 items. Submit again."
+      ],
+      "features": [
+        {
+          "id": "F1",
+          "storyId": "S1",
+          "size": "S",
+          "files": 5,
+          "tests": 1,
+          "dependsOn": []
+        },
+        {
+          "id": "F2",
+          "storyId": "S1",
+          "size": "M",
+          "files": 2,
+          "tests": 1,
+          "dependsOn": [
+            "F1"
+          ]
+        },
+        {
+          "id": "F3",
+          "storyId": "S1",
+          "size": "M",
+          "files": 5,
+          "tests": 1,
+          "dependsOn": [
+            "F2"
+          ]
+        },
+        {
+          "id": "F4",
+          "storyId": "S2",
+          "size": "M",
+          "files": 4,
+          "tests": 2,
+          "dependsOn": [
+            "F3"
+          ]
+        }
+      ],
+      "gradesTotal": 20,
+      "concerns": 4,
+      "quotesPassed": "25/25",
+      "feasibilityDoubts": 2
+    },
+    {
+      "taskId": "linkding-mwtd0j1p",
+      "variant": "with skill",
+      "ok": true,
+      "seconds": 248,
+      "retries": 0,
+      "rejections": [
+        "Not accepted: architecture: decisions Too big: expected array to have <=6 items. Submit again.",
+        "Not accepted: architecture: affected Too big: expected array to have <=8 items; architecture: decisions Too big: expected array to have <=6 items; story S3: acc…"
+      ],
+      "features": [
+        {
+          "id": "F1",
+          "storyId": "S1",
+          "size": "S",
+          "files": 5,
+          "tests": 1,
+          "dependsOn": []
+        },
+        {
+          "id": "F2",
+          "storyId": "S1",
+          "size": "M",
+          "files": 6,
+          "tests": 1,
+          "dependsOn": [
+            "F1"
+          ]
+        },
+        {
+          "id": "F3",
+          "storyId": "S2",
+          "size": "M",
+          "files": 7,
+          "tests": 1,
+          "dependsOn": [
+            "F1",
+            "F2"
+          ]
+        },
+        {
+          "id": "F4",
+          "storyId": "S3",
+          "size": "M",
+          "files": 7,
+          "tests": 1,
+          "dependsOn": [
+            "F1",
+            "F2"
+          ]
+        }
+      ],
+      "gradesTotal": 20,
+      "concerns": 3,
+      "quotesPassed": "26/27",
+      "feasibilityDoubts": 3
+    },
+    {
+      "taskId": "linkding-mwtd0j1p",
+      "variant": "without skill",
+      "ok": true,
+      "seconds": 168,
+      "retries": 0,
+      "rejections": [
+        "Not accepted: architecture: affected Too big: expected array to have <=8 items; architecture: decisions Too big: expected array to have <=6 items; Feature F2: s…"
+      ],
+      "features": [
+        {
+          "id": "F1",
+          "storyId": "S1",
+          "size": "M",
+          "files": 7,
+          "tests": 1,
+          "dependsOn": []
+        },
+        {
+          "id": "F2",
+          "storyId": "S2",
+          "size": "M",
+          "files": 8,
+          "tests": 1,
+          "dependsOn": [
+            "F1"
+          ]
+        },
+        {
+          "id": "F3",
+          "storyId": "S3",
+          "size": "M",
+          "files": 7,
+          "tests": 1,
+          "dependsOn": [
+            "F1"
+          ]
+        }
+      ],
+      "gradesTotal": 15,
+      "concerns": 1,
+      "quotesPassed": "31/32",
+      "feasibilityDoubts": 3
+    }
+  ]
+}

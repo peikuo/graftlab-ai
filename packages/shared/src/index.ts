@@ -14,3 +14,4 @@ export * from "./secretPatterns.ts";
 export * from "./adapter.ts";
 export * from "./runner.ts";
 export * from "./planning.ts";
+export * from "./techdesign.ts";

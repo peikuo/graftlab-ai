@@ -22,10 +22,11 @@ import { DecisionDesk, type Verdict } from "../decision/desk.ts";
 import { splitItems } from "../decision/items.ts";
 import { renderDecisionDoc } from "../decision/render.ts";
 import { mkdir, writeFile } from "node:fs/promises";
-import { initialTaskBoard, storyEffort, type DecisionDocContent, type OutputDocKind, type Plan, type Proposal, type ReviewItemData, type StoryProgress } from "@graftlab/shared";
+import { featureTaskBoard, storyEffort, type DecisionDocContent, type OutputDocKind, type Plan, type TechDesign, type Proposal, type ReviewItemData, type StoryProgress } from "@graftlab/shared";
 import { runPlanning } from "../planning/plan.ts";
-import { runDocuments } from "../planning/docs.ts";
-import { olderVersionNote, renderBacklog, renderDefinitionOfDone, renderDesign, renderRequirements, renderSprintPlan, renderTaskBoard, renderTasks } from "../planning/render.ts";
+import { runRequirements } from "../planning/docs.ts";
+import { runTechDesign } from "../planning/techdesign.ts";
+import { olderVersionNote, renderArchitecture, renderBacklog, renderDefinitionOfDone, renderFeatures, renderRequirements, renderSprintPlan, renderTaskBoard } from "../planning/render.ts";
 import type { Lease } from "../queue/lease.ts";
 import { TaskRunner, closeInterruptedTask, type Clock, type JudgeAnswer, type NodeHandler } from "./runner.ts";
 
@@ -88,7 +89,7 @@ export class TaskService {
   /** The decision step of the current Task (R15, R16). */
   #decision: { draft?: { draftId: string; number: number; content: DecisionDocContent; items: ReviewItemData[] }; verdicts: Map<string, Verdict>; selected?: string | null; rejections?: { itemId: string; title: string; reason: string }[]; desk?: DecisionDesk; frozen: number } = { verdicts: new Map(), frozen: 0 };
   /** The planning step of the current Task (R19, R20): the current plan, and the Judge's reason after a send back. */
-  #plan: { current?: { planId: string; number: number; plan: Plan }; count: number; agenda?: string; docs: Map<OutputDocKind, { version: number; file: string }> } = { count: 0, docs: new Map() };
+  #plan: { current?: { planId: string; number: number; plan: Plan }; design?: TechDesign; count: number; agenda?: string; docs: Map<OutputDocKind, { version: number; file: string }> } = { count: 0, docs: new Map() };
   /** What the reading step produced, for the meeting of the same Task. */
   #read: { memo: RepoMemoHandle; files: Map<string, string>; evidence: EvidenceFiles } | null = null;
 
@@ -520,7 +521,7 @@ export class TaskService {
     }
   }
 
-  /** Documents for the analyzed repository and the Task_Board (R19.2, R20.1, R20.8). */
+  /** The Requirements document (R19.2, R20.4). */
   async #documentingStep(ctx: Parameters<NodeHandler>[0]): Promise<"done" | "failed"> {
     const m = this.#o.meeting;
     const read = this.#read;
@@ -530,8 +531,28 @@ export class TaskService {
       await ctx.fail("interface_call_failure", "llm", "documenting has no confirmed plan from this Task");
       return "failed";
     }
+    const r = await runRequirements({ rules: m.rules, context: this.#contextFor(ctx, read), decisionMarkdown: frozen.markdown, plan: cur.plan, emit: ctx.emit, runTurn: (t) => m.runTurn({ ...t, emit: ctx.emit }), signal: ctx.signal, idPrefix: `${ctx.task.taskId}-plan${cur.number}` });
+    if (!r.ok) {
+      if (ctx.signal.aborted) return "failed";
+      await ctx.fail("llm_output_format_invalid", "llm", r.reason);
+      return "failed";
+    }
+    await this.#writeDoc(ctx, "requirements", "REQUIREMENTS.md", renderRequirements(r.requirements), r.requirements, cur.plan.decisionVersion);
+    return "done";
+  }
+
+  /** Technical design (Sprint Planning part two, R19.13-R19.15): architecture, Features, Task_Board per Feature. */
+  async #techDesignStep(ctx: Parameters<NodeHandler>[0]): Promise<"done" | "failed"> {
+    const m = this.#o.meeting;
+    const read = this.#read;
+    const frozen = this.#frozenDecision();
+    const cur = this.#plan.current;
+    if (!m || !read || !frozen || !cur) {
+      await ctx.fail("interface_call_failure", "llm", "the technical design has no confirmed plan from this Task");
+      return "failed";
+    }
     const p = cur.plan;
-    const r = await runDocuments({
+    const r = await runTechDesign({
       rules: m.rules,
       context: this.#contextFor(ctx, read),
       decisionMarkdown: frozen.markdown,
@@ -551,12 +572,17 @@ export class TaskService {
       return "failed";
     }
     const v = p.decisionVersion;
-    await this.#writeDoc(ctx, "requirements", "REQUIREMENTS.md", renderRequirements(r.requirements), r.requirements, v);
-    await this.#writeDoc(ctx, "design", "DESIGN.md", renderDesign(r.design), r.design, v);
-    await this.#writeDoc(ctx, "tasks", "TASKS.md", renderTasks(r.tasks), r.tasks, v);
-    const board = initialTaskBoard(p.backlog);
+    const d = r.design;
+    this.#plan.design = d;
+    await this.#writeDoc(ctx, "architecture", "TECHNICAL_ARCHITECTURE.md", renderArchitecture(d.architecture), d.architecture, v);
+    await this.#writeDoc(ctx, "features", "FEATURE_BREAKDOWN.md", renderFeatures(d), d, v);
+    const board = featureTaskBoard(d.breakdown);
     await this.#writeDoc(ctx, "task_board", "TASK_BOARD.md", renderTaskBoard(board), board, v);
-    ctx.patch({ docsComplete: true });
+    // The execution units are the Features, in dependency order (R38.10).
+    const kind = (storyId: string) => p.backlog.stories.find((s) => s.id === storyId)?.featureContract.executionKind ?? "source_change";
+    const purpose = frozen.content.purpose;
+    const stories: StoryProgress[] = d.breakdown.features.map((f) => ({ storyId: f.id, kind: kind(f.storyId), purpose, attempts: 0, status: "pending", unconfirmed: false, demoCaseRejections: 0, suggestionConfirmed: false }));
+    ctx.patch({ docsComplete: true, stories });
     return "done";
   }
 
@@ -673,6 +699,7 @@ export class TaskService {
       planning: (ctx) => this.#planningStep(ctx),
       plan_review: (ctx) => this.#planReviewStep(ctx),
       documenting: (ctx) => this.#documentingStep(ctx),
+      tech_design: (ctx) => this.#techDesignStep(ctx),
       adapter_branch_2: async () => "done",
     };
   }

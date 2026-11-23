@@ -19,7 +19,7 @@ export const ROLE_IDS = [
 ] as const;
 export const MEETING_PERSPECTIVES = ["user_value", "feasibility", "risk"] as const satisfies readonly (typeof ROLE_IDS)[number][];
 export const RoleIdSchema = z.enum(ROLE_IDS);
-export const OUTPUT_DOC_KINDS = ["product_backlog", "sprint_plan", "definition_of_done", "task_board", "requirements", "design", "tasks", "demo_review_note", "retrospective"] as const;
+export const OUTPUT_DOC_KINDS = ["product_backlog", "sprint_plan", "definition_of_done", "task_board", "requirements", "architecture", "features", "demo_review_note", "retrospective"] as const;
 export type RoleId = z.infer<typeof RoleIdSchema>;
 
 export const NodeIdSchema = z.enum(NODE_IDS);

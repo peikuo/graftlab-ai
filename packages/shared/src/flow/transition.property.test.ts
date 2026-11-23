@@ -8,7 +8,7 @@ import { GATHERING_NODES, type NodeId } from "./ids.ts";
 import { transition } from "./transition.ts";
 
 const POST_FREEZE: NodeId[] = [
-  "frozen", "planning", "plan_review", "documenting", "adapter_branch_2", "target_check", "docs_only",
+  "frozen", "planning", "plan_review", "documenting", "tech_design", "adapter_branch_2", "target_check", "docs_only",
   "story_develop", "story_review", "story_ask", "story_run", "story_checkpoint", "verifying",
   "api_read", "api_plan", "api_suggest", "api_confirm", "api_try_one", "api_write_batch", "api_read_back",
 ];

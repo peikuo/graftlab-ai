@@ -1,7 +1,7 @@
 // The plan in feature words (R19.11) and the Output_Docs view (R4.1, R20.8, R20.10). Everything comes from
 // events: the plan from plan_proposed, the documents from output_doc. Assessments carry their LLM label.
 import { markdownToHtml } from "../markdown.ts";
-import { describeCheck, OUTPUT_DOC_TITLES, PlanSchema, storyEffort, type DesignDoc, type OutputDocKind, type Plan, type RequirementsDoc, type TaskBoard, type TasksDoc, type UiState } from "@graftlab/shared";
+import { describeCheck, OUTPUT_DOC_TITLES, PlanSchema, storyEffort, type OutputDocKind, type Plan, type RequirementsDoc, type TaskBoard, type UiState } from "@graftlab/shared";
 
 export function parsePlan(content: unknown): Plan | null {
   const r = PlanSchema.safeParse(content);
@@ -133,37 +133,6 @@ function DocBody({ kind, content }: { kind: OutputDocKind; content: unknown }) {
           {(c as RequirementsDoc).items.map((i) => (
             <li key={i.id}>
               {i.storyId}: {i.text}
-            </li>
-          ))}
-        </ul>
-      );
-    case "design": {
-      const d = c as DesignDoc;
-      return (
-        <div className="small">
-          <p>{d.overview}</p>
-          <ul className="clean">
-            {d.changes.map((x, n) => (
-              <li key={n}>
-                {x.storyId} · {x.area}: {x.description}
-              </li>
-            ))}
-          </ul>
-          {d.runEnvironment && (
-            <p className="muted">
-              How the changed app is started (proposed by the Planner from the app's own files): <span className="mono">{d.runEnvironment.startCommands.join(" && ")}</span>, port {d.runEnvironment.port}
-              {d.runEnvironment.evidence.some((e) => e.status !== "passed") && <span className="badge red">Unverified source</span>}
-            </p>
-          )}
-        </div>
-      );
-    }
-    case "tasks":
-      return (
-        <ul className="clean small">
-          {(c as TasksDoc).items.map((i) => (
-            <li key={i.id}>
-              {i.storyId}: {i.title} ({i.steps.length} steps)
             </li>
           ))}
         </ul>
