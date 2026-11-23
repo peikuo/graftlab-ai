@@ -19,7 +19,7 @@ const DraftIn = z.object({
   inScope: capped(line(300), 8).refine((a) => a.length > 0, "needs at least one entry"),
   outOfScope: capped(line(300), 8).default([]),
   acceptanceCriteria: capped(line(300), 8).refine((a) => a.length > 0, "needs at least one entry"),
-  approachOptions: capped(z.object({ id: z.string().trim().regex(/^[a-z0-9_-]{1,24}$/), kind: z.enum(["independent_agent", "source_change", "ui_change", "mix"]), title: line(100), summary: line(600), acceptanceChecks: z.array(z.unknown()).default([]) }), 3).refine((a) => a.length > 0, "needs at least one entry"),
+  approachOptions: capped(z.object({ id: z.string().trim().regex(/^[A-Za-z0-9_-]{1,40}$/), kind: z.enum(["independent_agent", "source_change", "ui_change", "mix"]), title: line(100), summary: line(600), acceptanceChecks: z.array(z.unknown()).default([]) }), 3).refine((a) => a.length > 0, "needs at least one entry"),
   uiImpact: line(800),
   risks: capped(line(300), 8).default([]),
   openQuestions: capped(line(300), 4).default([]),
@@ -58,6 +58,8 @@ export interface DraftOptions {
   runTurn: (o: Pick<TurnOptions, "roleId" | "purpose" | "systemPrompt" | "prompt" | "tools" | "signal" | "idPrefix" | "thinkingLevel">) => Promise<TurnResult>;
   signal: AbortSignal;
   idPrefix: string;
+  /** Thinking per step (default low); measured to decide the defaults. */
+  thinking?: { draft?: "off" | "low"; assess?: "off" | "low" };
   /** After a send back: the previous draft and the rejected items with the Judge's reasons. */
   previous?: { content: DecisionDocContent; rejections: { title: string; reason: string }[] };
 }
@@ -80,6 +82,14 @@ function renderMeeting(o: DraftOptions): string {
   if (o.openQuestions.length) lines.push("", "Open questions from the meeting:", ...o.openQuestions.map((q) => `- ${q}`));
   return lines.join("\n");
 }
+/** The Acceptance_Check formats, for every repository (the Adapter adds its endpoints and test hints). */
+export const CHECK_FORMATS = [
+  "# Acceptance check formats (JSON objects in acceptanceChecks)",
+  '- {"id":"c1","kind":"test_suite","command":["python","manage.py","test","app.tests.test_x"],"timeoutS":600}: runs tests in the development sandbox.',
+  '- {"id":"c2","kind":"browser_check","target":"run_environment","steps":[{"op":"goto","path":"/"},{"op":"fill","role":"textbox","name":"URL","value":"https://example.org"},{"op":"click","role":"button","name":"Save"},{"op":"expectText","text":"…"},{"op":"expectRole","role":"button","name":"…"}]}: drives the changed app in a browser.',
+  '- {"id":"c3","kind":"api_readback","target":"run_environment","expect":[{"key":"<item key>","mustExist":true,"fields":{"<field>":"<value>"}}]}: reads items back through the app API.',
+  "Option ids: short lowercase words with dashes, for example local-model-tags.",
+].join("\n");
 const optionKey = (o: { kind: string; title: string; summary: string; acceptanceChecks: unknown[] }) => JSON.stringify([o.kind, o.title, o.summary, o.acceptanceChecks]);
 
 export async function runDecisionDraft(o: DraftOptions): Promise<DraftResult> {
@@ -87,15 +97,18 @@ export async function runDecisionDraft(o: DraftOptions): Promise<DraftResult> {
   const meeting = renderMeeting(o);
   let turnNo = 0;
   async function turn(roleId: RoleId, ask: string, tool: AgentTool<any>, accepted: () => boolean): Promise<boolean> {
+    // Measured 2026-11-24 on linkding: assessments with thinking took 99 to 186 s each (over 90 % reasoning tokens)
+    // and 12 to 20 s without, of similar quality; the draft keeps low thinking for a better option structure.
+    const thinkingLevel = roleId === "facilitator" ? (o.thinking?.draft ?? "low") : (o.thinking?.assess ?? "off");
     if (o.signal.aborted) return false;
     const actor: Actor = { kind: "role", roleId };
-    const prompt = `${meeting}${o.checkHints ? `\n\n---\n\n${o.checkHints}` : ""}\n\n---\n\n# Your role\n\n${roleText(o.rules, roleId)}\n\n---\n\n${ask}`;
+    const prompt = `${meeting}\n\n---\n\n${CHECK_FORMATS}${o.checkHints ? `\n\n${o.checkHints}` : ""}\n\n---\n\n# Your role\n\n${roleText(o.rules, roleId)}\n\n---\n\n${ask}`;
     const id = `${o.idPrefix}-d${++turnNo}`;
-    const r = await o.runTurn({ roleId, purpose: "statement", systemPrompt: system, prompt, tools: [tool], signal: o.signal, idPrefix: id, thinkingLevel: "low" });
+    const r = await o.runTurn({ roleId, purpose: "statement", systemPrompt: system, prompt, tools: [tool], signal: o.signal, idPrefix: id, thinkingLevel });
     if (accepted() || o.signal.aborted || r.stopReason === "error") return accepted();
     const why = r.error ?? (r.toolCalls === 0 ? "it answered without the submit tool" : "no valid submission");
     await o.emit({ type: "failure", actor, payload: { failureClass: "llm_output_format_invalid", source: "llm", detail: `${NAME[roleId]} ended the turn without a valid ${tool.name} (${why}); one retry` } });
-    const r2 = await o.runTurn({ roleId, purpose: "statement", systemPrompt: system, prompt: `${prompt}\n\nYou ended your turn without a valid ${tool.name}. Call it now.`, tools: [tool], signal: o.signal, idPrefix: `${id}r`, thinkingLevel: "low" });
+    const r2 = await o.runTurn({ roleId, purpose: "statement", systemPrompt: system, prompt: `${prompt}\n\nYou ended your turn without a valid ${tool.name}. Call it now.`, tools: [tool], signal: o.signal, idPrefix: `${id}r`, thinkingLevel });
     if (!accepted() && !o.signal.aborted && r2.stopReason !== "error") await o.emit({ type: "failure", actor, payload: { failureClass: "llm_output_format_invalid", source: "llm", detail: `${NAME[roleId]}'s ${tool.name} failed: ${r2.error ?? "no valid submission"}` } });
     return accepted();
   }
@@ -192,7 +205,7 @@ export async function runDecisionDraft(o: DraftOptions): Promise<DraftResult> {
     return {
       id: op.id,
       kind: op.kind,
-      title: op.title,
+      title: stripIds(op.title).text.replace(/\(\s*\)/g, "").trim(),
       summary: stripIds(op.summary).text,
       assessment: {
         feasibility: fe?.feasibility ? stripIds(fe.feasibility).text : "",
@@ -210,7 +223,7 @@ export async function runDecisionDraft(o: DraftOptions): Promise<DraftResult> {
   const workflows = d.workflows.map((w: DraftInput["workflows"][number], i: number) => {
     const p = findProposal(o.proposals, w.proposal)!;
     used.push(...p.evidence);
-    return { id: `w${i + 1}`, name: w.name, purpose: w.purpose, description: stripIds(w.description).text, evidence: p.evidence, evidenceStatus: p.evidenceStatus };
+    return { id: `w${i + 1}`, name: stripIds(w.name).text, purpose: w.purpose, description: stripIds(w.description).text, evidence: p.evidence, evidenceStatus: p.evidenceStatus };
   });
   // R37.9: large changes are named as engineering risks; options nobody assessed are named too.
   const codeRisks = approachOptions.flatMap((op: DecisionDocContent["approachOptions"][number]) => [

@@ -404,10 +404,7 @@ export class TaskService {
     const a = JSON.parse(await readFile(join(this.#o.adaptersDir ?? "adapters", adapterId, "adapter.json"), "utf8")) as { api?: { read?: { method: string; path: string }[] }; testSelectionHint?: string };
     return [
       "# How the Verifier can check this app (from its Adapter)",
-      "Acceptance check kinds (JSON):",
-      '- {"id","kind":"test_suite","command":["python","manage.py","test","bookmarks.tests.<module>"],"timeoutS":600}: runs tests in the development sandbox.',
-      '- {"id","kind":"browser_check","target":"run_environment","steps":[{"op":"goto","path":"/bookmarks"},{"op":"expectText","text":"…"},{"op":"click","role":"button","name":"…"},{"op":"fill","role":"textbox","name":"…","value":"…"},{"op":"expectRole","role":"…","name":"…"}]}: drives the changed app in a browser.',
-      '- {"id","kind":"api_readback","target":"run_environment","expect":[{"key":"<bookmark url>","mustExist":true,"fields":{"tag_names":["…"]}}]}: reads bookmarks back through the API.',
+      "api_readback keys are bookmark URLs; fields are bookmark fields such as tag_names.",
       `Read endpoints: ${(a.api?.read ?? []).map((r) => `${r.method} ${r.path}`).join(", ")}.`,
       a.testSelectionHint ? `Tests: ${a.testSelectionHint}` : "",
     ].filter(Boolean).join("\n");
