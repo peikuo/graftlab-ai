@@ -532,34 +532,42 @@ Conventions:
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 13. F7-F8: planning and document-first (target 2026-11-29)
-  - [ ] 13.1 Implement the planning schemas
+  - [x] 13.1 Implement the planning schemas
+    - Done 2026-11-23: `packages/shared/src/planning.ts` (strict Feature_Contract, backlog, Sprint_Plan, Task_Board, Definition_of_Done, Demo_Review_Note, Retrospective, documents, `buildPlan`)
     - Product_Backlog, Story, strict Feature_Contract (no path lists, `executionKind`), Sprint_Plan, Task_Board, Definition_of_Done, Demo_Review_Notes, Retrospective
     - Design: Product_Backlog and Feature_Contract
     - _Requirements: 20.5, 20.6, 20.7, 20.8, 20.9, 40.1, 40.3_
-  - [ ]* 13.2 Write property test for backlog validity
+  - [x]* 13.2 Write property test for backlog validity
+    - Done 2026-11-23: `planning.property.test.ts`, 200 runs
     - **Property 15: Backlog validity**
     - **Validates: Requirements 20.5, 20.6, 20.9, 40.1, 40.3**
-  - [ ] 13.3 Implement the planning node
+  - [x] 13.3 Implement the planning node
+    - Done 2026-11-23: `apps/server/src/planning/plan.ts`; live on the linkding Decision_Doc: Planner 280 s (thinking low), assessments 10 s, Facilitator 165 s with two visible validation retries; 2 stories on the chosen approach
     - Multi-role (R19.1): Planner `submit_plan`, Feasibility and Risk `submit_plan_assessment` in parallel, Facilitator `submit_final_plan`; rejection names the incomplete story; Feature_Contracts derived from the Frozen version and referenced in the Sprint_Plan; `runtime-rules/roles/planner.md`
     - Design: Planning and document-first
     - _Requirements: 19.1, 19.3, 19.9, 19.10, 20.1, 20.4, 20.11, 40.1_
-  - [ ] 13.9 Implement the plan review
+  - [x] 13.9 Implement the plan review
+    - Done 2026-11-23: node `plan_review`, card with the stories (`PlanStories`), `textRequiredFor` on cards so sending back needs a reason, agenda for the meeting after a send back; flow tests in `runner.test.ts`
     - Node `plan_review` (wait_user) with edges to `documenting` (confirmed) and `meeting` (sent back with a reason); the card in feature terms; `plan_confirmed` and `plan_sent_back` events; the meeting agenda after a send back
     - Design: Planning and document-first, Flow_Graph
     - _Requirements: 19.11, 19.12, 20.10_
-  - [ ] 13.4 Implement the documenting node
+  - [x] 13.4 Implement the documenting node
+    - Done 2026-11-23: `apps/server/src/planning/docs.ts`, Task_Board by code, JSON plus Markdown in `docs/`; live: 86 s with thinking off, run environment `uv run manage.py runserver 0.0.0.0:8000` from the Makefile with checked quotes
     - Requirements, design and tasks documents and the Task_Board for the analyzed repository; `runEnvironment` section proposed by the Planner; version recorded; JSON plus Markdown in `data/tasks/<id>/docs/`; Other_Repo ends as Docs only
     - Design: Planning and document-first
     - _Requirements: 19.2, 19.4, 19.6, 20.4, 25.2, 39.9, 39.10_
-  - [ ] 13.5 Mark documents based on an older version
+  - [x] 13.5 Mark documents based on an older version
+    - Done 2026-11-23: older documents get the note at the next freeze; the Output_Docs view marks them
     - When a new version is frozen, documents that reference an older version are marked
     - Design: Planning and document-first
     - _Requirements: 20.10_
-  - [ ] 13.6 Build the Output_Docs view
+  - [x] 13.6 Build the Output_Docs view
+    - Done 2026-11-23: tab "Plan and documents" (`components/Plan.tsx`, `Plan.test.tsx`)
     - Backlog with Feature_Contracts in feature words, Sprint_Plan, Task_Board statuses, documents rendered from Markdown
     - Design: Web app
     - _Requirements: 4.1, 20.8_
-  - [ ]* 13.7 Write unit tests for document-first
+  - [x]* 13.7 Write unit tests for document-first
+    - Done 2026-11-23: `runner.test.ts`: Other_Repo ends in `docs_only` after confirmation; a send back goes to the meeting; development blocked while documents are incomplete
     - Development blocked while documents are incomplete; Other_Repo ends in `docs_only` with the label
     - _Requirements: 19.4, 19.6, 25.2_
   - [ ] 13.8 Demo and verify: planning and documents
