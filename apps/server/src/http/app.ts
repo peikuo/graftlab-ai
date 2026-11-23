@@ -6,6 +6,7 @@ import { join } from "node:path";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import { RoleIdSchema, type SecretRegistry } from "@graftlab/shared";
+import type { SandboxService } from "../containers/sandboxService.ts";
 import type { EventStore } from "../events/store.ts";
 import { Lease } from "../queue/lease.ts";
 import { SseHub } from "../sse/hub.ts";
@@ -37,6 +38,8 @@ export interface StudioOptions {
   heartbeatMs?: number;
   lease?: Lease;
   logger?: boolean;
+  /** The current Task's Sandbox, for POST /api/sandbox/restore (R29.2). */
+  sandbox?: SandboxService;
 }
 
 export interface Studio {
@@ -247,6 +250,21 @@ export function createStudio(opts: StudioOptions): Studio {
     return { liveExecution: live.available, ...(live.reason ? { reason: live.reason } : {}), creating: !!opts.tasks, ...(opts.llm ? { llm: opts.llm } : {}) };
   });
 
+  // Restore (R29.2): the operator (lease holder) or the admin only; same procedure as reset, Verifier equality.
+  app.post("/api/sandbox/restore", async (req, reply) => {
+    const admin = tokenEquals(req.headers["x-admin-token"] as string | undefined, opts.adminToken);
+    if (!admin) {
+      const denied = await command(req);
+      if (denied) return reply.code(denied.status).send({ error: denied.error });
+    }
+    if (!opts.sandbox) return reply.code(404).send({ error: "no Sandbox is running" });
+    const r = await opts.sandbox.restore();
+    if (!r.ok) return reply.code(r.status).send({ error: r.error });
+    const x = r.result;
+    return x.ok
+      ? { ok: true, equality: x.equality }
+      : { ok: false, step: x.step, reason: x.reason, equality: x.equality, blocked: opts.sandbox.guard() };
+  });
   app.post("/api/admin/queue", async (req, reply) => {
     if (!tokenEquals(req.headers["x-admin-token"] as string | undefined, opts.adminToken)) return reply.code(403).send({ error: "admin token required" });
     const body = AdminQueueBody.safeParse(req.body);

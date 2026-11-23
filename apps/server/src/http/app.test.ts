@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { SecretRegistry } from "@graftlab/shared";
 import { EventStore } from "../events/store.ts";
+import { SandboxService } from "../containers/sandboxService.ts";
+import type { SandboxResult } from "../containers/sandbox.ts";
 import { createStudio, type Studio } from "./app.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -99,5 +101,30 @@ describe("queue and commands", () => {
     await store.append({ type: "file_read", node: "meeting", actor: { kind: "role", roleId: "reader" }, payload: { path: "a.py", bytes: 1 } });
     await readUntil("id: 2\n");
     ctrl.abort();
+  });
+});
+
+describe("sandbox restore (R29.2)", () => {
+  const okResult: SandboxResult = { ok: true, state: { name: "s", volume: "v", hostPort: 1, generation: 1, secretEnv: {}, credentials: {} }, equality: [{ item: "a", pass: true, expected: "x", actual: "as expected" }], ms: { start: 0, readiness: 0, provision: 0, seed: 0, equality: 0 } };
+  it("accepts the operator and the admin, refuses a queued session and a missing token", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "gl-app-"));
+    const sandbox = new SandboxService();
+    let resets = 0;
+    await sandbox.start({ start: async () => okResult, reset: async () => (resets++, okResult), stop: async () => {} });
+    const studio = createStudio({ secrets: new SecretRegistry(), heartbeatMs: 60_000, sandbox, adminToken: "admin-token-123456" });
+    cleanups.push(async () => {
+      await studio.app.close();
+      await rm(dataDir, { recursive: true, force: true });
+    });
+    const operator = await join_(studio);
+    const queued = await join_(studio);
+    expect((await post(studio, "/api/sandbox/restore", queued, {})).statusCode).toBe(403);
+    expect((await post(studio, "/api/sandbox/restore", undefined, {})).statusCode).toBe(403);
+    const r = await post(studio, "/api/sandbox/restore", operator, {});
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ ok: true });
+    const admin = await studio.app.inject({ method: "POST", url: "/api/sandbox/restore", headers: { host: "localhost:8080", "x-admin-token": "admin-token-123456" } });
+    expect(admin.statusCode).toBe(200);
+    expect(resets).toBe(2);
   });
 });

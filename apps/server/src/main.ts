@@ -4,6 +4,8 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pingDocker } from "./containers/engine.ts";
+import { ContainerManager, executionEnabled } from "./containers/manager.ts";
+import { SandboxService } from "./containers/sandboxService.ts";
 import { resolveLlmConfig } from "./llm/config.ts";
 import { buildStudioModel } from "./llm/model.ts";
 import { piMemoWriter } from "./reader/memoWriter.ts";
@@ -89,13 +91,20 @@ const tasks = new TaskService({
     : {}),
 });
 const closed = await tasks.closeInterrupted();
+// Live execution (R25.8): off with GL_EXECUTION_ENABLED=false; otherwise the engine is pinged, and resources left by
+// a previous process (all carry the graftlab.managed label) are removed, because their Tasks were closed above.
+const execution = executionEnabled();
+const sandbox = new SandboxService();
+const containers = execution ? new ContainerManager() : null;
+if (containers && (await containers.docker.ping())) await containers.removeAll().catch(() => {});
 
 const studio = createStudio({
   secrets,
   dataDir,
   lease,
   tasks,
-  liveExecution: () => pingDocker(),
+  liveExecution: () => (execution ? pingDocker() : Promise.resolve({ available: false, reason: "live execution is turned off on this server" })),
+  sandbox,
   llm: { profile: llm.profile, model: llm.model, keySet: !!llm.apiKey },
   logger: true,
   allowedOrigins: (process.env.GL_ALLOWED_ORIGINS ?? "").split(",").filter(Boolean),

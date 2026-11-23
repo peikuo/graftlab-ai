@@ -44,6 +44,7 @@ describe.runIf(enabled)("containers (real engine)", { timeout: 300_000 }, () => 
       expect(r.equality.every((e) => e.pass)).toBe(true);
       expect(r.equality.length).toBeGreaterThanOrEqual(9);
       console.log("sandbox start ms", r.ms);
+      console.log(r.equality.map((e) => `${e.pass ? "PASS" : "FAIL"}  ${e.item}  expected ${e.expected}  actual ${e.actual}`).join("\n"));
       const info = await manager.docker.inspectContainer(r.state.name);
       expect(info!.Config.Image).toBe(adapter.baseline.configDigest);
       expect(info!.HostConfig.Memory).toBe(manager.mem.sandbox * 1024 * 1024);
@@ -60,6 +61,7 @@ describe.runIf(enabled)("containers (real engine)", { timeout: 300_000 }, () => 
       expect((await c.request("PATCH", `/api/bookmarks/${id}/`, { title: "changed by the test" })).status).toBe(200);
       const changed = await adapter.hooks.testData.equals(c);
       expect(changed.filter((e) => !e.pass)).toHaveLength(1);
+      console.log("after the change:", changed.filter((e) => !e.pass).map((e) => `FAIL ${e.item}: expected ${e.expected}, actual ${e.actual}`));
       const r = await sbx.reset();
       if (!r.ok) throw new Error(`${r.step}: ${r.reason}`);
       expect(r.equality.every((e) => e.pass)).toBe(true);
