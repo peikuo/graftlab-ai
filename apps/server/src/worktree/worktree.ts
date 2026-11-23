@@ -120,14 +120,16 @@ export interface Worktree {
  */
 export async function createWorktree(dataDir: string, taskId: string, spec: MirrorSpec): Promise<Worktree> {
   const path = worktreePath(dataDir, taskId);
-  const branch = `graftlab/${taskId}`;
+  // R38.10: the pinned commit is the Task's `main`; Features branch off it and merge back.
+  const branch = "main";
   const wt = { taskId, path, branch, base: spec.commit };
   if (await exists(join(path, ".git"))) return wt;
   const mirror = await ensureMirror(dataDir, spec);
   await mkdir(dirname(path), { recursive: true });
   // No --shared alternates and no hardlinks: the clone must be self-contained when bind-mounted into a container.
   await git(["clone", "--no-hardlinks", "--no-checkout", "--config", "core.fileMode=false", "--config", "core.autocrlf=false", "--", mirror, path]);
-  await git(["checkout", "-q", "-b", branch, spec.commit], { cwd: path });
+  // A fresh clone may already have a local `main` (the upstream default branch); point it at the pinned commit.
+  await git(["checkout", "-q", "-B", branch, spec.commit], { cwd: path });
   return wt;
 }
 
@@ -136,7 +138,7 @@ async function withWorkingIndex<T>(wt: Worktree, fn: (env: Record<string, string
   const dir = await mkdtemp(join(tmpdir(), "gl-index-"));
   const env = { GIT_INDEX_FILE: join(dir, "index") };
   try {
-    await git(["read-tree", wt.base], { cwd: wt.path, env });
+    await git(["read-tree", "HEAD"], { cwd: wt.path, env });
     await git(["add", "-A", "--", "."], { cwd: wt.path, env });
     return await fn(env);
   } finally {
@@ -168,11 +170,14 @@ export interface WorktreeDiff {
   patch: string;
 }
 
-/** Changed files and diff against the pinned commit, including untracked files (design step 3, R38.5). */
-export async function diffWorktree(wt: Worktree): Promise<WorktreeDiff> {
+/**
+ * Changed files and diff of the working tree against `base` (default: the pinned commit), including untracked
+ * files (design step 3, R38.5). For a Feature, `base` is the commit of `main` the Feature started from.
+ */
+export async function diffWorktree(wt: Worktree, base = wt.base): Promise<WorktreeDiff> {
   return withWorkingIndex(wt, async (env) => {
-    const names = await git(["diff", "--cached", "--no-renames", "--name-status", "-z", wt.base], { cwd: wt.path, env });
-    const patch = await git(["diff", "--cached", "--no-renames", "--binary", wt.base], { cwd: wt.path, env });
+    const names = await git(["diff", "--cached", "--no-renames", "--name-status", "-z", base], { cwd: wt.path, env });
+    const patch = await git(["diff", "--cached", "--no-renames", "--binary", base], { cwd: wt.path, env });
     return { changedFiles: parseNameStatus(names), patch };
   });
 }
@@ -227,4 +232,60 @@ export async function notIgnored(wt: Worktree, paths: string[]): Promise<string[
   });
   const ignored = new Set(out.split("\n").filter(Boolean));
   return paths.filter((p) => !ignored.has(p) && !ignored.has(`${p.replace(/\/+$/, "")}/`));
+}
+
+// ---- Feature branches (R38.10) ----
+
+export interface FeatureBranch {
+  featureId: string;
+  branch: string;
+  /** The commit of `main` the Feature started from; its diff is taken against it. */
+  base: string;
+}
+
+const head = async (wt: Worktree, ref = "HEAD") => (await git(["rev-parse", ref], { cwd: wt.path })).trim();
+
+/** Starts (or resumes) `feature/<id>` from the current `main`. */
+export async function startFeature(wt: Worktree, featureId: string): Promise<FeatureBranch> {
+  check(featureId, "Feature id");
+  const branch = `feature/${featureId}`;
+  const exists = await git(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { cwd: wt.path }).then(() => true, () => false);
+  if (exists) {
+    await git(["checkout", "-q", branch], { cwd: wt.path });
+    return { featureId, branch, base: (await git(["merge-base", "main", branch], { cwd: wt.path })).trim() };
+  }
+  await git(["checkout", "-q", "main"], { cwd: wt.path });
+  const base = await head(wt);
+  await git(["checkout", "-q", "-b", branch], { cwd: wt.path });
+  return { featureId, branch, base };
+}
+
+/** Commits everything left in the working tree on the Feature branch (the Code_Agent may have committed already). */
+export async function commitFeature(wt: Worktree, f: FeatureBranch, message: string): Promise<string | null> {
+  await git(["add", "-A", "--", "."], { cwd: wt.path });
+  const staged = await git(["diff", "--cached", "--name-only"], { cwd: wt.path });
+  if (!staged.trim()) return null;
+  await git(["commit", "-q", "--no-verify", "-m", message], { cwd: wt.path });
+  return head(wt);
+}
+
+export type MergeResult = { ok: true; commit: string } | { ok: false; reason: string };
+
+/** Merges the Feature into `main` with a merge commit; a conflict is aborted and reported, `main` stays as it was. */
+export async function mergeFeature(wt: Worktree, f: FeatureBranch, title: string): Promise<MergeResult> {
+  await commitFeature(wt, f, `${f.featureId}: work in progress`);
+  await git(["checkout", "-q", "main"], { cwd: wt.path });
+  try {
+    await git(["merge", "--no-ff", "--no-verify", "-q", "-m", `Merge Feature ${f.featureId}: ${title}`, f.branch], { cwd: wt.path });
+    return { ok: true, commit: await head(wt) };
+  } catch (e) {
+    await git(["merge", "--abort"], { cwd: wt.path }).catch(() => undefined);
+    return { ok: false, reason: `merging ${f.branch} into main failed: ${(e as Error).message}` };
+  }
+}
+
+/** Leaves a failed Feature unmerged: its state is kept on its branch, and `main` is checked out clean. */
+export async function abandonFeature(wt: Worktree, f: FeatureBranch): Promise<void> {
+  await commitFeature(wt, f, `${f.featureId}: unfinished (not merged)`);
+  await git(["checkout", "-q", "main"], { cwd: wt.path });
 }

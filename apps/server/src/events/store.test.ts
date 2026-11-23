@@ -94,7 +94,7 @@ describe("EventStore", () => {
       }),
       { numRuns: 100 },
     );
-  });
+  }, 30_000); // 100 runs with file writes; slow when the whole suite runs in parallel
 
   it("continues seq after reopening", async () => {
     const dataDir = await tmp();

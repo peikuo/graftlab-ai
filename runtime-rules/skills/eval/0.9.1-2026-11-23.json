@@ -1,0 +1,207 @@
+{
+  "version": "0.9.1",
+  "model": "deepseek-flash",
+  "runs": [
+    {
+      "taskId": "linkding-mwtdbltc",
+      "variant": "with skill",
+      "ok": true,
+      "seconds": 185,
+      "retries": 0,
+      "rejections": [
+        "Not accepted: Feature F3: check c2 is not an acceptance check of story S2. Submit again.",
+        "Invalid arguments for tool \"submit_final_tech_design\": Expected ',' or ']' after array element in JSON at position 13609 (line 1 column 13610)\n\nReceived argumen…"
+      ],
+      "features": [
+        {
+          "id": "F1",
+          "storyId": "S1",
+          "size": "M",
+          "files": 5,
+          "tests": 1,
+          "dependsOn": []
+        },
+        {
+          "id": "F2",
+          "storyId": "S1",
+          "size": "M",
+          "files": 4,
+          "tests": 1,
+          "dependsOn": [
+            "F1"
+          ]
+        },
+        {
+          "id": "F3",
+          "storyId": "S2",
+          "size": "S",
+          "files": 3,
+          "tests": 1,
+          "dependsOn": [
+            "F2"
+          ]
+        }
+      ],
+      "gradesTotal": 15,
+      "concerns": 1,
+      "quotesPassed": "24/25",
+      "feasibilityDoubts": 2
+    },
+    {
+      "taskId": "linkding-mwtdbltc",
+      "variant": "without skill",
+      "ok": true,
+      "seconds": 172,
+      "retries": 0,
+      "rejections": [
+        "Not accepted: Feature F1: size S allows 2 non-test files but 4 are planned; raise the size or split it; Feature F4: check c2 is not an acceptance check of story…"
+      ],
+      "features": [
+        {
+          "id": "F1",
+          "storyId": "S1",
+          "size": "M",
+          "files": 5,
+          "tests": 1,
+          "dependsOn": []
+        },
+        {
+          "id": "F2",
+          "storyId": "S1",
+          "size": "M",
+          "files": 4,
+          "tests": 1,
+          "dependsOn": [
+            "F1"
+          ]
+        },
+        {
+          "id": "F3",
+          "storyId": "S2",
+          "size": "M",
+          "files": 3,
+          "tests": 2,
+          "dependsOn": [
+            "F2"
+          ]
+        }
+      ],
+      "gradesTotal": 15,
+      "concerns": 3,
+      "quotesPassed": "23/24",
+      "feasibilityDoubts": 2
+    },
+    {
+      "taskId": "linkding-mwtd0j1p",
+      "variant": "with skill",
+      "ok": true,
+      "seconds": 235,
+      "retries": 0,
+      "rejections": [
+        "Not accepted: Feature F2: size S allows 2 non-test files but 3 are planned; raise the size or split it. Submit again.",
+        "Invalid arguments for tool \"submit_final_tech_design\": Unexpected non-whitespace character after JSON at position 25274 (line 1 column 25275)\n\nReceived argument…"
+      ],
+      "features": [
+        {
+          "id": "F1",
+          "storyId": "S1",
+          "size": "M",
+          "files": 4,
+          "tests": 1,
+          "dependsOn": []
+        },
+        {
+          "id": "F2",
+          "storyId": "S1",
+          "size": "S",
+          "files": 2,
+          "tests": 2,
+          "dependsOn": [
+            "F1"
+          ]
+        },
+        {
+          "id": "F3",
+          "storyId": "S2",
+          "size": "M",
+          "files": 5,
+          "tests": 1,
+          "dependsOn": [
+            "F1"
+          ]
+        },
+        {
+          "id": "F4",
+          "storyId": "S3",
+          "size": "M",
+          "files": 5,
+          "tests": 1,
+          "dependsOn": [
+            "F1"
+          ]
+        }
+      ],
+      "gradesTotal": 20,
+      "concerns": 2,
+      "quotesPassed": "28/29",
+      "feasibilityDoubts": 2
+    },
+    {
+      "taskId": "linkding-mwtd0j1p",
+      "variant": "without skill",
+      "ok": true,
+      "seconds": 273,
+      "retries": 0,
+      "rejections": [
+        "Not accepted: at most 4 Features in the sprint (got 7); merge or move work to a later sprint; Feature F1: size S allows 2 non-test files but 6 are planned; rais…",
+        "Not accepted: Feature F1: size S allows 2 non-test files but 6 are planned; raise the size or split it; Feature F3: size M allows 5 non-test files but 7 are pla…",
+        "Not accepted: at most 4 Features in the sprint (got 6); merge or move work to a later sprint. Submit again."
+      ],
+      "features": [
+        {
+          "id": "F1",
+          "storyId": "S1",
+          "size": "M",
+          "files": 5,
+          "tests": 1,
+          "dependsOn": []
+        },
+        {
+          "id": "F2",
+          "storyId": "S1",
+          "size": "M",
+          "files": 4,
+          "tests": 1,
+          "dependsOn": [
+            "F1"
+          ]
+        },
+        {
+          "id": "F3",
+          "storyId": "S2",
+          "size": "M",
+          "files": 5,
+          "tests": 1,
+          "dependsOn": [
+            "F2"
+          ]
+        },
+        {
+          "id": "F4",
+          "storyId": "S3",
+          "size": "M",
+          "files": 5,
+          "tests": 1,
+          "dependsOn": [
+            "F2",
+            "F3"
+          ]
+        }
+      ],
+      "gradesTotal": 20,
+      "concerns": 3,
+      "quotesPassed": "26/27",
+      "feasibilityDoubts": 4
+    }
+  ]
+}

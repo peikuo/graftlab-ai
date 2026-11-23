@@ -576,19 +576,23 @@ Conventions:
     - _Requirements: 20.4, 20.9, 25.2_
 
 - [ ] 14. F10: pre-execution target check, PiCodeRuntime, development, Reviewer review, stop and ask, Run_Environment, checkpoints, Verifier and API-operation path (target 2026-11-30)
-  - [ ] 14.21 Download the Adapter's pinned commit for Adapted_Repo
+  - [x] 14.21 Download the Adapter's pinned commit for Adapted_Repo
+    - Done 2026-11-23: `TaskService.create` uses `adapter.source.commit`; test in `reader.test.ts`
     - `TaskService.create`: an Adapted_Repo reads the commit in `adapter.json` instead of the default-branch head; the Repo_Brief cache follows the commit
     - _Requirements: 10.1_
-  - [ ] 14.22 Write the splitting skills and validate them
+  - [x] 14.22 Write the splitting skills and validate them
+    - Done 2026-11-23: `runtime-rules/skills/{story-splitting,feature-breakdown}.md`; `scripts/eval-skills.ts`; reports `runtime-rules/skills/eval/0.9.0-2026-11-23-first.md` and `0.9.1-2026-11-23.md` (with and without the skill on two real plans; the first report led to the code check of size against files)
     - `runtime-rules/skills/story-splitting.md` and `feature-breakdown.md`, our own text, sources named in the README (Humanizing Work story splitting guide; the two agent skills reviewed 2026-11-23); evaluation script on recorded real plans, report under `runtime-rules/skills/eval/`
     - _Requirements: 19.15_
-  - [ ] 14.23 Implement the technical design step
+  - [x] 14.23 Implement the technical design step
+    - Done 2026-11-23: `packages/shared/src/techdesign.ts` (schemas, `checkBreakdown`, `unplannedChanges`), `apps/server/src/planning/techdesign.ts`, node `tech_design`, documents TECHNICAL_ARCHITECTURE.md and FEATURE_BREAKDOWN.md, Task_Board per Feature; `techdesign.test.ts`
     - Node `tech_design` after `documenting`; schemas for the Technical Architecture and the Features with the code checks of R19.14; Planner draft, Feasibility review, Reviewer final with the rubric; Task_Board per Feature; documents in the Output_Docs view
     - _Requirements: 19.13, 19.14, 19.15_
   - [ ] 14.24 Feature branches and merge into main
     - Worktree `main` at the pinned commit, `feature/<id>` per Feature, `--no-ff` merge after review and Verifier, unmerged branch on failure, diff against the Feature's base, unplanned-change list for the Reviewer
     - _Requirements: 38.5, 38.6, 38.10_
-  - [ ] 14.1 Implement the context builder and the development rules
+  - [x] 14.1 Implement the context builder and the development rules
+    - Done 2026-11-23: `apps/server/src/dev/context.ts` (one Feature, its story and contract, the architecture, summaries of the Features it builds on); `runtime-rules/roles/code_agent.md` updated
     - `apps/server/src/dev/context.ts` writes only the story, its Feature_Contract and the referenced documents; Runtime_Rules rules "small scope per Agent" and "no decision power, stop and ask, reviewed by the Reviewer"
     - Design: Development stage
     - _Requirements: 19.5, 19.7, 19.8, 35.8, 35.9, 40.2_
@@ -600,10 +604,12 @@ Conventions:
     - `packages/shared` Demo_Case and suggestion schemas (generic keys and fields); `apps/server/src/apiops/validate.ts` (Item_Count_Cap as the lower of `GL_DEMO_CASE_MAX_ITEMS` and the Adapter's `itemCap`, Adapter allow-list and `itemFields`, Sandbox target); `deriveChecks`
     - Design: Demo_Case and suggestion, Adapter contract; reference-target-linkding.md (Write semantics for the comparator)
     - _Requirements: 18.8, 18.10, 18.11, 18.12_
-  - [ ]* 14.4 Write property test for small scope per Agent
+  - [x]* 14.4 Write property test for small scope per Agent
+    - Done 2026-11-23: `apps/server/src/dev/context.property.test.ts`, 200 runs
     - **Property 16: Small scope per Agent**
     - **Validates: Requirements 19.5, 19.7, 35.8, 40.2**
-  - [ ]* 14.5 Write unit tests for the PiCodeRuntime protocol parser
+  - [x]* 14.5 Write unit tests for the PiCodeRuntime protocol parser
+    - Done 2026-11-23: `apps/server/src/runtime/pi-code.test.ts` with the recorded runner fixtures
     - Sanitized runner event fixtures from 1.7 and 1.8 map to the expected Studio events; invalid lines counted
     - _Requirements: 38.7, 40.11_
   - [ ] 14.6 Implement `target_check`, `story_develop` and change recording

@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, unlink, writeFile, mkdir } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createWorktree, diffWorktree, git, mirrorPath, mirrorSourceFromEnv, notIgnored, snapshotWorktree, worktreePath, writePatchArtifact, type MirrorSpec } from "./worktree.js";
+import { abandonFeature, createWorktree, diffWorktree, mergeFeature, startFeature, git, mirrorPath, mirrorSourceFromEnv, notIgnored, snapshotWorktree, worktreePath, writePatchArtifact, type MirrorSpec } from "./worktree.js";
 
 let root: string;
 let upstream: string;
@@ -28,10 +28,10 @@ afterEach(async () => {
 });
 
 describe("worktree manager", () => {
-  it("clones from the mirror onto graftlab/<taskId> at the pinned commit with the required config", async () => {
+  it("clones from the mirror onto main at the pinned commit with the required config", async () => {
     const wt = await createWorktree(dataDir, "t1", spec);
     expect(wt.path).toBe(worktreePath(dataDir, "t1"));
-    expect((await git(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: wt.path })).trim()).toBe("graftlab/t1");
+    expect((await git(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: wt.path })).trim()).toBe("main");
     expect((await git(["rev-parse", "HEAD"], { cwd: wt.path })).trim()).toBe(spec.commit);
     expect((await git(["config", "core.fileMode"], { cwd: wt.path })).trim()).toBe("false");
     expect((await git(["config", "core.autocrlf"], { cwd: wt.path })).trim()).toBe("false");
@@ -125,5 +125,49 @@ describe("worktree manager", () => {
     expect((await git(["rev-parse", "refs/graftlab/snapshots/S1-1"], { cwd: wt.path })).trim()).toBe(snap.commit);
     expect((await git(["rev-parse", `${snap.commit}^`], { cwd: wt.path })).trim()).toBe(spec.commit);
     await expect(snapshotWorktree(dataDir, wt, "S1-1")).rejects.toThrow("already exists");
+  });
+
+  it("a Feature is built on its branch, diffed against its base and merged into main with a merge commit", async () => {
+    const wt = await createWorktree(dataDir, "t1", spec);
+    const f1 = await startFeature(wt, "F1");
+    expect(f1).toMatchObject({ branch: "feature/F1", base: spec.commit });
+    await writeFile(join(wt.path, "a.txt"), "f1\n");
+    expect((await diffWorktree(wt, f1.base)).changedFiles).toEqual([{ status: "modified", path: "a.txt" }]);
+    const m1 = await mergeFeature(wt, f1, "change a");
+    expect(m1.ok).toBe(true);
+    expect((await git(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: wt.path })).trim()).toBe("main");
+    expect((await git(["log", "-1", "--format=%s %p"], { cwd: wt.path })).trim()).toMatch(/^Merge Feature F1: change a [0-9a-f]+ [0-9a-f]+$/);
+    // The next Feature starts from the merged main and sees only its own change.
+    const f2 = await startFeature(wt, "F2");
+    expect(f2.base).toBe(m1.ok ? m1.commit : "");
+    await writeFile(join(wt.path, "b.txt"), "f2\n");
+    expect((await diffWorktree(wt, f2.base)).changedFiles).toEqual([{ status: "modified", path: "b.txt" }]);
+    // The Task's patch covers main against the pinned commit.
+    expect((await diffWorktree(wt)).changedFiles.map((c) => c.path)).toEqual(["a.txt", "b.txt"]);
+  });
+
+  it("an abandoned Feature stays on its branch and main stays at the last merged state", async () => {
+    const wt = await createWorktree(dataDir, "t1", spec);
+    const f1 = await startFeature(wt, "F1");
+    await writeFile(join(wt.path, "a.txt"), "broken\n");
+    await abandonFeature(wt, f1);
+    expect(await readFile(join(wt.path, "a.txt"), "utf8")).toBe("one\n");
+    expect((await git(["rev-parse", "main"], { cwd: wt.path })).trim()).toBe(spec.commit);
+    expect((await git(["show", "feature/F1:a.txt"], { cwd: wt.path }))).toBe("broken\n");
+  });
+
+  it("a merge conflict is aborted and reported; main is unchanged", async () => {
+    const wt = await createWorktree(dataDir, "t1", spec);
+    const f1 = await startFeature(wt, "F1");
+    await writeFile(join(wt.path, "a.txt"), "from F1\n");
+    await git(["commit", "-qam", "F1"], { cwd: wt.path });
+    await git(["checkout", "-q", "main"], { cwd: wt.path });
+    await writeFile(join(wt.path, "a.txt"), "from main\n");
+    await git(["commit", "-qam", "main moved"], { cwd: wt.path });
+    const before = (await git(["rev-parse", "main"], { cwd: wt.path })).trim();
+    const m = await mergeFeature(wt, f1, "conflict");
+    expect(m.ok).toBe(false);
+    expect((await git(["rev-parse", "main"], { cwd: wt.path })).trim()).toBe(before);
+    expect((await git(["status", "--porcelain"], { cwd: wt.path })).trim()).toBe("");
   });
 });
