@@ -33,6 +33,8 @@ export const AdapterJsonSchema = z
         read: z.array(EndpointSchema).min(1),
         write: z.array(EndpointSchema.extend({ op: z.string().regex(/^[a-z_]+$/) }).strict()),
         itemCap: z.number().int().positive().max(10), // may lower GL_DEMO_CASE_MAX_ITEMS (10), never raise it (R18.11)
+        /** How Studio code adds a provisioned credential to target requests (the credential is named by provision). */
+        auth: z.object({ header: z.string().regex(/^[A-Za-z][A-Za-z0-9-]*$/), prefix: z.string().max(20), credential: z.string().regex(/^[a-z][a-z0-9_]{0,30}$/) }).strict(),
       })
       .strict(),
     devSandbox: z

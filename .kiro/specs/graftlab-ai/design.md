@@ -486,6 +486,7 @@ export interface Adapter {
     read: Endpoint[];
     write: (Endpoint & { op: string })[];       // op ids that Demo_Case items may use
     itemCap: number;                            // may lower GL_DEMO_CASE_MAX_ITEMS, never raise it (R18.11)
+    auth: { header: string; prefix: string; credential: string };  // how Studio code adds a provisioned credential (linkding: "Authorization", "Token ", linkding_api_token)
     itemFields: ZodType;                        // schema of the fields of a Demo_Case item and of an expectation
   };
   comparator: {                                 // the target's normalization and comparison rules (R22)

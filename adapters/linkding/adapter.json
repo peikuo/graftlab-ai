@@ -64,7 +64,12 @@
         "op": "archive"
       }
     ],
-    "itemCap": 10
+    "itemCap": 10,
+    "auth": {
+      "header": "Authorization",
+      "prefix": "Token ",
+      "credential": "linkding_api_token"
+    }
   },
   "devSandbox": {
     "baseImage": "ghcr.io/sissbruecker/linkding@sha256:e35cb50e0581178f245125ffaa909c565416c94c9f22ace305a7d234a4345522",
