@@ -34,7 +34,9 @@ export function buildStudioModel(cfg: LlmConfig, opts: { contextWindow?: number;
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextWindow: opts.contextWindow ?? 200_000,
         maxTokens: opts.maxTokens ?? 16_384, // GL_MAX_TOKENS (R30.12)
-        compat: { supportsStore: false, maxTokensField: "max_tokens" },
+        // reasoningEffort "send": thinking.type plus reasoning_effort, so low, medium and high differ (measured
+        // 2026-11-24: without it, one endpoint received only thinking enabled for every level).
+        compat: { supportsStore: false, maxTokensField: "max_tokens", ...(cfg.reasoningEffort === "send" ? { thinkingFormat: "deepseek" as const, supportsReasoningEffort: true } : {}) },
         type: "chat",
       },
     ],

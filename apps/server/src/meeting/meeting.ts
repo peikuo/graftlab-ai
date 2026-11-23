@@ -13,6 +13,7 @@ import { roleText, sharedSystemPrompt, type RuntimeRules } from "../roles/rules.
 import type { Emit, TurnOptions, TurnResult } from "../runtime/pi.ts";
 import { stripIds } from "@graftlab/shared";
 import { Board, PERSPECTIVES, pickNext, type Change, type Perspective, type Signal } from "./board.ts";
+import { THINKING } from "../llm/thinking.ts";
 
 const NAME: Record<string, string> = { facilitator: "Facilitator", user_value: "User_Value", feasibility: "Feasibility", risk: "Risk", judge: "Judge" };
 const MAX_QUESTIONS = 2;
@@ -273,13 +274,14 @@ export async function runMeeting(o: MeetingOptions): Promise<MeetingResult> {
       });
     }
     const submit = tools.at(-1)!.name;
-    let r = await o.runTurn({ roleId, purpose: "statement", systemPrompt: system, prompt: prompt(roleId, ask), tools, signal: o.signal, idPrefix: `${o.idPrefix}-t${turnNo}`, thinkingLevel: "low" });
+    const thinkingLevel = phase === "prepare" ? THINKING.meetingPrepare : phase === "discuss" ? THINKING.discussion : THINKING.facilitatorOpenClose;
+    let r = await o.runTurn({ roleId, purpose: "statement", systemPrompt: system, prompt: prompt(roleId, ask), tools, signal: o.signal, idPrefix: `${o.idPrefix}-t${turnNo}`, thinkingLevel });
     if (!accepted && !o.signal.aborted && r.stopReason !== "error") {
       const why = r.error ?? (r.toolCalls === 0 ? "it answered without the submit tool" : "no valid submission");
       await o.emit({ type: "failure", actor, payload: { failureClass: "llm_output_format_invalid", source: "llm", detail: `${NAME[roleId]} ended the turn without a valid ${submit} (${why}); one retry` } });
       budget.left = 0;
       const said = r.text.trim();
-      r = await o.runTurn({ roleId, purpose: "statement", systemPrompt: system, prompt: `${prompt(roleId, ask)}${said ? `\n\n(What you said: ${said})` : ""}\n\nYou ended your turn without a valid ${submit}. Call ${submit} now. Do not read more files.`, tools, signal: o.signal, idPrefix: `${o.idPrefix}-t${turnNo}r`, thinkingLevel: "low" });
+      r = await o.runTurn({ roleId, purpose: "statement", systemPrompt: system, prompt: `${prompt(roleId, ask)}${said ? `\n\n(What you said: ${said})` : ""}\n\nYou ended your turn without a valid ${submit}. Call ${submit} now. Do not read more files.`, tools, signal: o.signal, idPrefix: `${o.idPrefix}-t${turnNo}r`, thinkingLevel });
     }
     if (!accepted) {
       stats.failedTurns++;
@@ -318,7 +320,7 @@ export async function runMeeting(o: MeetingOptions): Promise<MeetingResult> {
         ];
         const miss = board.missing()[roleId];
         const ask = `Do you want to speak next? Speak when you disagree with something just said, can answer a question, or have something new.${miss.length ? ` You have no stance yet on: ${miss.join(", ")}.` : ""} Answer only with submit_signal.`;
-        const r = await o.runTurn({ roleId, purpose: "signal", systemPrompt: system, prompt: prompt(roleId, ask), tools, signal: o.signal, idPrefix: `${o.idPrefix}-s${turnNo}-${roleId}`, thinkingLevel: "off" });
+        const r = await o.runTurn({ roleId, purpose: "signal", systemPrompt: system, prompt: prompt(roleId, ask), tools, signal: o.signal, idPrefix: `${o.idPrefix}-s${turnNo}-${roleId}`, thinkingLevel: THINKING.speakingSignal });
         if (!got && !o.signal.aborted && r.stopReason !== "error") await o.emit({ type: "failure", actor: { kind: "role", roleId }, payload: { failureClass: "llm_output_format_invalid", source: "llm", detail: `${NAME[roleId]}'s speaking signal was not usable; counted as not speaking` } });
         return got ?? ({ roleId, speak: false } as Signal);
       }),

@@ -17,6 +17,8 @@ export interface LlmConfig {
   keyVar: string;
   /** "omit": no reasoning request parameter is sent (it can turn prompt caching off on some endpoints). */
   reasoningParam: "send" | "omit";
+  /** send: thinking levels reach the endpoint as reasoning_effort (only for endpoints shown to accept it). */
+  reasoningEffort: "send" | "omit";
 }
 
 export class LlmConfigError extends Error {}
@@ -26,7 +28,7 @@ const DEFAULTS = { baseUrl: "https://api.deepseek.com", model: "deepseek-flash" 
 
 function vars(profile: string) {
   const p = profile === "default" ? "LLM" : `LLM_${profile.toUpperCase()}`;
-  return { base: `${p}_BASE_URL`, model: `${p}_MODEL`, key: `${p}_API_KEY`, reasoning: `${p}_REASONING_PARAM` };
+  return { base: `${p}_BASE_URL`, model: `${p}_MODEL`, key: `${p}_API_KEY`, reasoning: `${p}_REASONING_PARAM`, effort: `${p}_REASONING_EFFORT` };
 }
 
 export function resolveLlmConfig(env: Record<string, string | undefined>): LlmConfig {
@@ -52,5 +54,7 @@ export function resolveLlmConfig(env: Record<string, string | undefined>): LlmCo
   const apiKey = env[v.key] || undefined;
   const rp = (env[v.reasoning] ?? "send").trim().toLowerCase();
   if (rp !== "send" && rp !== "omit") throw new LlmConfigError(`${v.reasoning} must be send or omit`);
-  return { profile, baseUrl: baseUrl.replace(/\/$/, ""), model, apiKey, ...(apiKey ? {} : { missingKey: v.key }), allKeys, keyVar: v.key, reasoningParam: rp };
+  const re = (env[v.effort] ?? "omit").trim().toLowerCase();
+  if (re !== "send" && re !== "omit") throw new LlmConfigError(`${v.effort} must be send or omit`);
+  return { profile, baseUrl: baseUrl.replace(/\/$/, ""), model, apiKey, ...(apiKey ? {} : { missingKey: v.key }), allKeys, keyVar: v.key, reasoningParam: rp, reasoningEffort: re };
 }

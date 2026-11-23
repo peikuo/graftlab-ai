@@ -9,6 +9,7 @@ import type { z } from "zod";
 import type { StudioModel } from "../llm/model.ts";
 import { systemPrompt, type RuntimeRules } from "../roles/rules.ts";
 import { runAgentTurn, type DeltaSink, type Emit } from "../runtime/pi.ts";
+import { THINKING } from "../llm/thinking.ts";
 import { BRIEF_KINDS, ReadingPlanSchema, RepoBriefSchema, type BriefWriter, type ReadingPlan, type RepoBrief } from "./brief.ts";
 import { DirMemoSchema, FileMemoSchema, RootMemoSchema, type BatchFile, type ChildLine, type FileMemoInput, type MemoWriter } from "./memo.ts";
 
@@ -72,7 +73,7 @@ export function piMemoWriter(o: PiMemoWriterOptions): MemoWriter & BriefWriter {
       make("submit_directory_memo", "directory", obj(dirFields), "Submit the memo of the directory."),
       make("submit_root_memo", "root", obj({ ...dirFields, workflows: arr(obj({ name: str(), paths: arr(str()) })) }), "Submit the memo of the whole repository."),
     ];
-    const r = await runAgentTurn({ roleId: "reader", purpose: "memo", systemPrompt: system, prompt, tools, model: o.model, emit: o.emit, ...(o.hub ? { hub: o.hub } : {}), signal, thinkingLevel: kind === "plan" ? (o.planThinkingLevel ?? "off") : (o.thinkingLevel ?? "low"), idPrefix: `${o.idPrefix}-memo${++n}`, maxToolErrors: 3 });
+    const r = await runAgentTurn({ roleId: "reader", purpose: "memo", systemPrompt: system, prompt, tools, model: o.model, emit: o.emit, ...(o.hub ? { hub: o.hub } : {}), signal, thinkingLevel: kind === "plan" ? (o.planThinkingLevel ?? THINKING.readerPlan) : kind === "brief" || kind === "root" ? (o.thinkingLevel ?? THINKING.readerBrief) : (o.thinkingLevel ?? THINKING.readerMemo), idPrefix: `${o.idPrefix}-memo${++n}`, maxToolErrors: 3 });
     if (accepted === undefined) {
       const why = r.error ?? (r.toolCalls === 0 ? "it answered without calling the submit tool" : "no submission was valid");
       // A model-call error already produced its own failure event in runAgentTurn; everything else is recorded here.

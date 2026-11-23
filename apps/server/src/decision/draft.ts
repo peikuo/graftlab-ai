@@ -8,6 +8,7 @@ import { z } from "zod";
 import { checkConclusion, type EvidenceFiles } from "../evidence/check.ts";
 import { roleText, sharedSystemPrompt, type RuntimeRules } from "../roles/rules.ts";
 import type { Emit, TurnOptions, TurnResult } from "../runtime/pi.ts";
+import { THINKING, type Thinking } from "../llm/thinking.ts";
 
 const NAME: Record<string, string> = { facilitator: "Facilitator", feasibility: "Feasibility", risk: "Risk" };
 const line = (max: number) => z.string().trim().min(1).max(max);
@@ -59,7 +60,7 @@ export interface DraftOptions {
   signal: AbortSignal;
   idPrefix: string;
   /** Thinking per step (default low); measured to decide the defaults. */
-  thinking?: { draft?: "off" | "low"; assess?: "off" | "low" };
+  thinking?: { draft?: Thinking; assess?: Thinking };
   /** After a send back: the previous draft and the rejected items with the Judge's reasons. */
   previous?: { content: DecisionDocContent; rejections: { title: string; reason: string }[] };
 }
@@ -99,7 +100,7 @@ export async function runDecisionDraft(o: DraftOptions): Promise<DraftResult> {
   async function turn(roleId: RoleId, ask: string, tool: AgentTool<any>, accepted: () => boolean): Promise<boolean> {
     // Measured 2026-11-24 on linkding: assessments with thinking took 99 to 186 s each (over 90 % reasoning tokens)
     // and 12 to 20 s without, of similar quality; the draft keeps low thinking for a better option structure.
-    const thinkingLevel = roleId === "facilitator" ? (o.thinking?.draft ?? "low") : (o.thinking?.assess ?? "off");
+    const thinkingLevel = roleId === "facilitator" ? (o.thinking?.draft ?? THINKING.decisionDraft) : (o.thinking?.assess ?? THINKING.decisionAssessment);
     if (o.signal.aborted) return false;
     const actor: Actor = { kind: "role", roleId };
     const prompt = `${meeting}\n\n---\n\n${CHECK_FORMATS}${o.checkHints ? `\n\n${o.checkHints}` : ""}\n\n---\n\n# Your role\n\n${roleText(o.rules, roleId)}\n\n---\n\n${ask}`;
