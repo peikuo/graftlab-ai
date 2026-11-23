@@ -42,13 +42,16 @@ const port = Number(process.env.GL_PORT ?? 8080);
 const host = process.env.GL_HOST ?? "127.0.0.1";
 
 const runtimeRulesVersion = (await readFile(join(root, "runtime-rules/VERSION"), "utf8")).trim();
-const rules = await loadRuntimeRules(join(root, "runtime-rules"), ["reader", "facilitator", "user_value", "feasibility", "risk", "planner", "reviewer"]);
+const rules = await loadRuntimeRules(join(root, "runtime-rules"), ["reader", "facilitator", "user_value", "feasibility", "risk", "planner", "reviewer", "code_agent"]);
 // The Reader needs a key; without one the reading step stops honestly after the download.
 const model = llm.apiKey ? buildStudioModel(llm, process.env.GL_MAX_TOKENS ? { maxTokens: Number(process.env.GL_MAX_TOKENS) } : {}) : null;
 const envInt = (name: string) => (process.env[name] ? Number(process.env[name]) : undefined);
 let hub: { delta(messageId: string, channel: "text" | "reasoning" | "toolcall", text: string): void } | null = null;
 const lease = new Lease({ idleReleaseMs: Number(process.env.GL_LEASE_IDLE_S ?? 120) * 1000 });
 let setCurrent: (store: EventStore) => void = () => {};
+const adapters = await loadAdapters(join(root, "adapters"));
+const execution = executionEnabled();
+const containers = execution ? new ContainerManager() : null;
 const tasks = new TaskService({
   dataDir,
   secrets,
@@ -58,7 +61,11 @@ const tasks = new TaskService({
     ...(process.env.GL_GITHUB_API ? { apiBase: process.env.GL_GITHUB_API } : {}),
     ...(process.env.GL_GITHUB_RAW ? { rawBase: process.env.GL_GITHUB_RAW } : {}),
   }),
-  adapters: await loadAdapters(join(root, "adapters")),
+  adapters,
+  // Live development needs the engine and a key; the key goes only to the LLM_Proxy container (R30.16).
+  ...(containers && llm.apiKey
+    ? { execution: { manager: containers, devImage: process.env.GL_DEV_IMAGE ?? "graftlab/dev-sandbox-linkding:latest", llm: { baseUrl: llm.baseUrl, apiKey: llm.apiKey, model: llm.model, reasoningParam: llm.reasoningParam, reasoningEffort: llm.reasoningEffort }, adapters } }
+    : {}),
   adaptersDir: join(root, "adapters"),
   replayPublicDir: join(root, "apps/web/public/replays"),
   runtimeRulesVersion,
@@ -93,9 +100,7 @@ const tasks = new TaskService({
 const closed = await tasks.closeInterrupted();
 // Live execution (R25.8): off with GL_EXECUTION_ENABLED=false; otherwise the engine is pinged, and resources left by
 // a previous process (all carry the graftlab.managed label) are removed, because their Tasks were closed above.
-const execution = executionEnabled();
 const sandbox = new SandboxService();
-const containers = execution ? new ContainerManager() : null;
 if (containers && (await containers.docker.ping())) await containers.removeAll().catch(() => {});
 
 const studio = createStudio({

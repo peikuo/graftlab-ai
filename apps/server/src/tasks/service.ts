@@ -22,10 +22,12 @@ import { DecisionDesk, type Verdict } from "../decision/desk.ts";
 import { splitItems } from "../decision/items.ts";
 import { renderDecisionDoc } from "../decision/render.ts";
 import { mkdir, writeFile } from "node:fs/promises";
-import { featureTaskBoard, storyEffort, type DecisionDocContent, type OutputDocKind, type Plan, type TechDesign, type Proposal, type ReviewItemData, type StoryProgress } from "@graftlab/shared";
+import { featureTaskBoard, storyEffort, type DecisionDocContent, type OutputDocKind, type Plan, type RequirementsDoc, type TechDesign, type Proposal, type ReviewItemData, type StoryProgress } from "@graftlab/shared";
 import { runPlanning } from "../planning/plan.ts";
 import { runRequirements } from "../planning/docs.ts";
 import { runTechDesign } from "../planning/techdesign.ts";
+import { DevStage, type DevStageOptions } from "../dev/stage.ts";
+import type { ContainerManager } from "../containers/manager.ts";
 import { olderVersionNote, renderArchitecture, renderBacklog, renderDefinitionOfDone, renderFeatures, renderRequirements, renderSprintPlan, renderTaskBoard } from "../planning/render.ts";
 import type { Lease } from "../queue/lease.ts";
 import { TaskRunner, closeInterruptedTask, type Clock, type JudgeAnswer, type NodeHandler } from "./runner.ts";
@@ -65,6 +67,8 @@ export interface TaskServiceOptions {
     concurrency?: number;
     indexConcurrency?: number;
   };
+  /** Live development (R38, R39): containers and the real LLM settings for the LLM_Proxy; absent means not built here. */
+  execution?: { manager: ContainerManager; devImage: string; llm: DevStageOptions["llm"]; adapters: DevStageOptions["adapter"][] };
   /** The meeting roles' LLM side (R11); without it the meeting stops honestly. */
   meeting?: {
     rules: RuntimeRules;
@@ -89,7 +93,8 @@ export class TaskService {
   /** The decision step of the current Task (R15, R16). */
   #decision: { draft?: { draftId: string; number: number; content: DecisionDocContent; items: ReviewItemData[] }; verdicts: Map<string, Verdict>; selected?: string | null; rejections?: { itemId: string; title: string; reason: string }[]; desk?: DecisionDesk; frozen: number } = { verdicts: new Map(), frozen: 0 };
   /** The planning step of the current Task (R19, R20): the current plan, and the Judge's reason after a send back. */
-  #plan: { current?: { planId: string; number: number; plan: Plan }; design?: TechDesign; count: number; agenda?: string; docs: Map<OutputDocKind, { version: number; file: string }> } = { count: 0, docs: new Map() };
+  #dev: DevStage | null = null;
+  #plan: { current?: { planId: string; number: number; plan: Plan }; design?: TechDesign; requirements?: RequirementsDoc; count: number; agenda?: string; docs: Map<OutputDocKind, { version: number; file: string }> } = { count: 0, docs: new Map() };
   /** What the reading step produced, for the meeting of the same Task. */
   #read: { memo: RepoMemoHandle; files: Map<string, string>; evidence: EvidenceFiles } | null = null;
 
@@ -162,6 +167,7 @@ export class TaskService {
     this.#judgeSeen = 0;
     this.#decision = { verdicts: new Map(), frozen: 0 };
     this.#plan = { count: 0, docs: new Map() };
+    this.#dev = null;
     this.#read = null;
     await this.#store?.close().catch(() => undefined);
     this.#store = store;
@@ -176,6 +182,7 @@ export class TaskService {
       taskTimeoutMs: timeoutMs,
       onTerminal: () => {
         this.#index?.abort();
+        void this.#dev?.close(taskId);
         this.#o.lease.taskEnded();
         void this.#exportReplay(store, `${meta.owner}/${meta.repo}`);
       },
@@ -537,6 +544,7 @@ export class TaskService {
       await ctx.fail("llm_output_format_invalid", "llm", r.reason);
       return "failed";
     }
+    this.#plan.requirements = r.requirements;
     await this.#writeDoc(ctx, "requirements", "REQUIREMENTS.md", renderRequirements(r.requirements), r.requirements, cur.plan.decisionVersion);
     return "done";
   }
@@ -581,9 +589,32 @@ export class TaskService {
     // The execution units are the Features, in dependency order (R38.10).
     const kind = (storyId: string) => p.backlog.stories.find((s) => s.id === storyId)?.featureContract.executionKind ?? "source_change";
     const purpose = frozen.content.purpose;
-    const stories: StoryProgress[] = d.breakdown.features.map((f) => ({ storyId: f.id, kind: kind(f.storyId), purpose, attempts: 0, status: "pending", unconfirmed: false, demoCaseRejections: 0, suggestionConfirmed: false }));
+    const stories: StoryProgress[] = d.breakdown.features.map((f) => ({ storyId: f.id, parent: f.storyId, kind: kind(f.storyId), purpose, attempts: 0, status: "pending", unconfirmed: false, demoCaseRejections: 0, suggestionConfirmed: false }));
     ctx.patch({ docsComplete: true, stories });
     return "done";
+  }
+
+  #devStage(ctx: Parameters<NodeHandler>[0]): DevStage | null {
+    const x = this.#o.execution;
+    const m = this.#o.meeting;
+    const adapter = x?.adapters.find((a) => a.id === ctx.task.adapterId);
+    if (!x || !m || !adapter || !this.#plan.current || !this.#plan.design || !this.#read) return null;
+    const read = this.#read;
+    this.#dev = new DevStage({
+      dataDir: this.#o.dataDir,
+      manager: x.manager,
+      secrets: this.#o.secrets,
+      devImage: x.devImage,
+      adapter,
+      llm: x.llm,
+      rules: m.rules,
+      runTurn: (t) => m.runTurn(t as never),
+      context: () => this.#contextFor(ctx, read),
+      plan: () => this.#plan.current!.plan,
+      design: () => this.#plan.design!,
+      requirements: () => this.#plan.requirements,
+    });
+    return this.#dev;
   }
 
   /** The Run_Environment's facts for the Planner's run environment (design: Containers, Network policy). */
@@ -701,6 +732,20 @@ export class TaskService {
       documenting: (ctx) => this.#documentingStep(ctx),
       tech_design: (ctx) => this.#techDesignStep(ctx),
       adapter_branch_2: async () => "done",
+      ...(this.#o.execution
+        ? {
+            target_check: async (ctx) => {
+              const stage = this.#devStage(ctx);
+              return stage ? stage.targetCheck(ctx) : (await ctx.fail("interface_call_failure", "persistence", "development has no technical design or Adapter for this Task"), "failed");
+            },
+            story_develop: (ctx) => this.#dev!.develop(ctx),
+            story_review: (ctx) => this.#dev!.review(ctx),
+            story_ask: (ctx) => this.#dev!.ask(ctx),
+            story_run: (ctx) => this.#dev!.run(ctx),
+            story_checkpoint: (ctx) => this.#dev!.checkpoint(ctx),
+            verifying: (ctx) => this.#dev!.verify(ctx),
+          }
+        : {}),
     };
   }
 }

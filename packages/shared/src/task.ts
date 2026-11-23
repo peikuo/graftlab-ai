@@ -38,7 +38,10 @@ export type StoryKind = "source_change" | "api_operation";
 export type StoryStatus = "pending" | "in_progress" | "verified" | "failed" | "blocked";
 
 export interface StoryProgress {
+  /** The execution unit: a Feature id (F1) after the technical design. */
   storyId: string;
+  /** The story the Feature belongs to (R38.10); absent for a unit that is a whole story. */
+  parent?: string;
   kind: StoryKind;
   purpose: "A" | "B";
   attempts: number;

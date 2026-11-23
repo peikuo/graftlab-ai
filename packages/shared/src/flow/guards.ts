@@ -37,6 +37,13 @@ export const nextKindIs =
   (t) =>
     nextPendingStory(t)?.kind === kind;
 
+/** The current unit is the last pending Feature of its story, so the story's demo comes next (R38.10, R21). */
+export const lastOfStory: Guard = (t) => {
+  const c = currentStory(t);
+  if (!c) return false;
+  if (!c.parent) return true;
+  return !t.stories.some((s) => s.storyId !== c.storyId && s.parent === c.parent && (s.status === "pending" || s.status === "in_progress"));
+};
 export const noNextStory: Guard = (t) => nextPendingStory(t) === undefined;
 
 export const currentPurposeIs =

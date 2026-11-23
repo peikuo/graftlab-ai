@@ -211,6 +211,69 @@ export class ContainerManager {
     return { name, volume, hostPort };
   }
 
+  /**
+   * A shell script that copies the read-only snapshot at /src to /tmp/app, adds the Adapter's prebuilt paths from
+   * the image, and runs the given commands there. The paths and commands are passed as positional arguments and
+   * environment, never pasted into the script text; the commands themselves run only inside the container.
+   */
+  static prepareScript = 'set -e; rm -rf /tmp/app; cp -a /src /tmp/app; for p in $GL_PREBUILT; do mkdir -p "$(dirname "/tmp/app/$p")"; rm -rf "/tmp/app/$p"; cp -a "/opt/target-src/$p" "/tmp/app/$p"; done; cd /tmp/app; eval "$GL_RUN"';
+
+  #appContainer(taskId: string, kind: "run" | "test", o: { image: string; snapshotDir: string; prebuilt: string[]; run: string; alias?: string }) {
+    return {
+      Image: o.image,
+      Entrypoint: ["sh", "-c", ContainerManager.prepareScript],
+      Cmd: [],
+      WorkingDir: "/tmp",
+      Env: ["HOME=/tmp/home", "npm_config_cache=/tmp/npm", "PYTHONDONTWRITEBYTECODE=1", `GL_PREBUILT=${o.prebuilt.join(" ")}`, `GL_RUN=${o.run}`],
+      Labels: this.labels(taskId, kind),
+      HostConfig: {
+        Memory: this.mem[kind] * MB,
+        MemorySwap: this.mem[kind] * MB,
+        ReadonlyRootfs: true,
+        Tmpfs: { "/tmp": "rw,exec,size=1024m" },
+        SecurityOpt: ["no-new-privileges"],
+        NetworkMode: resourceName(taskId, "int"),
+        Mounts: [{ Type: "bind", Source: o.snapshotDir, Target: "/src", ReadOnly: true }],
+      },
+    };
+  }
+
+  /** Verifier test container (R22.2): fresh, the snapshot read-only, internal network only; the exit code decides. */
+  async runTests(taskId: string, o: { image: string; snapshotDir: string; prebuilt: string[]; command: string; timeoutS: number }): Promise<{ code: number; output: string; timedOut: boolean }> {
+    await this.ensureInternalNetwork(taskId);
+    const name = resourceName(taskId, "test");
+    await this.#replace(name);
+    await this.docker.createContainer(name, this.#appContainer(taskId, "test", { ...o, run: o.command }));
+    await this.docker.startContainer(name);
+    const end = Date.now() + o.timeoutS * 1000;
+    let timedOut = false;
+    for (;;) {
+      const info = await this.docker.inspectContainer(name);
+      if (!info?.State.Running) break;
+      if (Date.now() > end) {
+        timedOut = true;
+        await this.docker.stopContainer(name, 1);
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    const info = await this.docker.inspectContainer(name);
+    const output = await this.docker.logs(name, 400).catch(() => "");
+    await this.docker.removeContainer(name);
+    return { code: timedOut ? -1 : (info?.State.ExitCode ?? -1), output, timedOut };
+  }
+
+  /** Run_Environment (R39.3-R39.5): a fresh container per attempt running the changed app, alias `app`. */
+  async startRunEnvironment(taskId: string, o: { image: string; snapshotDir: string; prebuilt: string[]; commands: string }): Promise<{ name: string }> {
+    const network = await this.ensureInternalNetwork(taskId);
+    const name = resourceName(taskId, "run");
+    await this.#replace(name);
+    const spec = this.#appContainer(taskId, "run", { ...o, run: o.commands });
+    await this.docker.createContainer(name, { ...spec, NetworkingConfig: { EndpointsConfig: { [network]: { Aliases: [APP_ALIAS] } } } });
+    await this.docker.startContainer(name);
+    return { name };
+  }
+
   /** Removes a container and, when given, its data volume. */
   async removeBaseline(name: string, volume?: string): Promise<void> {
     await this.docker.removeContainer(name);

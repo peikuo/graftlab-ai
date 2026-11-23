@@ -817,8 +817,7 @@ DeepSeek caches prompt prefixes on disk by default (api-docs.deepseek.com/guides
 
 ### Development stage (R21, R38, R39, R40)
 
-Per source-change story:
-
+Per source-change story, Feature by Feature in dependency order (R38.10; decided by the user 2026-11-23). Steps 1 to 5 run for every Feature on its branch. After the Reviewer approves a Feature that is not the last of its story, the flow goes straight to `verifying`, which runs the Feature's test command in a fresh test container and, when it passes, merges the Feature into `main`. The last Feature of a story continues with steps 7 and 8 (the running app and the Judge's checkpoint for the story's demo point), then `verifying` runs the Feature's tests and the story's acceptance checks and merges. A Verifier failure ends the Task in `failed` (Open item 53).
 1. Context: `dev/context.ts` writes `data/tasks/<id>/context/<storyId>/story.md` containing only the story, its Feature_Contract and the documents the story references (R19.7, R40.2). A unit test checks that nothing else is included (R35.8).
 2. Develop: start or resume the Development_Sandbox (stopping the Sandbox if no API-operation story remains, to save memory), run the Code_Agent, map its events. Attempt time counts against the story budget.
 3. Record change: the backend computes changed files and the diff with git on the host using a temporary index (`GIT_INDEX_FILE`), so untracked files are included and the Code_Agent's own index is untouched. It appends `code_change` (changed files list, diff reference) (R38.5, R40.5).
