@@ -131,7 +131,7 @@ export function App() {
 
   const isOperator = live.queue?.role === "operator";
   const reviewing = state.node === "awaiting_confirmation" && !!decision.draft;
-  const act = async (action: "review" | "select" | "send-back" | "freeze", body: Record<string, string>) => {
+  const act = async (action: "review" | "select" | "send-back" | "freeze" | "end", body: Record<string, string>) => {
     if (!taskId || !decision.draft) return;
     setDeciding(true);
     setDecisionError(null);
@@ -203,6 +203,7 @@ export function App() {
                   onReview={(item, verdict, reason) => act("review", { itemId: item.id, itemHash: item.hash, verdict, ...(reason ? { reason } : {}) })}
                   onSendBack={() => act("send-back", {})}
                   onFreeze={() => act("freeze", {})}
+                  {...(state.repo?.repoKind === "other" ? { onEnd: () => act("end", {}) } : {})}
                 />
               ) : null
             }

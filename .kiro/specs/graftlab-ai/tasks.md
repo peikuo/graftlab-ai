@@ -382,7 +382,8 @@ Conventions:
     - Show the user a real decision step on linkding ending in a frozen Decision_Doc, and a change request that creates version 2; check that the recomputed hash equals the recorded one and that an option without an Acceptance_Check cannot be selected
     - _Requirements: 15.3, 16.5, 37.5_
 
-- [ ] 8. Checkpoint M1: any repository from URL to frozen Decision_Doc (target 2026-11-25)
+- [x] 8. Checkpoint M1: any repository from URL to frozen Decision_Doc (target 2026-11-25)
+  - Done 2026-11-24 with screen recordings (`scripts/live-walk-m8.mjs`, `data/ui-snaps/m8-*.mp4`), thinking levels sent as reasoning_effort: p-limit (Other_Repo, first read) 298 s to Analysis only (reading 45 s, meeting 166 s, draft 84 s, 0 failures); linkding (brief cached) 220 s to a frozen version 1 (meeting 145 s, draft 53 s). All 164 tests pass. Found: a raw tool validation message was shown in the timeline (now plain words)
   - Ensure all tests pass, ask the user if questions arise.
   - Demo to the user: linkding and one Other_Repo from URL to a frozen Decision_Doc (Other_Repo ending as Analysis only when the Judge ends before freeze).
 

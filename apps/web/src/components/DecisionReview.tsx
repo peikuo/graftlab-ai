@@ -63,6 +63,8 @@ interface Props {
   onReview: (item: ReviewItem, verdict: "accept" | "reject", reason?: string) => void;
   onSendBack: () => void;
   onFreeze: () => void;
+  /** Other_Repo only (R25): end with the analysis, before any freeze. */
+  onEnd?: () => void;
 }
 
 function ItemRow({ item, verdict, selected, busy, onSelect, onReview }: { item: ReviewItem; verdict: Verdict | undefined; selected: string | null; busy: boolean; onSelect: (id: string) => void; onReview: Props["onReview"] }) {
@@ -178,6 +180,11 @@ export function DecisionReview(p: Props) {
         <button type="button" className="freeze" disabled={!s.canFreeze || p.busy} onClick={p.onFreeze}>
           🔒 Freeze the decision
         </button>
+        {p.onEnd && (
+          <button type="button" className="end-analysis" disabled={p.busy} onClick={p.onEnd} title="This repository cannot be run here; the Task ends with the analysis and the draft.">
+            End with the analysis only
+          </button>
+        )}
       </div>
       {p.history.length > 0 && (
         <details className="review-history">

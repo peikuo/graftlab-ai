@@ -36,6 +36,7 @@ export const NODE_SHORT: Partial<Record<NodeId, string>> = {
   success: "Success",
   failed: "Ended without success",
   aborted: "Stopped",
+  analysis_only: "Analysis only",
 };
 
 export function stepIndex(node: NodeId | null): number {
@@ -83,6 +84,7 @@ const NOW: Partial<Record<NodeId, string>> = {
   success: "Done. The Verifier confirmed every check.",
   failed: "The Task ended without success. The reason is shown in the activity.",
   aborted: "You stopped the Task.",
+  analysis_only: "Analysis only: this repository cannot be run here, so the Task ends with the meeting result and the decision draft.",
 };
 
 export function NowBar({ state, yourTurn, onGo, detail }: { state: UiState; yourTurn: string | null; onGo?: () => void; detail?: string | null }) {
