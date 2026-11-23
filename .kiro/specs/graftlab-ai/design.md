@@ -268,8 +268,9 @@ stateDiagram-v2
     frozen --> planning: version, hash, who, when recorded
     planning --> plan_review: F7 plan valid
     plan_review --> documenting: Judge confirms the plan
+    documenting --> tech_design: requirements written
     plan_review --> meeting: Judge sends the plan back with a reason
-    documenting --> adapter_branch_2: F8 Output_Docs complete
+    tech_design --> adapter_branch_2: F8 Output_Docs complete
     adapter_branch_2 --> docs_only: Other_Repo
     adapter_branch_2 --> target_check: Adapted_Repo
     target_check --> story_develop: baseline check passed, next story is source change
@@ -350,7 +351,8 @@ Node table:
 | frozen | auto | none | 5 s | R15.3, R16 |
 | planning | agent_loop | Planner `read_file`, `search_repo`, `submit_plan`; Feasibility and Risk `submit_plan_assessment`; Facilitator `submit_final_plan` | 15 min | R19, R20, R40.1 |
 | plan_review | wait_user | none (Judge card: confirm, or send back with a reason) | Task timeout only; no automatic confirmation | R19.11, R19.12 |
-| documenting | agent_loop | Planner `read_file`, `search_repo`, `submit_documents`; the Task_Board is built by code | 15 min | R19.2, R20 |
+| documenting | agent_loop | Planner `submit_requirements` | 10 min | R19.2, R20 |
+| tech_design | agent_loop | Planner `read_file`, `search_repo`, `submit_tech_design`; Feasibility `submit_tech_review`; Reviewer `read_file`, `search_repo`, `submit_final_tech_design`; the Task_Board is built by code | 20 min | R19.13-R19.15 |
 | adapter_branch_2 | auto | none | 5 s | R25 |
 | target_check | auto | none (Studio code: engine ping, baseline image present by digest; if an API-operation story remains, the Sandbox is started or reused, provisioned, reset and verified) | 3 min | R13.4, R25.8, R29.5 |
 | story_develop | agent_loop | Code_Agent's own tools inside the Development_Sandbox only | story budget | R38, R40 |
@@ -634,7 +636,7 @@ Second guard, the redactor (a safety net, not the mechanism):
 
 ### Repo_Reader (R10, R34)
 
-- GitHub REST API with the read-only token held server-side (R34.1): repository metadata (existence, visibility, default branch; R9.4), the commit SHA of the default branch, the recursive git tree, then raw file contents.
+- GitHub REST API with the read-only token held server-side (R34.1): repository metadata (existence, visibility, default branch; R9.4), the commit SHA of the default branch (for an Adapted_Repo the Adapter's pinned commit instead, R10.1), the recursive git tree, then raw file contents.
 - Prioritized download order: README, docs, OpenAPI or schema files, route and URL definitions, models, then the rest by path depth. Reading stops at the read-volume limit (500 files or 4 MB of text); skipped parts are listed in a `finding_recorded` event of kind `skipped` and shown in the Artifact_Area (R10.6).
 - Binary files and files above 200 KB are skipped and listed.
 - Cache: `data/cache/github/<owner>/<repo>/<sha>/` holds the tree and file contents; a repeated request for the same SHA reads only from the cache (R34.2).
@@ -806,7 +808,10 @@ DeepSeek caches prompt prefixes on disk by default (api-docs.deepseek.com/guides
 
 - `planning` (multi-role, decided by the user 2026-11-23; R19.1): (1) the Planner drafts the plan with `submit_plan` (thinking low): sprint goal, 1 to 4 stories (priority, user story, acceptance criteria, exactly one demo point, the Decision_Doc sections it uses, and a Feature_Contract), and the Definition_of_Done; (2) Feasibility (effort small, medium or large, concerns) and Risk (risks and conditions) assess every story at the same time with `submit_plan_assessment` (thinking off, as in the decision step); (3) the Facilitator decides the final plan with `submit_final_plan` (thinking low): it may change, split, merge, drop or reorder stories and states in at most 80 words what it changed and why. Code validates every submission with zod; a plan with an incomplete story is rejected with the story named (R20.9), and the role gets one visible retry. Code derives the Sprint_Plan (goal, story ids, Feature_Contract references), fills `derivedFromDecisionVersion` and the default budgets (3 attempts, 10 minutes), and records the assessments with the label "LLM assessment, not a guarantee". A story assessed `large` carries the badge "Large change: engineering risk".
 - `plan_review` (R19.11, R19.12): a blocking card in feature terms: the sprint goal and per story its title, what it does, its demo point and its effort. Choices: "Start development" (Other_Repo: "Write the documents") or "Send back to the meeting" with a required reason. Confirming records `plan_confirmed` and leads to `documenting`. Sending back records `plan_sent_back` with the reason, clears `backlogValid`, and leads to `meeting`; the meeting opens with an agenda built by code (the Judge's reason and the current Frozen Decision_Doc), runs as usual, and leads to `deciding`; a new version must be frozen before `planning` runs again, and the old plan's documents are marked "based on an older version" (R20.10).
-- `documenting`: requirements, design and tasks documents for the analyzed repository, written by the Planner with `submit_documents` in one call; the Task_Board is built by code from the confirmed stories (every item `to_do`). The design document includes a `runEnvironment` section proposed by the Planner from the target's own files: build and start commands, app port, health path (R39.9). The Studio does not supply a fallback recipe (R39.10).
+- `documenting`: the Requirements document, written by the Planner with `submit_requirements` (one item per acceptance criterion, linked to its story).
+- `tech_design` (Sprint Planning part two, decided by the user 2026-11-23; R19.13-R19.15): (1) the Planner reads the code and drafts with `submit_tech_design` the Technical Architecture (affected parts with quotes, new components and modules and how they relate to existing ones, data and configuration changes, decision records "decision, why, rejected alternatives", the run environment from the target's own files) and the Feature breakdown, following `runtime-rules/skills/story-splitting.md` and `runtime-rules/skills/feature-breakdown.md`; (2) Feasibility reviews it with `submit_tech_review` (thinking off): per Feature whether it fits the code, whether the size is right, and missing dependencies; (3) the Reviewer decides the final version with `submit_final_tech_design` and grades every Feature on the rubric (vertical slice, independent, testable, small, in scope: pass or concern with one sentence), labeled "LLM assessment, not a guarantee". Code checks every submission (R19.14) and names the failing Feature; one visible retry per role. The Task_Board is built by code with one item per Feature in dependency order. The Judge is not asked; the documents appear in "Plan and documents".
+- A Feature: `{ id: "F1", storyId, title, summary, scope: { modules[], files[], notTouch[] }, interfaces[], tests: { files[], command[] }, size: "XS"|"S"|"M", dependsOn[], servesChecks[] }`. `scope.files` guides the Code_Agent and the review; it is not a write restriction (R38.2). After each attempt, code compares the changed files with `scope.files` and `tests.files` and gives the Reviewer the list of unplanned changes; the Reviewer must justify each or request changes.
+- Skill validation (R19.15): the two skill files are evaluated on recorded real plans (fixtures from live runs) with a script that runs the technical design step and reports the code-check pass rate, retries, Feature count and sizes, and the rubric results; the report is stored under `runtime-rules/skills/eval/` with the Runtime_Rules version. The design document includes a `runEnvironment` section proposed by the Planner from the target's own files: build and start commands, app port, health path (R39.9). The Studio does not supply a fallback recipe (R39.10).
 - Every document records the Frozen Decision_Doc version (R19.2, R20.4, R20.11). Documents are stored as JSON plus rendered Markdown in `data/tasks/<id>/docs/` and shown in the Artifact_Area.
 - When a new version is frozen, documents referencing an older version are marked "based on an older version" (R20.10).
 
@@ -843,6 +848,7 @@ Per API-operation story (Feature_Contract `executionKind: "api_operation"`; deci
 - One mirror per Adapter: `data/mirror/<adapterId>.git` is a bare mirror of the Adapter's upstream repository, created once and fetched when the pinned commit is missing. How the mirror reaches a host with unreliable large clones is in reference-deployment.md ("Network facts").
 - One clone per Task, for an Adapted_Repo when the flow first needs it: `git clone --no-hardlinks` from the mirror into `data/tasks/<id>/work`, check out the pinned commit on a new branch `graftlab/<taskId>`. Every Worktree clone sets `core.fileMode=false` (bind mounts on some hosts show every file as mode 755, spike 1.4) and `core.autocrlf=false`, so LF line endings are kept. No `--shared` alternates (they would also store host paths).
 - Nothing is pushed anywhere; the Studio repository never receives modified target code (R25.6, R38.6).
+- Branches (R38.10, decided by the user 2026-11-23): the clone checks out the pinned commit as `main`. Each Feature gets `feature/<featureId>` from the current `main`; the Code_Agent commits there. After the Reviewer approved and the Verifier passed the Feature's checks, code merges it into `main` with `git merge --no-ff` ("Merge Feature F1: <title>"). A failed Feature's branch stays unmerged and is listed in the Retrospective; the next Feature starts from `main`. A merge conflict, or a failing check after the merge, records a failure and stops in `failure_review`. Diffs per Feature are taken against the Feature's base commit on `main`; the Patch_Artifact of the Task is `main` against the pinned commit.
 
 ### Verifier (R22, R29.4)
 

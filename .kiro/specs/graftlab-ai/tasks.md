@@ -576,6 +576,18 @@ Conventions:
     - _Requirements: 20.4, 20.9, 25.2_
 
 - [ ] 14. F10: pre-execution target check, PiCodeRuntime, development, Reviewer review, stop and ask, Run_Environment, checkpoints, Verifier and API-operation path (target 2026-11-30)
+  - [ ] 14.21 Download the Adapter's pinned commit for Adapted_Repo
+    - `TaskService.create`: an Adapted_Repo reads the commit in `adapter.json` instead of the default-branch head; the Repo_Brief cache follows the commit
+    - _Requirements: 10.1_
+  - [ ] 14.22 Write the splitting skills and validate them
+    - `runtime-rules/skills/story-splitting.md` and `feature-breakdown.md`, our own text, sources named in the README (Humanizing Work story splitting guide; the two agent skills reviewed 2026-11-23); evaluation script on recorded real plans, report under `runtime-rules/skills/eval/`
+    - _Requirements: 19.15_
+  - [ ] 14.23 Implement the technical design step
+    - Node `tech_design` after `documenting`; schemas for the Technical Architecture and the Features with the code checks of R19.14; Planner draft, Feasibility review, Reviewer final with the rubric; Task_Board per Feature; documents in the Output_Docs view
+    - _Requirements: 19.13, 19.14, 19.15_
+  - [ ] 14.24 Feature branches and merge into main
+    - Worktree `main` at the pinned commit, `feature/<id>` per Feature, `--no-ff` merge after review and Verifier, unmerged branch on failure, diff against the Feature's base, unplanned-change list for the Reviewer
+    - _Requirements: 38.5, 38.6, 38.10_
   - [ ] 14.1 Implement the context builder and the development rules
     - `apps/server/src/dev/context.ts` writes only the story, its Feature_Contract and the referenced documents; Runtime_Rules rules "small scope per Agent" and "no decision power, stop and ask, reviewed by the Reviewer"
     - Design: Development stage

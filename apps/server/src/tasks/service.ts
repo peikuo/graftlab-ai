@@ -32,6 +32,8 @@ import { TaskRunner, closeInterruptedTask, type Clock, type JudgeAnswer, type No
 export interface AdapterRef {
   id: string;
   match: { owner: string; repo: string };
+  /** The pinned source: an Adapted_Repo is read at this commit (R10.1). */
+  source?: { commit: string };
 }
 
 
@@ -128,6 +130,8 @@ export class TaskService {
       return { ok: false, status, error: g.message };
     }
     const adapter = this.#o.adapters.find((a) => matchesAdapter(meta, a));
+    // R10.1: an Adapted_Repo is read at the commit the Adapter pins, so the analyzed code is the developed code.
+    if (adapter?.source?.commit) meta = { ...meta, sha: adapter.source.commit };
     const taskId = `${meta.repo.toLowerCase()}-${Date.now().toString(36)}`;
     const store = await EventStore.open({ dataDir: this.#o.dataDir, taskId, secrets: this.#o.secrets });
     const startedAt = new Date();

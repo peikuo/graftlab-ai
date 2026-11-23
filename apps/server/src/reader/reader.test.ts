@@ -147,6 +147,21 @@ describe("reading step in a Task", () => {
     expect(cond()).toBe(true);
   };
 
+  it("an Adapted_Repo is read at the Adapter's pinned commit (R10.1)", async () => {
+    const dataDir = await tmp();
+    const { gh } = fakeGitHub({ files });
+    let store: import("../events/store.ts").EventStore | null = null;
+    const pinned = "c".repeat(40);
+    const s = new TaskService({ dataDir, secrets: new SecretRegistry(), github: gh, adapters: [{ id: "linkding", match: { owner: "o", repo: "r" }, source: { commit: pinned } }], runtimeRulesVersion: "0.1.0", lease: new Lease(), onStore: (x) => (store = x) });
+    expect((await s.create("github.com/o/r")).ok).toBe(true);
+    const created = store!.events().find((e) => e.type === "task_created");
+    expect(created?.payload).toMatchObject({ repoKind: "adapted", commitSha: pinned });
+    s.abort(store!.events()[0]!.taskId);
+    for (let i = 0; i < 400 && !store!.events().some((e) => e.type === "terminal_reached"); i++) await new Promise((r) => setTimeout(r, 5));
+    await new Promise((r) => setTimeout(r, 100)); // the cache writes of the aborted download settle
+    await store!.close();
+  });
+
   it("every file read is an event, the Task is Other_Repo, and the token is in no event", async () => {
     const { s, store } = await service({ files });
     const r = await s.create("github.com/o/r");
