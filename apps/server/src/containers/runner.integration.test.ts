@@ -113,7 +113,7 @@ describe.runIf(enabled)("Code_Agent runner in the image (10.14)", { timeout: 600
         asked++;
         pending = e.questionId;
       }
-      if (e.type === "final" && e.outcome === "question") send({ cmd: "answer", questionId: pending, text: "Use Hi." });
+      if (e.type === "final" && e.outcome === "question") send({ cmd: "answer", questionId: pending, text: "Use Hello." });
     });
     expect(asked).toBeGreaterThanOrEqual(1);
     const finals = r.events.filter((e) => e.type === "final").map((e) => (e as { outcome: string }).outcome);
