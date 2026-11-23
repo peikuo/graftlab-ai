@@ -7,7 +7,7 @@ const env = { LLM_BASE_URL: "https://llm.example.test/v1", LLM_MODEL: "model-x",
 describe("buildStudioModel", () => {
   it("defines one OpenAI-compatible model from the profile and answers the key only for the Studio provider", () => {
     const m = buildStudioModel(resolveLlmConfig(env));
-    expect(m.model).toMatchObject({ id: "model-x", api: "openai-completions", provider: STUDIO_PROVIDER, reasoning: true, maxTokens: 16384 });
+    expect(m.model).toMatchObject({ id: "model-x", api: "openai-completions", provider: STUDIO_PROVIDER, reasoning: true, maxTokens: 32768 });
     expect(m.getApiKey(STUDIO_PROVIDER)).toBe(env.LLM_API_KEY);
     expect(m.getApiKey("other")).toBeUndefined();
   });
