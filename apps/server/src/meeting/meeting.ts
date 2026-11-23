@@ -17,7 +17,11 @@ import { THINKING } from "../llm/thinking.ts";
 
 const NAME: Record<string, string> = { facilitator: "Facilitator", user_value: "User_Value", feasibility: "Feasibility", risk: "Risk", judge: "Judge" };
 const MAX_QUESTIONS = 2;
-const line = (max: number) => z.string().trim().min(1).max(max);
+// Soft caps: an over-long text is cut with "…" instead of refusing the whole submission (a refusal costs a model
+// turn; found 2026-11-23 with DeepSeek, which writes longer texts).
+const soft = (max: number) => (s: string) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+const line = (max: number) => z.string().trim().min(1).transform(soft(max));
+const cut = (max: number) => z.string().transform(soft(max));
 const capped = <T extends z.ZodTypeAny>(item: T, max: number) => z.array(item).transform((a) => a.slice(0, max));
 const Purpose = z.enum(["A", "B", "unclear"]);
 const Stance = z.enum(["support", "against", "conditional"]);
@@ -26,27 +30,28 @@ const EntrySchema = z.object({ id: z.string().max(20).optional(), path: z.string
 export const PositionSchema = z.object({
   quotes: capped(QuoteSchema, 8).default([]),
   proposals: capped(
-    z.object({ kind: z.enum(["improve", "new"]), title: line(120), userChange: line(400), purpose: Purpose, quotes: z.array(z.number().int().positive()).default([]), stance: z.enum(["support", "conditional"]).default("support"), reason: line(400), conditions: z.string().max(300).optional(), effort: z.enum(["small", "medium", "large"]).optional() }),
+    z.object({ kind: z.enum(["improve", "new"]), title: line(120), userChange: line(400), purpose: Purpose, quotes: z.array(z.number().int().positive()).default([]), stance: z.enum(["support", "conditional"]).default("support"), reason: line(400), conditions: cut(300).optional(), effort: z.enum(["small", "medium", "large"]).optional() }),
     2,
   ),
 });
 const ChangeIn = z.object({
   kind: z.enum(["add", "stance", "merge"]),
   idea: z.enum(["improve", "new"]).optional(),
-  proposal: z.string().max(200).optional(),
+  proposal: cut(200).optional(),
   stance: Stance.optional(),
   effort: z.enum(["small", "medium", "large"]).optional(),
-  reason: z.string().max(400).optional(),
-  conditions: z.string().max(300).optional(),
-  title: z.string().max(120).optional(),
-  userChange: z.string().max(400).optional(),
+  reason: cut(400).optional(),
+  conditions: cut(300).optional(),
+  title: cut(120).optional(),
+  userChange: cut(400).optional(),
   purpose: Purpose.optional(),
-  keep: z.string().max(200).optional(),
-  drop: z.string().max(200).optional(),
+  keep: cut(200).optional(),
+  drop: cut(200).optional(),
   evidence: capped(EntrySchema, 4).default([]),
 });
 export const TurnSchema = z.object({ respondsTo: z.enum(["facilitator", "user_value", "feasibility", "risk", "judge"]).optional(), changes: capped(ChangeIn, 4).default([]), endDiscussion: z.boolean().optional() });
-export const SignalSchema = z.object({ speak: z.boolean(), kind: z.enum(["disagree", "answer", "add", "agree"]).optional(), about: z.string().max(200).optional(), intent: z.string().max(200).optional() });
+// A long reason is cut, not refused (found 2026-11-23 with DeepSeek: about over 200 characters refused every signal).
+export const SignalSchema = z.object({ speak: z.boolean(), kind: z.enum(["disagree", "answer", "add", "agree"]).optional(), about: cut(200).optional(), intent: cut(200).optional() });
 export const CloseSchema = z.object({
   merges: capped(z.object({ keep: line(200), drop: line(200) }), 6).default([]),
   decisions: capped(z.object({ proposal: line(200), verdict: z.enum(["recommend", "drop", "park"]), reason: line(400), rank: z.number().int().positive().optional(), conditions: capped(line(200), 4).default([]) }), 8),
@@ -312,7 +317,7 @@ export async function runMeeting(o: MeetingOptions): Promise<MeetingResult> {
             parameters: obj({ speak: bool(), kind: opt(oneOf(["disagree", "answer", "add", "agree"] as const)), about: opt(str()), intent: opt(str()) }),
             execute: async (_i, a: unknown) => {
               const p = SignalSchema.safeParse(a);
-              if (!p.success) return text("Not accepted: speak (true or false) is needed.", true);
+              if (!p.success) return text(`Not accepted: ${p.error.issues.map((i) => `${i.path.join(".") || "signal"} ${i.message}`).join("; ")}.`, true);
               got = { roleId, speak: p.data.speak, ...(p.data.kind ? { kind: p.data.kind } : {}), ...(p.data.about ? { about: p.data.about } : {}), ...(p.data.intent ? { intent: stripIds(p.data.intent).text } : {}) };
               return { ...text("Noted."), terminate: true };
             },

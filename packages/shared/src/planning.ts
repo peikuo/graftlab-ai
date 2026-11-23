@@ -6,7 +6,8 @@ import { AcceptanceCheckSchema } from "./decision.ts";
 import { EFFORTS, OUTPUT_DOC_KINDS } from "./events.ts";
 
 const text = z.string().trim().min(1);
-const line = (max: number) => text.max(max);
+/** A text field with a soft cap: an over-long text is cut (with "…"), never a reason to refuse the whole plan. */
+const line = (max: number) => text.transform((s) => (s.length > max ? `${s.slice(0, max - 1)}…` : s));
 
 /** Strict: no other fields, so no file or path list can enter a Feature_Contract (R40.3). */
 export const FeatureContractSchema = z

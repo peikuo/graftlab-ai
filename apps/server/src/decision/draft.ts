@@ -11,7 +11,11 @@ import type { Emit, TurnOptions, TurnResult } from "../runtime/pi.ts";
 import { THINKING, type Thinking } from "../llm/thinking.ts";
 
 const NAME: Record<string, string> = { facilitator: "Facilitator", feasibility: "Feasibility", risk: "Risk" };
-const line = (max: number) => z.string().trim().min(1).max(max);
+// Soft caps: an over-long text is cut with "…" instead of refusing the whole submission (a refusal costs a model
+// turn; found 2026-11-23 with DeepSeek, which writes longer texts).
+const soft = (max: number) => (s: string) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+const line = (max: number) => z.string().trim().min(1).transform(soft(max));
+const cut = (max: number) => z.string().transform(soft(max));
 const capped = <T extends z.ZodTypeAny>(item: T, max: number) => z.array(item).transform((a) => a.slice(0, max));
 const Quote = z.object({ path: line(300), line: z.number().int().positive().optional(), snippet: z.string().max(2000) });
 const DraftIn = z.object({
@@ -30,11 +34,11 @@ const AssessIn = z.object({
   assessments: capped(
     z.object({
       optionId: line(24),
-      feasibility: z.string().max(800).optional(),
+      feasibility: cut(800).optional(),
       effort: z.enum(["small", "medium", "large"]).optional(),
-      firstVersion: z.string().max(400).optional(),
+      firstVersion: cut(400).optional(),
       neededEnvironments: z.array(z.enum(["sandbox", "development_sandbox", "run_environment"])).optional(),
-      risk: z.string().max(800).optional(),
+      risk: cut(800).optional(),
       claims: capped(Claim, 4).default([]),
     }),
     4,
