@@ -211,6 +211,8 @@ Every container gets an explicit memory limit (`GL_MEM_*_MB`); the values and th
 
 - Every image is pinned by digest and checked against that digest before use.
 - The Development_Sandbox image `graftlab/dev-sandbox-<adapterId>` is built from the Adapter's base image plus a generic layer from `docker/dev-sandbox/Dockerfile`: git, Node (a Node 24 LTS tarball, checksum verified at build time), the pi packages (`@earendil-works/pi-coding-agent`, `@earendil-works/pi-agent-core`, `@earendil-works/pi-ai`, pinned versions, about 153 MB with their siblings) and the Code_Agent runner (`docker/dev-sandbox/runner/`). The Adapter's base image brings the target's toolchain and preinstalled dependencies, never a start recipe for the modified target (R39.10). The image does not contain the DeepSeek Harness executable.
+- Build context (task 10.1, decided 2026-11-23): `scripts/dev-sandbox-context.mjs` assembles `adapter/setup.sh` (the Adapter's `dependencySetup`), `target-src/` (`git archive` of the pinned commit from the Adapter's mirror, so the image and the Worktree come from the same commit), and `runner/` (a package.json and lock file with only the pi packages, plus the bundled `runner.mjs` and `llm-proxy.mjs`). The base image is the local image whose ID equals the Adapter's `configDigest`; the build refuses any other.
+- The Worktree at `/work` is a fresh clone without dependencies or build output. When the Development_Sandbox starts, the backend copies the Adapter's `prebuilt` paths from `/opt/target-src` into `/work` inside the container. Every `prebuilt` path must be ignored by the target's own `.gitignore` (checked by code with `git check-ignore` when the Worktree is created), so the copies never appear in a diff, a snapshot or a Patch_Artifact. Rejected alternatives: a symlink into the image (a symlink is not a directory for git, so it shows as an untracked file, and symlinks on host bind mounts are unreliable on some hosts); `NODE_PATH` (not honored by bundlers).
 - Package sources (apt, Python index, npm registry, Node download) are build arguments. Integrity comes from signatures and lock-file hashes (apt signatures, lock-file hashes with hash checking, `package-lock.json` integrity, the Node checksum, image digests), not from the transport, so a mirror cannot change what is installed.
 - How images and packages reach the deployment host is in reference-deployment.md ("Network facts", "Integrity rules", "Image transfer"); the first target's base image and its added layer are in reference-target-linkding.md ("Version pin", "Development_Sandbox for linkding").
 
@@ -490,7 +492,12 @@ export interface Adapter {
     key(item: TargetItem): string;              // identity used to match planned and read-back items
     compare(expect: Expectation, readBack: TargetItem[], preState: TargetItem[]): ItemResult;
   };
-  devSandbox: { baseImage: string; preinstalled: string[] };  // toolchain and dependencies only, no start recipe
+  devSandbox: {                                 // toolchain and dependencies only, no start recipe
+    baseImage: string; preinstalled: string[];
+    dependencySetup: string;                    // shell file next to adapter.json, run at image build in the pinned UNMODIFIED source
+    path: string[];                             // directories put in front of PATH in the image (for linkding the venv)
+    prebuilt: string[];                         // gitignored dependency and build output copied into the Worktree at sandbox start
+  };
   testSelectionHint: string;                    // guidance for test_suite checks (which tests to name)
   runtimeRulesChecklist: string;                // runtime-rules/adapters/<id>-checklist.md (layer B)
 }

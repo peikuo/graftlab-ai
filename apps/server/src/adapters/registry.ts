@@ -1,7 +1,7 @@
 // Adapter registry (design.md, "Adapter contract"; R9.5, R13.3, R39.10): every adapters/<id>/adapter.json is
 // validated by the contract schema at server start, joined with its hooks, and matched case-insensitively against
 // a normalized repository. An invalid Adapter stops the start with the reason; it is never used half-valid.
-import { readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AdapterJsonSchema, isForbiddenAdapterField, matchesAdapter, type Adapter, type AdapterHooks } from "@graftlab/shared";
 import { hooks as linkdingHooks } from "../../../../adapters/linkding/index.ts";
@@ -28,6 +28,8 @@ export async function loadAdapters(dir: string): Promise<Adapter[]> {
     const parsed = AdapterJsonSchema.safeParse(json);
     if (!parsed.success) throw new AdapterError(`adapters/${id}/adapter.json: ${parsed.error.issues[0]?.path.join(".")} ${parsed.error.issues[0]?.message}`);
     if (parsed.data.id !== id) throw new AdapterError(`adapters/${id}: the id in adapter.json is "${parsed.data.id}"`);
+    const setup = join(dir, id, parsed.data.devSandbox.dependencySetup);
+    if (!(await access(setup).then(() => true, () => false))) throw new AdapterError(`adapters/${id}: devSandbox.dependencySetup ${parsed.data.devSandbox.dependencySetup} does not exist`);
     const hooks = HOOKS[id];
     if (!hooks) throw new AdapterError(`adapters/${id}: no hooks are registered for this Adapter`);
     out.push({ ...parsed.data, hooks });

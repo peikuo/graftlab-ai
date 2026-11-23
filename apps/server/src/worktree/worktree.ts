@@ -62,6 +62,16 @@ export interface MirrorSpec {
   upstreamUrl: string;
   /** The pinned commit, 40 hex characters. */
   commit: string;
+  /**
+   * Where the mirror is cloned and fetched from instead of the upstream: a local path or a git bundle, for hosts
+   * where large clones are unreliable (reference-deployment.md, "Network facts"). Set by `GL_MIRROR_SOURCE_<ID>`.
+   */
+  source?: string;
+}
+
+/** The mirror source override for an Adapter from the environment (`GL_MIRROR_SOURCE_LINKDING`), if any. */
+export function mirrorSourceFromEnv(adapterId: string, env: Record<string, string | undefined> = process.env): string | undefined {
+  return env[`GL_MIRROR_SOURCE_${adapterId.toUpperCase().replace(/-/g, "_")}`] || undefined;
 }
 
 export function mirrorPath(dataDir: string, adapterId: string): string {
@@ -87,7 +97,7 @@ export async function ensureMirror(dataDir: string, spec: MirrorSpec): Promise<s
   const path = mirrorPath(dataDir, spec.adapterId);
   if (!(await exists(path))) {
     await mkdir(dirname(path), { recursive: true });
-    await git(["clone", "--mirror", "--", spec.upstreamUrl, path]);
+    await git(["clone", "--mirror", "--", spec.source ?? spec.upstreamUrl, path]);
   }
   if (!(await hasCommit(path, spec.commit))) {
     await git(["fetch", "--prune", "origin"], { cwd: path });
@@ -200,4 +210,21 @@ export async function snapshotWorktree(dataDir: string, wt: Worktree, label: str
     await git(["checkout-index", "-a", "-f", `--prefix=${path}/`], { cwd: wt.path, env });
     return { commit, path };
   });
+}
+
+/**
+ * Paths among `paths` that the target's own ignore rules do NOT ignore. The Adapter's `prebuilt` paths must all be
+ * ignored, so the copies made at sandbox start never reach a diff, a snapshot or a Patch_Artifact (design: Images).
+ */
+export async function notIgnored(wt: Worktree, paths: string[]): Promise<string[]> {
+  if (paths.length === 0) return [];
+  // --no-index: decide by the ignore rules alone, also for paths that do not exist yet. A path that does not exist
+  // cannot be known to be a directory, so it is also asked with a trailing slash ("node_modules/" rules).
+  const asked = paths.flatMap((p) => [p, `${p.replace(/\/+$/, "")}/`]);
+  const out = await git(["check-ignore", "--no-index", "--", ...asked], { cwd: wt.path }).catch((e: unknown) => {
+    if (e instanceof GitError && e.code === 1) return ""; // exit 1: none of the paths is ignored
+    throw e;
+  });
+  const ignored = new Set(out.split("\n").filter(Boolean));
+  return paths.filter((p) => !ignored.has(p) && !ignored.has(`${p.replace(/\/+$/, "")}/`));
 }

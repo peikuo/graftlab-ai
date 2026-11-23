@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, unlink, writeFile, mkdir } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createWorktree, diffWorktree, git, mirrorPath, snapshotWorktree, worktreePath, writePatchArtifact, type MirrorSpec } from "./worktree.js";
+import { createWorktree, diffWorktree, git, mirrorPath, mirrorSourceFromEnv, notIgnored, snapshotWorktree, worktreePath, writePatchArtifact, type MirrorSpec } from "./worktree.js";
 
 let root: string;
 let upstream: string;
@@ -52,6 +52,16 @@ describe("worktree manager", () => {
     expect((await git(["rev-parse", "HEAD"], { cwd: wt.path })).trim()).toBe(newer);
   });
 
+  it("creates the mirror from a git bundle when a source override is set", async () => {
+    await git(["tag", "v1"], { cwd: upstream });
+    const bundle = join(root, "up.bundle");
+    await git(["bundle", "create", bundle, "v1"], { cwd: upstream });
+    const wt = await createWorktree(dataDir, "t1", { ...spec, upstreamUrl: "https://example.invalid/repo", source: bundle });
+    expect((await git(["rev-parse", "HEAD"], { cwd: wt.path })).trim()).toBe(spec.commit);
+    expect(mirrorSourceFromEnv("link-ding", { GL_MIRROR_SOURCE_LINK_DING: bundle })).toBe(bundle);
+    expect(mirrorSourceFromEnv("linkding", {})).toBeUndefined();
+  });
+
   it("rejects an unsafe task id and an unknown commit", async () => {
     await expect(createWorktree(dataDir, "../x", spec)).rejects.toThrow("invalid task id");
     await expect(createWorktree(dataDir, "t1", { ...spec, commit: "f".repeat(40) })).rejects.toThrow("not in the upstream");
@@ -80,6 +90,19 @@ describe("worktree manager", () => {
     await writeFile(join(wt.path, "a.txt"), "committed\n");
     await git(["commit", "-q", "-am", "agent commit"], { cwd: wt.path });
     expect((await diffWorktree(wt)).changedFiles).toEqual([{ status: "modified", path: "a.txt" }]);
+  });
+
+  it("reports prebuilt paths that the target's ignore rules do not ignore, and ignored copies stay out of the diff", async () => {
+    await writeFile(join(upstream, ".gitignore"), "node_modules/\n/static/bundle.js*\n");
+    await git(["add", "."], { cwd: upstream });
+    await git(["commit", "-q", "-m", "ignore"], { cwd: upstream });
+    const commit = (await git(["rev-parse", "HEAD"], { cwd: upstream })).trim();
+    const wt = await createWorktree(dataDir, "t3", { ...spec, commit });
+    expect(await notIgnored(wt, ["node_modules", "static/bundle.js", "static/bundle.js.map", "a.txt"])).toEqual(["a.txt"]);
+    expect(await notIgnored(wt, ["a.txt"])).toEqual(["a.txt"]);
+    await mkdir(join(wt.path, "node_modules", "x"), { recursive: true });
+    await writeFile(join(wt.path, "node_modules", "x", "i.js"), "1");
+    expect((await diffWorktree(wt)).changedFiles).toEqual([]);
   });
 
   it("writes the Patch_Artifact under docs/patches", async () => {

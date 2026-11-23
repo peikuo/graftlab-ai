@@ -1,0 +1,11 @@
+{
+  "name": "graftlab-dev-sandbox-runner",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Runtime dependencies of runner.mjs inside the Development_Sandbox image (versions match docker/dev-sandbox/runner/package.json)",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.6.0",
+    "typebox": "1.3.27"
+  }
+}

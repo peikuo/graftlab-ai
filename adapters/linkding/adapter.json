@@ -75,6 +75,17 @@
       "dev dependency group (hash-checked)",
       "npm ci",
       "npm run build"
+    ],
+    "dependencySetup": "dev-sandbox/setup.sh",
+    "path": [
+      "/etc/linkding/.venv/bin"
+    ],
+    "prebuilt": [
+      "node_modules",
+      "bookmarks/static/bundle.js",
+      "bookmarks/static/bundle.js.map",
+      "bookmarks/static/theme-light.css",
+      "bookmarks/static/theme-dark.css"
     ]
   },
   "testSelectionHint": "Name targeted test files under bookmarks/tests/; the full suite takes about 300 s.",

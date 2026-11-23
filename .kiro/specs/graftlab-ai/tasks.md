@@ -424,7 +424,8 @@ Conventions:
     - _Requirements: 26.7, 27.12, 27.13_
 
 - [ ] 10. Containers: dev-sandbox image, LLM_Proxy, Sandbox with test data and reset, Worktree manager, Adapter contract (target 2026-11-27)
-  - [ ] 10.1 Write the dev-sandbox Dockerfile
+  - [x] 10.1 Write the dev-sandbox Dockerfile
+    - Done 2026-11-23: `docker/dev-sandbox/Dockerfile`, context script `scripts/dev-sandbox-context.ts` (source by `git archive` from the Adapter's mirror, created from a git bundle on hosts with unreliable clones via `GL_MIRROR_SOURCE_<ID>`), `adapters/linkding/dev-sandbox/setup.sh`, image lock in `docker/dev-sandbox/image/`; Adapter fields `devSandbox.dependencySetup`, `path`, `prebuilt` (gitignored copies into `/work` at sandbox start, checked with `git check-ignore`); built on the PC: 1.11 GB, toolchain and prebuilt paths checked inside the image
     - `docker/dev-sandbox/Dockerfile`: the generic layer (git, Node 24 LTS tarball with its checksum verified at build time, the pi packages at pinned versions, the Code_Agent runner copied from `docker/dev-sandbox/runner/`, task 10.13) on top of the Adapter's base image, built as `graftlab/dev-sandbox-<adapterId>`; package sources as build arguments; for linkding the base is the digest-pinned official image plus uv, the hash-checked dev dependency group, `npm ci` and `npm run build` (prototype: `spike/dev-sandbox/Dockerfile`); settle how the preinstalled Node modules and build output relate to the Worktree at `/work`
     - Design: Images; reference-target-linkding.md (Development_Sandbox for linkding); reference-deployment.md (Network facts, Integrity rules)
     - _Requirements: 39.2, 25.6_

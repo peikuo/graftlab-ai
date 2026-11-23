@@ -35,7 +35,18 @@ export const AdapterJsonSchema = z
         itemCap: z.number().int().positive().max(10), // may lower GL_DEMO_CASE_MAX_ITEMS (10), never raise it (R18.11)
       })
       .strict(),
-    devSandbox: z.object({ baseImage: digestRef, preinstalled: z.array(text) }).strict(),
+    devSandbox: z
+      .object({
+        baseImage: digestRef,
+        preinstalled: z.array(text),
+        /** Shell file next to adapter.json, run at image build in the pinned unmodified source (dependencies only). */
+        dependencySetup: text.regex(/^[A-Za-z0-9._/-]+\.sh$/).refine((p) => !p.split("/").includes(".."), "inside the Adapter directory"),
+        /** Directories put in front of PATH in the image. */
+        path: z.array(text.regex(/^\/[A-Za-z0-9._/-]*$/)),
+        /** Gitignored dependency and build output copied from /opt/target-src into the Worktree at sandbox start. */
+        prebuilt: z.array(text.regex(/^[A-Za-z0-9._-][A-Za-z0-9._/-]*$/).refine((p) => !p.split("/").includes(".."), "relative, inside the source")),
+      })
+      .strict(),
     testSelectionHint: text,
     testData: text, // file name of the fixed test data set next to adapter.json
     runtimeRulesChecklist: text,
