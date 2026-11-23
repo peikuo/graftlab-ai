@@ -434,7 +434,8 @@ Conventions:
     - `apps/server/src/verifier/readback.ts`: reads all pages of the Adapter's read endpoints, applies the Adapter comparator from 10.15 (key matching, field rules, a create whose key existed in the pre-state snapshot compared as an update), per-item results (also used for the reset equality check)
     - Design: Verifier, Adapter contract
     - _Requirements: 22.4, 22.5, 22.7, 22.9, 29.4_
-  - [ ] 10.3 Implement the container manager
+  - [x] 10.3 Implement the container manager
+    - Done 2026-11-23: `apps/server/src/containers/{docker,manager}.ts`: Engine API client over the socket or named pipe (no dependency), internal network per Task, LLM_Proxy on the default bridge plus the internal network with the relay port on the loopback interface (`proxy/relay.ts`), Development_Sandbox (read-only root, tmpfs, Worktree the only writable host path, prebuilt copies), baseline Sandbox (image by config digest, own bridge, fresh volume, loopback port), memory limits `GL_MEM_*_MB`, cleanup by label at Task end and at server start, `GL_EXECUTION_ENABLED`. The relay inside a container is tested with the Run_Environment (milestone 14)
     - `apps/server/src/containers/`: Docker Engine API wrapper, internal-only network, the port relay hosted by the LLM_Proxy container, memory limits (`GL_MEM_*_MB`, values per deployment), read-only root and tmpfs, mounts, engine ping at server start, `GL_EXECUTION_ENABLED`
     - Design: Containers, Network policy, Deployment model; reference-deployment.md (Docker Desktop facts, Docker Desktop and memory)
     - _Requirements: 38.2, 38.3, 38.4, 39.1, 39.6, 25.8_
@@ -443,7 +444,8 @@ Conventions:
     - **Property 11: The Adapter comparator agrees with a model of the target's write semantics**
     - Lives in `adapters/linkding/`; in-memory linkding model with upsert by normalized URL that replaces title and tags, and generated auto-tag rules (reference-target-linkding.md, Write semantics for the comparator)
     - **Validates: Requirements 22.4, 22.5**
-  - [ ] 10.5 Implement the LLM_Proxy
+  - [x] 10.5 Implement the LLM_Proxy
+    - Done 2026-11-23: the proxy runs in its container with a non-root user and a read-only root; the runner reached the real model through it on the PC; its log held only `POST /chat/completions 200`
     - Progress 2026-11-23 (Mac): `apps/server/src/proxy/{proxy,main,credential}.ts`, bundled with `npm run build:proxy -w apps/server` to `dist/llm-proxy.mjs`; accepts `/chat/completions` (POST) and `/models` (GET), with or without a `/v1` prefix; per-Task credential `glp_…` registered with the redactor as `proxy_credential`; tests cover 10.7 against a fake upstream; the Code_Agent runner ran through it against the real model. Open: running it in its container (10.3) and the port relay
     - `apps/server/src/proxy/` bundled to one file, run on the dev-sandbox image: per-Task bearer credential, allow-listed paths, real key swapped in, streaming passthrough, logs method, path and status only; credential registered with the redactor
     - Design: LLM_Proxy
@@ -457,18 +459,22 @@ Conventions:
     - Done 2026-11-23: `apps/server/src/proxy/proxy.test.ts` (fake upstream, streaming passthrough, log lines)
     - Wrong credential rejected; allowed path forwarded to a fake upstream with the real key; other paths refused
     - _Requirements: 30.16_
-  - [ ] 10.8 Implement Sandbox start with test data and reset
+  - [x] 10.8 Implement Sandbox start with test data and reset
+    - Done 2026-11-23: `apps/server/src/containers/sandbox.ts` over the Adapter contract; on the PC: start 3 s, readiness 33 to 36 s, provision 0.7 s, seed 3 s, equality 11 of 11; a reset after a changed item takes about 36 s and passes again; a start failure is returned as a result naming the step
     - Generic procedure over the Adapter contract: fresh volume, per-Task generated `secretEnv` values (registered with the redactor), readiness wait on the health path, the Adapter's `provision` hook, `testData.seed`, equality by the Verifier with `testData.equals`; a failure is returned as a recorded result, so the caller decides the edge: in `sandbox_start` "experience unavailable" and continue to the meeting (11.1), in `target_check` `failed` "not executed" (14.6)
     - Design: Sandbox and test data, Adapter contract; reference-target-linkding.md (Baseline run, Provisioning, Fixed test data set, reset and restore)
     - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 29.1, 29.3, 29.4, 29.5_
-  - [ ] 10.9 Implement the restore operation
+  - [x] 10.9 Implement the restore operation
+    - Done 2026-11-23: `POST /api/sandbox/restore` (operator or admin, 409 while one runs) and `SandboxService.guard()`, which blocks Agent actions against the baseline after a failed start, reset or restore until one succeeds; wired to a Task with `sandbox_start` in 11.1
     - `POST /api/sandbox/restore` for the lease holder or the admin only; recreate container and volume, provision, seed, Verifier equality; a failed restore blocks Agent actions against the target baseline until a reset succeeds
     - Design: Sandbox and test data, HTTP API; reference-target-linkding.md (Fixed test data set, reset and restore)
     - _Requirements: 29.2, 29.4, 18.13_
-  - [ ]* 10.10 Write integration tests for the Development_Sandbox confinement
+  - [x]* 10.10 Write integration tests for the Development_Sandbox confinement
+    - Done 2026-11-23: `containers.integration.test.ts` on the PC (`GL_DOCKER_TESTS=1`): write to `/work` reaches the host and the diff; `/etc` and `/context` refused; no internet; LLM_Proxy reachable; no key and no engine socket inside; a targeted linkding test file passes offline in `/work`
     - Write to `/work` reaches the host Worktree; write to `/etc` fails read-only; no host path outside the Worktree changes; internet request fails; LLM_Proxy reachable
     - _Requirements: 38.2, 38.4, 38.8_
-  - [ ]* 10.11 Write integration tests for the Sandbox
+  - [x]* 10.11 Write integration tests for the Sandbox
+    - Done 2026-11-23: same file: pinned image, provisioning, test data, equality, reset after a change, recorded start failure; restore for a non-holder refused in `app.test.ts`
     - Start from the pinned digest, provisioning, test data, Verifier equality, restore; restore rejected for a non-holder; a forced start failure is returned as a recorded failure
     - Design: Testing Strategy (Integration tests)
     - _Requirements: 13.2, 13.4, 29.2, 29.4_
@@ -476,16 +482,19 @@ Conventions:
     - Show the user a Sandbox reset with the Verifier equality table, a restore, and a write attempt outside `/work` failing; check `docker stats` against the memory limits and that no container has the Docker socket
     - _Requirements: 29.4, 38.2, 38.8_
 
-  - [ ] 10.13 Write the Code_Agent runner (`docker/dev-sandbox/runner`) with the protocol, normalized events and unit tests with recorded event fixtures
+  - [x] 10.13 Write the Code_Agent runner (`docker/dev-sandbox/runner`) with the protocol, normalized events and unit tests with recorded event fixtures
+    - Done 2026-11-23: the runner ran inside the image on the PC (10.14)
     - Progress 2026-11-23 (Mac): protocol and mapper in `packages/shared/src/runner.ts` (the mapper is not yet used by `PiRuntime`), runner workspace `docker/dev-sandbox/runner/` (`controller.ts`, `main.ts`, bundle `npm run build -w docker/dev-sandbox/runner`), rules in `runtime-rules/roles/code_agent.md` read from `/context/rules.md`; fixtures recorded on the Mac with the real model through the LLM_Proxy (fix completed in 43 s; ask: two `ask_question` calls answered in the same process; abort after the first tool call); 10 tests. Open: the runner inside the image (10.1, 10.14)
     - `docker/dev-sandbox/runner/`: embeds `createAgentSession()` with an allow-listed tool set, `SessionManager.inMemory()`, thinking level low, custom provider pointing at the LLM_Proxy; custom `ask_question` tool (zod-validated arguments `kind`, `text`, optional `options`; ends the turn); stdin commands `prompt`, `answer`, `steer`, `abort` validated by zod; stdout normalized JSON-line events using the shared pi event mapping module from 6.4; one long-lived process per story attempt; `dispose()` on exit; shape follows the 1.7 and 1.8 results (embedded runner by default, pi RPC mode if the spike says so)
     - Unit tests with vitest using the sanitized recorded event fixtures from 1.7 and 1.8: every fixture line maps to the expected `RuntimeEvent`, invalid commands are rejected, an `ask_question` call produces a `question` event and the turn ends, `answer` resumes
     - Design: PiCodeRuntime, Repository layout
     - _Requirements: 38.7, 40.2, 40.11, 40.13_
-  - [ ] 10.14 Demo and verify: Code_Agent runner
+  - [x] 10.14 Demo and verify: Code_Agent runner
+    - Done 2026-11-23: `runner.integration.test.ts` on the PC (`GL_LIVE_LLM=1`): `ask_question` answered in the same process, story completed in 38 s with only `greeter.py` changed; abort ends as aborted; no real key in the container; only `/work` and `/tmp` writable. In the first run the scripted answer contradicted the existing test, and the agent asked a second question about the contradiction before changing the test
     - Show the user the runner inside the built dev-sandbox image completing a small story on the toy repository through the LLM_Proxy, a question raised by `ask_question` and answered in the same process, and an abort; check that only `/work` and `/tmp` were written and that no real key is in the container environment
     - _Requirements: 30.16, 40.11, 40.13_
-  - [ ] 10.15 Implement the Adapter contract and the linkding Adapter
+  - [x] 10.15 Implement the Adapter contract and the linkding Adapter
+    - Done 2026-11-23: hooks verified against the real image on the PC (provisioning, seed, reset, equality); Adapter fields added: `api.auth`, `devSandbox.dependencySetup`, `path`, `prebuilt`
     - Progress 2026-11-23 (Mac, no containers yet): contract types and strict schema (`packages/shared/src/adapter.ts`), registry validated at server start (`apps/server/src/adapters/registry.ts`), linkding hooks, comparator, test data, in-memory model, checklist; 17 tests. Open until 10.16: the hooks against the real image (provisioning, seed, reset) on the PC
     - `packages/shared/src/adapter.ts`: the Adapter contract types and a zod schema for `adapter.json` (no start-procedure field for the modified target); `apps/server/src/adapters/`: loader and registry validated at server start, case-insensitive match used by 5.1
     - `adapters/linkding/`: `adapter.json` with the real pins, the `api` allow-list (read and write endpoints, op ids, item cap, `itemFields` schema), the comparator (normalized-URL key, tag inclusion, same-URL create compared as an update that replaces title and tags, auto-tagging) with its tests, the provisioning hook (`bookmarks.ApiToken` in the management shell after `/health`, key registered with the redactor), `test-data.json` with seed, reset (fresh volume) and the equality check; `runtime-rules/adapters/linkding-checklist.md`
