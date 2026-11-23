@@ -120,7 +120,7 @@ describe.runIf(enabled)("containers (real engine)", { timeout: 300_000 }, () => 
 
       // Linkding's tests run offline in /work (one targeted file, as the Verifier would).
       const t = await manager.docker.exec(name, ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "bookmarks/tests/test_bookmark_validation.py"], { workdir: "/work" });
-      console.log("targeted test:", t.code, t.stdout.trim().split("\n").at(-1));
+      console.log("targeted test:", t.code, t.stdout.trim().split("\n").slice(-3).join(" / "), t.stderr.slice(-800));
       expect(t.code).toBe(0);
     });
   });
