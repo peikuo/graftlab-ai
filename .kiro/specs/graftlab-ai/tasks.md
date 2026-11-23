@@ -254,7 +254,7 @@ Conventions:
 
 - [ ] 6. F3: PiRuntime, meeting after evidence gathering with streaming, thinking panel, interjection, question cards, evidence checker (target 2026-11-24)
   - [ ] 6.1 Implement LLM configuration
-    - `apps/server/src/llm/`: server default base address and `deepseek-flash` from environment, max_tokens 16384 (`GL_MAX_TOKENS`), finish reason check, Judge-supplied configuration behind `GL_ALLOW_JUDGE_LLM` (off)
+    - `apps/server/src/llm/`: server default base address and `deepseek-flash` from environment, max_tokens 32768 (`GL_MAX_TOKENS`, raised from 16384 on 2026-11-24), finish reason check, Judge-supplied configuration behind `GL_ALLOW_JUDGE_LLM` (off)
     - Design: LLM configuration and SSRF validation
     - _Requirements: 30.1, 30.2, 30.3, 30.5, 30.12, 30.14_
   - [ ] 6.2 Implement the Runtime_Rules loader and role prompts
