@@ -17,4 +17,6 @@ echo "dev dependencies installed: $(grep -c '==' /tmp/dev-req.txt)"
 
 npm ci --no-audit --no-fund --registry="$NPM_REGISTRY"
 npm run build
+# The runtime data directory (database, task queue, favicons) is gitignored and must exist for tests and runs.
+mkdir -p data
 rm -rf /root/.npm /root/.cache /tmp/uv-req.txt /tmp/dev-req.txt

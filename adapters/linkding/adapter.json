@@ -90,7 +90,8 @@
       "bookmarks/static/bundle.js",
       "bookmarks/static/bundle.js.map",
       "bookmarks/static/theme-light.css",
-      "bookmarks/static/theme-dark.css"
+      "bookmarks/static/theme-dark.css",
+      "data"
     ]
   },
   "testSelectionHint": "Name targeted test files under bookmarks/tests/; the full suite takes about 300 s.",
