@@ -64,6 +64,13 @@ try {
     await p.getByRole("tab", { name: "Decision" }).waitFor({ timeout: 60_000 });
     await p.getByRole("tab", { name: "Decision" }).click();
     mark("frozen");
+    // The next step is not built yet: end the Task instead of leaving it waiting, so the Replay has no idle tail.
+    const end = p.getByRole("button", { name: "End the Task" });
+    await end.waitFor({ timeout: 60_000 });
+    await p.waitForTimeout(2500);
+    await end.click();
+    await p.locator(".final").waitFor({ timeout: 30_000 });
+    mark("ended by the Judge after the freeze");
   }
   await p.waitForTimeout(6000);
 } finally {

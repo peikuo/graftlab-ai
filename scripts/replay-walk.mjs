@@ -29,7 +29,8 @@ try {
   }, Math.round(max / 2));
   await p.waitForTimeout(1500);
   await p.screenshot({ path: `data/ui-snaps/m9-replay-${ID}-middle.png` });
-  check("seek moves the playhead", (await p.locator(".replay-bar .mono").innerText()).startsWith(`${Math.floor(Math.round(max / 2000) / 60)}:`));
+  const shown = await p.locator(".replay-bar .mono").innerText();
+  check(`seek moves the playhead (shown ${shown}, Replay length ${Math.round(max / 1000)} s)`, !shown.startsWith("0:00 "));
   await p.locator(".final").waitFor({ timeout: 240_000 });
   await p.waitForTimeout(4000);
   await p.screenshot({ path: `data/ui-snaps/m9-replay-${ID}-final.png` });

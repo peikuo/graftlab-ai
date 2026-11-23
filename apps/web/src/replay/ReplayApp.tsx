@@ -17,6 +17,40 @@ interface ReplayFile {
 }
 const SPEEDS = [1, 2, 4, 8, 16];
 const TICK_MS = 100;
+const GAP_MS = 30_000; // a longer stretch without events ...
+const GAP_PLAY_MS = 3_000; // ... plays this long
+/** Replay time to recorded time: idle gaps are compressed, everything else plays as recorded. */
+interface Segment {
+  replayStart: number;
+  replayLen: number;
+  realStart: number;
+  realLen: number;
+  skipped: boolean;
+}
+function timeMap(events: StudioEvent[]): { segments: Segment[]; duration: number } {
+  const segments: Segment[] = [];
+  let replay = 0;
+  for (let i = 1; i < events.length; i++) {
+    const a = Date.parse(events[i - 1]!.ts);
+    const b = Date.parse(events[i]!.ts);
+    const real = Math.max(0, b - a);
+    const skipped = real > GAP_MS;
+    const len = skipped ? GAP_PLAY_MS : real;
+    segments.push({ replayStart: replay, replayLen: len, realStart: a, realLen: real, skipped });
+    replay += len;
+  }
+  return { segments, duration: replay };
+}
+function toReal(map: { segments: Segment[] }, first: number, pos: number): { clock: number; skipping: Segment | null } {
+  for (const s of map.segments) {
+    if (pos <= s.replayStart + s.replayLen) {
+      const f = s.replayLen === 0 ? 1 : (pos - s.replayStart) / s.replayLen;
+      return { clock: s.realStart + f * s.realLen, skipping: s.skipped && f < 1 ? s : null };
+    }
+  }
+  const last = map.segments.at(-1);
+  return { clock: last ? last.realStart + last.realLen : first, skipping: null };
+}
 const fmt = (ms: number) => {
   const s = Math.max(0, Math.round(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -39,7 +73,9 @@ export function ReplayApp({ taskId }: { taskId: string }) {
       .catch((e: unknown) => setError((e as Error).message));
   }, [taskId]);
   const start = file?.events[0] ? Date.parse(file.events[0].ts) : 0;
-  const duration = file?.events.length ? Date.parse(file.events.at(-1)!.ts) - start : 0;
+  const map = useMemo(() => timeMap(file?.events ?? []), [file]);
+  const duration = map.duration;
+  const recorded = file?.events.length ? Date.parse(file.events.at(-1)!.ts) - start : 0;
   useEffect(() => {
     if (!playing || !file) return;
     const t = setInterval(() => setPos((p) => Math.min(duration, p + TICK_MS * speed)), TICK_MS);
@@ -48,7 +84,7 @@ export function ReplayApp({ taskId }: { taskId: string }) {
   useEffect(() => {
     if (pos >= duration && duration > 0) setPlaying(false);
   }, [pos, duration]);
-  const clock = start + pos;
+  const { clock, skipping } = toReal(map, start, pos);
   const events = useMemo(() => (file ? file.events.filter((e) => Date.parse(e.ts) <= clock) : []), [file, clock]);
   const state = useMemo(() => foldEvents(events), [events]);
   const decision = useMemo(() => deriveDecision(events), [events]);
@@ -72,8 +108,8 @@ export function ReplayApp({ taskId }: { taskId: string }) {
         <button type="button" onClick={() => (pos >= duration ? (setPos(0), setPlaying(true)) : setPlaying((p) => !p))}>{playing ? "❚❚ Pause" : pos >= duration ? "↺ Again" : "▶ Play"}</button>
         <label className="sr-only" htmlFor="replay-seek">Position</label>
         <input id="replay-seek" type="range" min={0} max={duration} step={1000} value={pos} onChange={(e) => setPos(Number(e.target.value))} />
-        <span className="mono small">
-          {fmt(pos)} / {fmt(duration)}
+        <span className="mono small" title={`recorded length ${fmt(recorded)}`}>
+          {fmt(clock - start)} / {fmt(recorded)}
         </span>
         <label className="sr-only" htmlFor="replay-speed">Speed</label>
         <select id="replay-speed" value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
@@ -83,7 +119,9 @@ export function ReplayApp({ taskId }: { taskId: string }) {
             </option>
           ))}
         </select>
-        <span className="muted small">Typing speed is simulated; the order and the times are as recorded.</span>
+        <span className="muted small">
+          {skipping ? <b>Skipping {Math.max(1, Math.round(skipping.realLen / 60_000))} min with no activity</b> : "Typing speed is simulated; idle stretches over 30 s are shortened; the order is as recorded."}
+        </span>
       </div>
       <Stepper state={state} unavailable={events.some((e) => e.type === "evidence_summary" && e.payload.experienceUnavailable) ? ["try"] : []} />
       <NowBar state={state} yourTurn={null} />
