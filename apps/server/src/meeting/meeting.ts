@@ -25,12 +25,13 @@ const EntrySchema = z.object({ id: z.string().max(20).optional(), path: z.string
 export const PositionSchema = z.object({
   quotes: capped(QuoteSchema, 8).default([]),
   proposals: capped(
-    z.object({ title: line(120), userChange: line(400), purpose: Purpose, quotes: z.array(z.number().int().positive()).default([]), stance: z.enum(["support", "conditional"]).default("support"), reason: line(400), conditions: z.string().max(300).optional() }),
+    z.object({ kind: z.enum(["improve", "new"]), title: line(120), userChange: line(400), purpose: Purpose, quotes: z.array(z.number().int().positive()).default([]), stance: z.enum(["support", "conditional"]).default("support"), reason: line(400), conditions: z.string().max(300).optional() }),
     2,
   ),
 });
 const ChangeIn = z.object({
   kind: z.enum(["add", "stance", "merge"]),
+  idea: z.enum(["improve", "new"]).optional(),
   proposal: z.string().max(200).optional(),
   stance: Stance.optional(),
   reason: z.string().max(400).optional(),
@@ -54,6 +55,7 @@ export const AskSchema = z.object({ question: line(300), options: capped(line(80
 const entryParams = obj({ id: opt(str()), path: opt(str()), line: opt(int()), snippet: opt(str()) });
 const changeParams = obj({
   kind: oneOf(["add", "stance", "merge"] as const),
+  idea: opt(oneOf(["improve", "new"] as const)),
   proposal: opt(str()),
   stance: opt(oneOf(["support", "against", "conditional"] as const)),
   reason: opt(str()),
@@ -195,17 +197,19 @@ export async function runMeeting(o: MeetingOptions): Promise<MeetingResult> {
       tools.push({
         name: "submit_position",
         label: "submit_position",
-        description: "Submit your position: quotes copied exactly from files, and up to 2 proposals that cite quotes by their number (1 = first quote).",
-        parameters: obj({ quotes: opt(arr(obj({ path: str(), line: opt(int()), snippet: str() }))), proposals: arr(obj({ title: str(), userChange: str(), purpose: oneOf(["A", "B", "unclear"] as const), quotes: opt(arr(int())), stance: opt(oneOf(["support", "conditional"] as const)), reason: str(), conditions: opt(str()) })) }),
+        description: "Submit your position: quotes copied exactly from files, and up to 2 proposals that cite quotes by their number (1 = first quote). At least one proposal must be kind new: a capability the software cannot offer today.",
+        parameters: obj({ quotes: opt(arr(obj({ path: str(), line: opt(int()), snippet: str() }))), proposals: arr(obj({ kind: oneOf(["improve", "new"] as const), title: str(), userChange: str(), purpose: oneOf(["A", "B", "unclear"] as const), quotes: opt(arr(int())), stance: opt(oneOf(["support", "conditional"] as const)), reason: str(), conditions: opt(str()) })) }),
         execute: async (_i, a: unknown) => {
           const p = PositionSchema.safeParse(a);
           if (!p.success) return text(`Not accepted: ${p.error.issues[0]?.path.join(".")} ${p.error.issues[0]?.message}. Submit again.`, true);
+          // R11.15: every perspective brings at least one new capability, not only improvements.
+          if (!p.data.proposals.some((x) => x.kind === "new")) return text("Not accepted: at least one proposal must be kind new, a capability the software cannot offer today that AI makes possible. Quote the gap (a stated limit or a missing step) and where it would attach. Submit again.", true);
           // Perspectives prepare at the same time: a proposal another one already added becomes a stance on it.
           const changes: Change[] = p.data.proposals.map((x) => {
             const evidence = x.quotes.flatMap((n) => (p.data.quotes[n - 1] ? [p.data.quotes[n - 1]!] : []));
             const cond = x.conditions ? { conditions: x.conditions } : {};
             const existing = board.find(x.title);
-            return existing ? { kind: "stance", proposal: existing.id, stance: x.stance, reason: x.reason, ...cond, evidence } : { kind: "add", title: x.title, userChange: x.userChange, purpose: x.purpose, stance: x.stance, reason: x.reason, ...cond, evidence };
+            return existing ? { kind: "stance", proposal: existing.id, stance: x.stance, reason: x.reason, ...cond, evidence } : { kind: "add", idea: x.kind, title: x.title, userChange: x.userChange, purpose: x.purpose, stance: x.stance, reason: x.reason, ...cond, evidence };
           });
           const res = board.apply(roleId, changes);
           if (res.lines.length === 0) return text(`Not accepted: ${res.errors.join("; ") || "no proposal"}. Submit again.`, true);
@@ -249,7 +253,7 @@ export async function runMeeting(o: MeetingOptions): Promise<MeetingResult> {
           for (const c of p.data.changes) {
             if (c.kind === "merge" && c.keep && c.drop) changes.push({ kind: "merge", keep: c.keep, drop: c.drop });
             else if (c.kind === "stance" && c.proposal && c.stance && c.reason) changes.push({ kind: "stance", proposal: c.proposal, stance: c.stance, reason: c.reason, ...(c.conditions ? { conditions: c.conditions } : {}), evidence: c.evidence });
-            else if (c.kind === "add" && c.title && c.userChange && c.purpose) changes.push({ kind: "add", title: c.title, userChange: c.userChange, purpose: c.purpose, evidence: c.evidence, ...(c.stance ? { stance: c.stance } : {}), ...(c.reason ? { reason: c.reason } : {}), ...(c.conditions ? { conditions: c.conditions } : {}) });
+            else if (c.kind === "add" && c.title && c.userChange && c.purpose) changes.push({ kind: "add", ...(c.idea ? { idea: c.idea } : {}), title: c.title, userChange: c.userChange, purpose: c.purpose, evidence: c.evidence, ...(c.stance ? { stance: c.stance } : {}), ...(c.reason ? { reason: c.reason } : {}), ...(c.conditions ? { conditions: c.conditions } : {}) });
             else errors.push(`a ${c.kind} change is missing fields`);
           }
           const res = board.apply(roleId, changes);
@@ -331,7 +335,7 @@ export async function runMeeting(o: MeetingOptions): Promise<MeetingResult> {
   if (o.signal.aborted) return { ok: false, reason: "stopped", stats };
   // 2. Opening: the Facilitator merges duplicates, frames the differences, usually asks the Judge one question.
   await deliver();
-  await statement("facilitator", "open", "Open the discussion: merge proposals that mean the same thing (merge), so that at most 4 remain, then tell the Judge in at most 100 words what is on the board and where the perspectives differ. Ask the Judge one question with ask_judge when the answer would change the direction. Then submit_turn.", 0);
+  await statement("facilitator", "open", "Open the discussion: merge proposals that mean the same thing (merge), so that at most 5 remain and both kinds (improvements and new capabilities) stay on the board, then tell the Judge in at most 100 words what is on the board and where the perspectives differ. Ask the Judge one question with ask_judge when the answer would change the direction. Then submit_turn.", 0);
   // 3. Discussion, driven by speaking signals; code picks the speaker and ends it.
   let sinceSteer = 0;
   while (!o.signal.aborted && !endRequested && discussed < maxStatements && !timeUp()) {

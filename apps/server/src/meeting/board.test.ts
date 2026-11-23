@@ -13,6 +13,7 @@ describe("Board", () => {
     const r = b.apply("user_value", [{ kind: "add", title: "Tag suggestions from page content", userChange: "New bookmarks get suggested tags.", purpose: "B", evidence: [quote], reason: "Users tag by hand today" }]);
     expect(r.errors).toEqual([]);
     expect(r.lines).toEqual(["Proposed “Tag suggestions from page content”"]);
+    expect(b.snapshot()[0]!.kind).toBe("improve"); // the default kind
     expect(r.added).toMatchObject([{ id: "E1", status: "passed", addedBy: "user_value" }]);
     const [p] = b.snapshot();
     expect(p).toMatchObject({ id: "P1", purpose: "B", evidenceStatus: "passed", stances: { user_value: { stance: "support", evidenceStatus: "passed" } } });
@@ -82,7 +83,7 @@ describe("Facilitator verdicts (R11.14)", () => {
 });
 
 describe("readability limits (R11.13)", () => {
-  it("cuts long reasons at a word boundary and caps the board at 5 proposals", () => {
+  it("cuts long reasons at a word boundary and caps the board at 6 proposals", () => {
     const b = new Board(files);
     const long = "word ".repeat(80).trim();
     const r = b.apply("risk", [{ kind: "add", title: "One", userChange: "x", purpose: "A", evidence: [], reason: long }]);
@@ -90,8 +91,8 @@ describe("readability limits (R11.13)", () => {
     expect(reason.length).toBeLessThanOrEqual(181);
     expect(reason.endsWith("word…")).toBe(true);
     expect(r.lines[0]).toBe("Proposed “One”");
-    for (const t of ["Two", "Three", "Four", "Five"]) b.apply("risk", [{ kind: "add", title: t, userChange: "x", purpose: "A", evidence: [] }]);
-    expect(b.apply("risk", [{ kind: "add", title: "Six", userChange: "x", purpose: "A", evidence: [] }]).errors[0]).toMatch(/already has 5 proposals/);
+    for (const t of ["Two", "Three", "Four", "Five", "Five b"]) b.apply("risk", [{ kind: "add", title: t, userChange: "x", purpose: "A", evidence: [] }]);
+    expect(b.apply("risk", [{ kind: "add", title: "Six", userChange: "x", purpose: "A", evidence: [] }]).errors[0]).toMatch(/already has 6 proposals/);
   });
   it("once every view exists, only a disagreement or an answer continues", () => {
     const none = { user_value: [], feasibility: [], risk: [] };

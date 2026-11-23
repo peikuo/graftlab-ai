@@ -36,6 +36,7 @@ interface VerdictRec {
 }
 interface ProposalRec {
   id: string;
+  kind: IdeaKind;
   title: string;
   userChange: string;
   purpose: Purpose;
@@ -45,7 +46,7 @@ interface ProposalRec {
   addedBy: RoleId;
 }
 export type Change =
-  | { kind: "add"; title: string; userChange: string; purpose: Purpose; evidence: EvidenceEntry[]; stance?: StanceKind; reason?: string; conditions?: string }
+  | { kind: "add"; idea?: IdeaKind; title: string; userChange: string; purpose: Purpose; evidence: EvidenceEntry[]; stance?: StanceKind; reason?: string; conditions?: string }
   | { kind: "stance"; proposal: string; stance: StanceKind; reason: string; conditions?: string; evidence: EvidenceEntry[] }
   | { kind: "merge"; keep: string; drop: string }
   | { kind: "decide"; proposal: string; verdict: VerdictKind; reason: string; rank?: number; conditions?: string[] };
@@ -60,7 +61,8 @@ export interface ApplyResult {
   added: PoolItem[];
 }
 
-export const MAX_PROPOSALS = 5;
+export const MAX_PROPOSALS = 6;
+export type IdeaKind = "improve" | "new";
 /** Reasons and conditions are cut by code so the board stays readable (R11.13); the cut is marked with "…". */
 export const short = (t: string, max: number) => {
   const s = stripIds(t).text.trim().replace(/\s+/g, " ");
@@ -136,11 +138,11 @@ export class Board {
         }
         const ids = this.#resolve(c.evidence, by, res.added, res.errors);
         ids.forEach((i) => used.add(i));
-        const p: ProposalRec = { id: `P${this.#nextP++}`, title: short(c.title, 100), userChange: short(c.userChange, 300), purpose: c.purpose, evidenceIds: ids, stances: {}, addedBy: by };
+        const p: ProposalRec = { id: `P${this.#nextP++}`, kind: c.idea ?? "improve", title: short(c.title, 100), userChange: short(c.userChange, 300), purpose: c.purpose, evidenceIds: ids, stances: {}, addedBy: by };
         const stance = c.stance ?? "support";
         p.stances[perspective] = { stance, reason: short(c.reason ?? c.userChange, REASON), ...(c.conditions ? { conditions: short(c.conditions, COND) } : {}), evidenceIds: ids };
         this.#proposals.push(p);
-        res.lines.push(`Proposed ${q(p.title)}${stance === "conditional" && c.conditions ? `, only if ${short(c.conditions, COND)}` : ""}`);
+        res.lines.push(`Proposed ${p.kind === "new" ? "a new capability, " : ""}${q(p.title)}${stance === "conditional" && c.conditions ? `, only if ${short(c.conditions, COND)}` : ""}`);
       } else if (c.kind === "stance") {
         if (!perspective) {
           res.errors.push("only a perspective can take a stance");
@@ -221,6 +223,7 @@ export class Board {
   snapshot(): Proposal[] {
     return this.#proposals.map((p) => ({
       id: p.id,
+      kind: p.kind,
       title: p.title,
       userChange: p.userChange,
       purpose: p.purpose,
@@ -246,7 +249,7 @@ export class Board {
     if (this.#proposals.length === 0) return "## Proposal_Board\n(empty)";
     const lines = ["## Proposal_Board"];
     for (const p of this.#proposals) {
-      lines.push(`${p.id} ${q(p.title)} [purpose ${p.purpose}] — for the user: ${p.userChange}${p.evidenceIds.length ? ` (evidence ${p.evidenceIds.join(", ")})` : ""}`);
+      lines.push(`${p.id} ${q(p.title)} [${p.kind === "new" ? "new capability" : "improvement"}, purpose ${p.purpose}] — for the user: ${p.userChange}${p.evidenceIds.length ? ` (evidence ${p.evidenceIds.join(", ")})` : ""}`);
       for (const r of PERSPECTIVES) {
         const s = p.stances[r];
         if (r === "user_value" && p.verdict) lines.push(`  Facilitator verdict: ${p.verdict.verdict}${p.verdict.rank ? ` #${p.verdict.rank}` : ""} — ${p.verdict.reason}`);

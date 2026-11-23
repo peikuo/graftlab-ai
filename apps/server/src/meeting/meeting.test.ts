@@ -13,7 +13,7 @@ type Call = { roleId: string; purpose: string; thinking?: string; systemPrompt: 
 type Script = (c: Call, tools: Tools) => Promise<string | void>;
 const call = async (tools: Tools, name: string, args: unknown) => ((await tools.get(name)!.execute("id", args as never, undefined as never, undefined as never)).content[0] as { text: string }).text;
 const quote = { path: "app/models.py", snippet: "url = models.URLField()" };
-const position = (title: string) => ({ quotes: [quote], proposals: [{ title, userChange: `With ${title} users save time.`, purpose: "B", quotes: [1], reason: "Users do this by hand" }] });
+const position = (title: string) => ({ quotes: [quote], proposals: [{ kind: "new", title, userChange: `With ${title} users save time.`, purpose: "B", quotes: [1], reason: "Users do this by hand" }] });
 
 /** Default team: each perspective proposes its own idea, then gives stances on the others when picked; nobody signals. */
 const team: Script = async (c, tools) => {
@@ -210,5 +210,21 @@ describe("runMeeting", () => {
     const discuss = calls.filter((c) => c.roleId !== "facilitator" && c.tools.includes("submit_turn")).length;
     expect(discuss).toBe(4); // the first steering turn comes after 4 statements and ends it
     expect(calls.at(-1)!.tools).toContain("submit_close");
+  });
+  it("a position without a new capability is refused; the board keeps the kind (R11.15)", async () => {
+    const outs: string[] = [];
+    const { o, events } = setup(async (c, tools) => {
+      if (c.roleId === "risk" && tools.has("submit_position") && outs.length === 0) {
+        outs.push(await call(tools, "submit_position", { quotes: [quote], proposals: [{ kind: "improve", title: "Better tags", userChange: "x", purpose: "B", quotes: [1], reason: "y" }] }));
+        outs.push(await call(tools, "submit_position", { quotes: [quote], proposals: [{ kind: "improve", title: "Better tags", userChange: "x", purpose: "B", quotes: [1], reason: "y" }, { kind: "new", title: "Ask your library", userChange: "z", purpose: "B", quotes: [1], reason: "w" }] }));
+        return "ok";
+      }
+      return team(c, tools);
+    });
+    await runMeeting(o);
+    expect(outs[0]).toMatch(/^Not accepted: at least one proposal must be kind new/);
+    expect(outs[1]).toMatch(/^Accepted/);
+    const kinds = Object.fromEntries(events.find((e) => e.type === "meeting_summary")!.payload.proposals.map((p: { title: string; kind: string }) => [p.title, p.kind]));
+    expect(kinds).toMatchObject({ "Better tags": "improve", "Ask your library": "new" });
   });
 });

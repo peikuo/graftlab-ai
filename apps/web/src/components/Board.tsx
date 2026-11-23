@@ -81,11 +81,20 @@ export function BoardView({ events }: { events: StudioEvent[] }) {
         {proposals.length} {proposals.length === 1 ? "proposal" : "proposals"}; {complete} with a view from all three perspectives.
         {final ? " You accept or reject each one in the next step." : ""}
       </p>
-      <ul className="clean proposals">
-        {sorted.map((p) => (
-          <ProposalCard key={p.id} p={p} />
-        ))}
-      </ul>
+      {(["new", "improve"] as const).map((kind) => {
+        const group = sorted.filter((p) => p.kind === kind);
+        if (group.length === 0) return null;
+        return (
+          <div key={kind}>
+            <h4>{kind === "new" ? "New with AI: what the software cannot do today" : "Better with AI: what the software already does"}</h4>
+            <ul className="clean proposals">
+              {group.map((p) => (
+                <ProposalCard key={p.id} p={p} />
+              ))}
+            </ul>
+          </div>
+        );
+      })}
       {open.length > 0 && (
         <>
           <h4>Open questions for you</h4>

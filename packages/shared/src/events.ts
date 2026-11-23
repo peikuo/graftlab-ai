@@ -78,6 +78,8 @@ export const StanceSchema = z.object({
 });
 export const ProposalSchema = z.object({
   id: z.string().min(1),
+  // R11.15: an improvement of what exists, or a new capability AI makes possible.
+  kind: z.enum(["improve", "new"]),
   title: z.string().min(1),
   userChange: z.string(),
   purpose: z.enum(["A", "B", "unclear"]),

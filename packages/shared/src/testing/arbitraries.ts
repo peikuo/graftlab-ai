@@ -45,6 +45,7 @@ const stance = fc.record({
 }, { requiredKeys: ["stance", "reason", "evidence", "evidenceStatus"] });
 const proposal = fc.record({
   id: idA,
+  kind: fc.constantFrom("improve" as const, "new" as const),
   title: ne,
   userChange: str,
   purpose: fc.constantFrom("A" as const, "B" as const, "unclear" as const),
