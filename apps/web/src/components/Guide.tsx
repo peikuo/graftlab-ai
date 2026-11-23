@@ -48,7 +48,11 @@ export function Stepper({ state, unavailable = [] }: { state: UiState; unavailab
   // While the Judge decides after a failure, the stepper stays on the step that failed.
   const cur = stepIndex(state.node === "failure_review" ? state.previousNode : state.node);
   // A step counts as done only when the Task was in one of its nodes (a failed Task ends in "Result" without them).
-  const visited = (i: number) => STEPS[i]!.nodes.some((n) => (state.visitedNodes as readonly string[]).includes(n));
+  const reached = (i: number) => STEPS[i]!.nodes.some((n) => (state.visitedNodes as readonly string[]).includes(n));
+  // The last step the Task worked in before it ended: reached, but not done unless the Task succeeded.
+  const lastWorked = state.terminal ? Math.max(-1, ...STEPS.map((_, i) => (i < STEPS.length - 1 && reached(i) ? i : -1))) : -1;
+  const stoppedHere = (i: number) => !!state.terminal && state.terminal !== "success" && i === lastWorked;
+  const visited = (i: number) => reached(i) && !stoppedHere(i);
   return (
     <nav className="stepper" aria-label="Progress">
       <ol>
@@ -57,7 +61,7 @@ export function Stepper({ state, unavailable = [] }: { state: UiState; unavailab
             <span className="num">{i < cur ? (unavailable.includes(s.id) ? "–" : visited(i) ? "✓" : i + 1) : i + 1}</span>
             {s.label}
             {i < cur && unavailable.includes(s.id) && <span className="step-note">unavailable</span>}
-            {i < cur && !unavailable.includes(s.id) && !visited(i) && <span className="step-note">not reached</span>}
+            {i < cur && !unavailable.includes(s.id) && !visited(i) && <span className="step-note">{stoppedHere(i) ? "stopped here" : "not reached"}</span>}
           </li>
         ))}
       </ol>
