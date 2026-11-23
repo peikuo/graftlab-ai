@@ -260,7 +260,7 @@ export const PAYLOADS = {
   plan_confirmed: z.object({ planId: id, decisionVersion: z.number().int().positive() }),
   plan_sent_back: z.object({ planId: id, reason: nonEmpty }),
   // One Agile_Docs or analyzed-repository document (R20.4: every one records its Decision_Doc version).
-  output_doc: z.object({ kind: z.enum(OUTPUT_DOC_KINDS), decisionVersion: z.number().int().positive(), content: z.unknown(), ref: nonEmpty }),
+  output_doc: z.object({ kind: z.enum(OUTPUT_DOC_KINDS), decisionVersion: z.number().int().positive(), content: z.unknown(), ref: nonEmpty, markdown: z.string() }),
   browser_action: z.object({ action: nonEmpty, target: z.string(), ok: z.boolean() }),
   browser_observation: z.object({ snapshotSummary: z.string(), screenshotRef: z.string().optional() }),
   code_change: z.object({

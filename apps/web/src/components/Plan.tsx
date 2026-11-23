@@ -1,5 +1,6 @@
 // The plan in feature words (R19.11) and the Output_Docs view (R4.1, R20.8, R20.10). Everything comes from
 // events: the plan from plan_proposed, the documents from output_doc. Assessments carry their LLM label.
+import { markdownToHtml } from "../markdown.ts";
 import { describeCheck, OUTPUT_DOC_TITLES, PlanSchema, storyEffort, type DesignDoc, type OutputDocKind, type Plan, type RequirementsDoc, type TaskBoard, type TasksDoc, type UiState } from "@graftlab/shared";
 
 export function parsePlan(content: unknown): Plan | null {
@@ -186,7 +187,7 @@ export function DocsList({ state }: { state: UiState }) {
               <span aria-hidden="true">📄</span> {OUTPUT_DOC_TITLES[d.kind as OutputDocKind]} <span className="muted small">· Decision v{d.decisionVersion}</span>
               {d.decisionVersion < current && <span className="badge amber">based on an older version</span>}
             </summary>
-            <DocBody kind={d.kind as OutputDocKind} content={d.content} />
+            {d.markdown ? <article className="md-doc" dangerouslySetInnerHTML={{ __html: markdownToHtml(d.markdown) }} /> : <DocBody kind={d.kind as OutputDocKind} content={d.content} />}
             <div className="mono muted small">{d.ref}</div>
           </details>
         </li>

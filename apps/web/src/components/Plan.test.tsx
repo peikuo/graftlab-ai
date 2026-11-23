@@ -27,12 +27,13 @@ describe("plan view", () => {
         { version: 2, hash: "b", frozen: true },
       ],
       outputDocs: {
-        product_backlog: { kind: "product_backlog", decisionVersion: 1, ref: "docs/PRODUCT_BACKLOG.md", content: (plan as { backlog: unknown }).backlog, seq: 1 },
-        definition_of_done: { kind: "definition_of_done", decisionVersion: 2, ref: "docs/DEFINITION_OF_DONE.md", content: { checklist: ["checks pass"] }, seq: 2 },
+        product_backlog: { kind: "product_backlog", decisionVersion: 1, ref: "docs/PRODUCT_BACKLOG.md", content: (plan as { backlog: unknown }).backlog, markdown: "# Product Backlog\n\n## S1 Tags\n- one", seq: 1 },
+        definition_of_done: { kind: "definition_of_done", decisionVersion: 2, ref: "docs/DEFINITION_OF_DONE.md", content: { checklist: ["checks pass"] }, markdown: "", seq: 2 },
       },
     };
     render(<DocsList state={state} />);
     expect(screen.getAllByText("based on an older version")).toHaveLength(1);
-    expect(screen.getByText("Product Backlog")).toBeTruthy();
+    expect(screen.getAllByText("Product Backlog").length).toBeGreaterThan(0);
+    expect(document.querySelector(".md-doc h2")?.textContent).toBe("S1 Tags");
   });
 });

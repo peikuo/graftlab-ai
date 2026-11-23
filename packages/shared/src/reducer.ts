@@ -81,7 +81,7 @@ export interface UiState {
   /** The latest plan (R19.11): its content as proposed, and whether the Judge confirmed or sent it back. */
   plan?: { planId: string; number: number; content: unknown; status: "proposed" | "confirmed" | "sent_back"; reason?: string; seq: number };
   /** The latest document of each kind (R20.4; older Decision_Doc versions are marked by the view, R20.10). */
-  outputDocs: Partial<Record<string, { kind: string; decisionVersion: number; ref: string; content: unknown; seq: number }>>;
+  outputDocs: Partial<Record<string, { kind: string; decisionVersion: number; ref: string; content: unknown; markdown: string; seq: number }>>;
 }
 
 export const initialUiState: UiState = {
@@ -374,7 +374,7 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
       if (state.plan?.planId === e.payload.planId) s.plan = { ...state.plan, status: "sent_back", reason: e.payload.reason };
       break;
     case "output_doc":
-      s.outputDocs = { ...state.outputDocs, [e.payload.kind]: { kind: e.payload.kind, decisionVersion: e.payload.decisionVersion, ref: e.payload.ref, content: e.payload.content, seq: e.seq } };
+      s.outputDocs = { ...state.outputDocs, [e.payload.kind]: { kind: e.payload.kind, decisionVersion: e.payload.decisionVersion, ref: e.payload.ref, content: e.payload.content, markdown: e.payload.markdown, seq: e.seq } };
       break;
     case "decision_doc_version":
       s.decisionDocs = [...state.decisionDocs, { version: e.payload.version, hash: e.payload.hash, frozen: false }];

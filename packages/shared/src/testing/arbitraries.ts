@@ -182,7 +182,7 @@ const P: { [K in EventType]: fc.Arbitrary<PayloadOf<K>> } = {
   plan_proposed: fc.record({ planId: idA, number: pos, content: fc.constant({}) }),
   plan_confirmed: fc.record({ planId: idA, decisionVersion: pos }),
   plan_sent_back: fc.record({ planId: idA, reason: ne }),
-  output_doc: fc.record({ kind: fc.constantFrom(...OUTPUT_DOC_KINDS), decisionVersion: pos, content: fc.constant({}), ref: ne }),
+  output_doc: fc.record({ kind: fc.constantFrom(...OUTPUT_DOC_KINDS), decisionVersion: pos, content: fc.constant({}), ref: ne, markdown: str }),
   browser_action: fc.record({ action: ne, target: str, ok: fc.boolean() }),
   browser_observation: fc.record({ snapshotSummary: str, screenshotRef: opt(str) }),
   code_change: fc.record({ storyId: idA, attempt: pos, changedFiles: fc.array(path, { maxLength: 4 }), diffRef: ne }),

@@ -426,7 +426,7 @@ export class TaskService {
     await writeFile(join(dir, file), markdown);
     await writeFile(join(dir, "json", `${kind}.json`), `${JSON.stringify(content, null, 2)}\n`);
     this.#plan.docs.set(kind, { version, file: join(dir, file) });
-    await ctx.emit({ type: "output_doc", actor: { kind: "system" }, payload: { kind, decisionVersion: version, content, ref: `docs/${file}` } });
+    await ctx.emit({ type: "output_doc", actor: { kind: "system" }, payload: { kind, decisionVersion: version, content, ref: `docs/${file}`, markdown } });
   }
 
   /** Planning (R19.1): Planner draft, Feasibility and Risk assessments, the Facilitator's final plan. */

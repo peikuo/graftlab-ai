@@ -414,3 +414,20 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .docs-list .doc-row summary { cursor: pointer; }
 .board-table { border-collapse: collapse; width: 100%; }
 .board-table td { padding: 4px 6px; border-bottom: 1px solid rgba(127, 127, 127, 0.25); }
+
+/* Output_Docs rendered from Markdown */
+.md-doc { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; margin: 8px 0; line-height: 1.55; font-size: 14px; }
+.md-doc h1 { font-size: 18px; margin: 0 0 6px; }
+.md-doc h1 + p { color: var(--muted); font-size: 12.5px; margin-top: 0; }
+.md-doc h2 { font-size: 15.5px; margin: 18px 0 6px; padding-top: 10px; border-top: 1px solid var(--border); }
+.md-doc h3 { font-size: 14px; margin: 14px 0 4px; }
+.md-doc p { margin: 6px 0; }
+.md-doc ul, .md-doc ol { margin: 4px 0 8px; padding-left: 22px; }
+.md-doc li { margin: 2px 0; }
+.md-doc li.task { list-style: none; margin-left: -18px; }
+.md-doc code { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; background: rgba(127, 127, 127, 0.14); padding: 1px 5px; border-radius: 4px; }
+.md-doc pre { overflow-x: auto; background: rgba(127, 127, 127, 0.1); padding: 10px; border-radius: 8px; }
+.md-doc blockquote { margin: 8px 0; padding: 6px 12px; border-left: 3px solid #d9a440; background: rgba(217, 164, 64, 0.1); border-radius: 4px; }
+.md-doc table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
+.md-doc th, .md-doc td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.md-doc th { color: var(--muted); font-weight: 600; }
