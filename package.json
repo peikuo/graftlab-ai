@@ -10,7 +10,8 @@
   "workspaces": [
     "packages/shared",
     "apps/server",
-    "apps/web"
+    "apps/web",
+    "docker/dev-sandbox/runner"
   ],
   "scripts": {
     "test": "vitest --run",

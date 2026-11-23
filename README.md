@@ -39,6 +39,9 @@ Direct dependencies so far (the full list, including the pi packages, Playwright
 | TypeScript | Apache-2.0 | Type checking |
 | tsx | MIT | Running the TypeScript backend |
 | pi-ai, pi-agent-core (@earendil-works) | MIT | Agent loop and LLM streaming in the backend |
+| pi-coding-agent (@earendil-works) | MIT | Code_Agent inside the Development_Sandbox (embedded by the runner) |
+| TypeBox (typebox) | MIT | Tool parameter schema of the runner's ask_question tool (pi's schema format) |
+| esbuild | MIT | Bundling the LLM_Proxy and the Code_Agent runner into one file each |
 | Playwright (@playwright/test) | Apache-2.0 | Browser checks and UI screenshots in development |
 | Testing Library (@testing-library/react, @testing-library/dom) | MIT | Workspace UI tests |
 | jsdom | MIT | DOM for UI tests |

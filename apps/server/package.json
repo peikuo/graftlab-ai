@@ -6,9 +6,11 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "start": "tsx src/main.ts"
+    "start": "tsx src/main.ts",
+    "build:proxy": "esbuild src/proxy/main.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/llm-proxy.mjs"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.15"
   },
   "dependencies": {

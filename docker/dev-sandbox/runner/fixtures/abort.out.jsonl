@@ -1,0 +1,8 @@
+{"type":"ready","model":"glm-5.3","tools":["read","bash","edit","write","ask_question"]}
+{"type":"message_start","messageId":"code-m1"}
+{"type":"message_end","messageId":"code-m1","text":"","finishReason":"toolUse","usage":{"inputTokens":1258,"outputTokens":28,"reasoningTokens":0,"cacheReadTokens":960}}
+{"type":"tool_start","callId":"call_2528aa1b0dcb4482907d0ff7","tool":"read","inputSummary":"{\"path\":\"/context/story.md\"}"}
+{"type":"tool_end","callId":"call_2528aa1b0dcb4482907d0ff7","tool":"read","ok":false,"outputSummary":"Operation aborted"}
+{"type":"message_start","messageId":"code-m2"}
+{"type":"message_incomplete","messageId":"code-m2","partialText":"","reason":"stopped"}
+{"type":"final","outcome":"aborted"}

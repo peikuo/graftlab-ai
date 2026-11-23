@@ -443,14 +443,17 @@ Conventions:
     - Lives in `adapters/linkding/`; in-memory linkding model with upsert by normalized URL that replaces title and tags, and generated auto-tag rules (reference-target-linkding.md, Write semantics for the comparator)
     - **Validates: Requirements 22.4, 22.5**
   - [ ] 10.5 Implement the LLM_Proxy
+    - Progress 2026-11-24 (Mac): `apps/server/src/proxy/{proxy,main,credential}.ts`, bundled with `npm run build:proxy -w apps/server` to `dist/llm-proxy.mjs`; accepts `/chat/completions` (POST) and `/models` (GET), with or without a `/v1` prefix; per-Task credential `glp_…` registered with the redactor as `proxy_credential`; tests cover 10.7 against a fake upstream; the Code_Agent runner ran through it against the real model. Open: running it in its container (10.3) and the port relay
     - `apps/server/src/proxy/` bundled to one file, run on the dev-sandbox image: per-Task bearer credential, allow-listed paths, real key swapped in, streaming passthrough, logs method, path and status only; credential registered with the redactor
     - Design: LLM_Proxy
     - _Requirements: 30.5, 30.16_
-  - [ ] 10.6 Implement the Worktree manager
+  - [x] 10.6 Implement the Worktree manager
+    - Done 2026-11-24: `apps/server/src/worktree/worktree.ts` (mirror, clone, branch, config, diff and snapshot with a temporary index, snapshot commits under `refs/graftlab/snapshots/`, Patch_Artifact); 7 tests on a local upstream
     - `apps/server/src/worktree/`: one bare mirror per Adapter (`data/mirror/<adapterId>.git`), `git clone --no-hardlinks`, branch `graftlab/<taskId>`, `core.fileMode=false` and `core.autocrlf=false` on every clone, snapshots, diff with a temporary index, Patch_Artifact; created only for Adapted_Repo when first needed; no linked git worktrees
     - Design: Worktree manager; reference-deployment.md (Docker Desktop facts)
     - _Requirements: 25.6, 38.1, 38.5, 38.6, 38.9_
-  - [ ]* 10.7 Write integration tests for the LLM_Proxy
+  - [x]* 10.7 Write integration tests for the LLM_Proxy
+    - Done 2026-11-24: `apps/server/src/proxy/proxy.test.ts` (fake upstream, streaming passthrough, log lines)
     - Wrong credential rejected; allowed path forwarded to a fake upstream with the real key; other paths refused
     - _Requirements: 30.16_
   - [ ] 10.8 Implement Sandbox start with test data and reset
@@ -473,6 +476,7 @@ Conventions:
     - _Requirements: 29.4, 38.2, 38.8_
 
   - [ ] 10.13 Write the Code_Agent runner (`docker/dev-sandbox/runner`) with the protocol, normalized events and unit tests with recorded event fixtures
+    - Progress 2026-11-24 (Mac): protocol and mapper in `packages/shared/src/runner.ts` (the mapper is not yet used by `PiRuntime`), runner workspace `docker/dev-sandbox/runner/` (`controller.ts`, `main.ts`, bundle `npm run build -w docker/dev-sandbox/runner`), rules in `runtime-rules/roles/code_agent.md` read from `/context/rules.md`; fixtures recorded on the Mac with the real model through the LLM_Proxy (fix completed in 43 s; ask: two `ask_question` calls answered in the same process; abort after the first tool call); 10 tests. Open: the runner inside the image (10.1, 10.14)
     - `docker/dev-sandbox/runner/`: embeds `createAgentSession()` with an allow-listed tool set, `SessionManager.inMemory()`, thinking level low, custom provider pointing at the LLM_Proxy; custom `ask_question` tool (zod-validated arguments `kind`, `text`, optional `options`; ends the turn); stdin commands `prompt`, `answer`, `steer`, `abort` validated by zod; stdout normalized JSON-line events using the shared pi event mapping module from 6.4; one long-lived process per story attempt; `dispose()` on exit; shape follows the 1.7 and 1.8 results (embedded runner by default, pi RPC mode if the spike says so)
     - Unit tests with vitest using the sanitized recorded event fixtures from 1.7 and 1.8: every fixture line maps to the expected `RuntimeEvent`, invalid commands are rejected, an `ask_question` call produces a `question` event and the turn ends, `answer` resumes
     - Design: PiCodeRuntime, Repository layout
