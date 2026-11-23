@@ -61,6 +61,26 @@ describe("pickNext (R11.1)", () => {
   });
 });
 
+describe("Facilitator verdicts (R11.14)", () => {
+  it("only the Facilitator decides; recommend needs a quote found in the code; text is cleaned of ids", () => {
+    const b = new Board(files);
+    b.apply("user_value", [{ kind: "add", title: "Tags", userChange: "x", purpose: "B", evidence: [quote] }]);
+    b.apply("risk", [{ kind: "add", title: "Bulk retag", userChange: "y", purpose: "A", evidence: [{ path: "app/models.py", snippet: "def retag_all(self):" }] }]);
+    expect(b.apply("risk", [{ kind: "decide", proposal: "P1", verdict: "recommend", reason: "x" }]).errors).toEqual(["only the Facilitator gives verdicts"]);
+    expect(b.apply("facilitator", [{ kind: "decide", proposal: "P2", verdict: "recommend", reason: "x" }]).errors[0]).toMatch(/cannot be recommended: no quote from the code/);
+    const r = b.apply("facilitator", [
+      { kind: "decide", proposal: "P1", verdict: "recommend", rank: 1, reason: "All support it (E1)", conditions: ["off by default [E1]"] },
+      { kind: "decide", proposal: "Bulk retag", verdict: "park", reason: "Depends on how much undo you want" },
+    ]);
+    expect(r.lines).toEqual(["Recommends “Tags” as number 1, only if off by default: All support it", "Leaves “Bulk retag” for you to decide: Depends on how much undo you want"]);
+    expect(b.snapshot()[0]!.verdict).toEqual({ verdict: "recommend", rank: 1, reason: "All support it", conditions: ["off by default"] });
+    expect(b.undecided()).toEqual([]);
+    b.apply("feasibility", [{ kind: "stance", proposal: "P1", stance: "against", reason: "changed (P2)", evidence: [] }]);
+    expect(b.undecided()).toEqual(["P1"]);
+    expect(b.snapshot()[0]!.stances.feasibility!.reason).toBe("changed");
+  });
+});
+
 describe("readability limits (R11.13)", () => {
   it("cuts long reasons at a word boundary and caps the board at 5 proposals", () => {
     const b = new Board(files);

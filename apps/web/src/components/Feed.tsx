@@ -60,6 +60,8 @@ function toRows(feed: FeedEntry[], events: StudioEvent[]): Row[] {
     // A failed browser step is followed by its failure event: show it once, as the failure.
     if (entry.type === "browser_action" && entry.failure && next?.type === "failure" && next.actor === entry.actor) continue;
     if (entry.type === "card_answered" || entry.type === "task_created") continue;
+    // Speaking signals are summed up in one line per round (signals_collected); their tool calls stay in Engineering_Details.
+    if (e?.type === "tool_started" && e.payload.tool === "submit_signal") continue;
     if (entry.actor === "reader" && e && e.node !== "reading" && !entry.failure) {
       if (!background) {
         background = { kind: "background", key: `bg${entry.seq}`, entries: [] };

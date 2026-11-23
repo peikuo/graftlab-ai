@@ -42,9 +42,13 @@ const ChangeIn = z.object({
   drop: z.string().max(200).optional(),
   evidence: capped(EntrySchema, 4).default([]),
 });
-export const TurnSchema = z.object({ respondsTo: z.enum(["facilitator", "user_value", "feasibility", "risk", "judge"]).optional(), changes: capped(ChangeIn, 4).default([]) });
+export const TurnSchema = z.object({ respondsTo: z.enum(["facilitator", "user_value", "feasibility", "risk", "judge"]).optional(), changes: capped(ChangeIn, 4).default([]), endDiscussion: z.boolean().optional() });
 export const SignalSchema = z.object({ speak: z.boolean(), kind: z.enum(["disagree", "answer", "add", "agree"]).optional(), about: z.string().max(200).optional(), intent: z.string().max(200).optional() });
-export const CloseSchema = z.object({ openQuestions: capped(line(300), 6).default([]) });
+export const CloseSchema = z.object({
+  merges: capped(z.object({ keep: line(200), drop: line(200) }), 6).default([]),
+  decisions: capped(z.object({ proposal: line(200), verdict: z.enum(["recommend", "drop", "park"]), reason: line(400), rank: z.number().int().positive().optional(), conditions: capped(line(200), 4).default([]) }), 8),
+  openQuestions: capped(line(300), 4).default([]),
+});
 export const AskSchema = z.object({ question: line(300), options: capped(line(80), 4).optional(), allowFreeText: z.boolean().optional() });
 
 const entryParams = obj({ id: opt(str()), path: opt(str()), line: opt(int()), snippet: opt(str()) });
@@ -115,6 +119,8 @@ export async function runMeeting(o: MeetingOptions): Promise<MeetingResult> {
   let turnNo = 0;
   let last: RoleId | null = null;
   let addressed: Perspective | null = null;
+  let endRequested = false;
+  let discussed = 0;
 
   const text = (t: string, isError = false) => ({ content: [{ type: "text" as const, text: t }], details: {}, ...(isError ? { isError: true } : {}) });
   const readTools = (budget: { left: number }): AgentTool<any>[] => {
@@ -211,13 +217,21 @@ export async function runMeeting(o: MeetingOptions): Promise<MeetingResult> {
       tools.push({
         name: "submit_close",
         label: "submit_close",
-        description: "Close the meeting: list the questions the Judge should still decide.",
-        parameters: obj({ openQuestions: opt(arr(str())) }),
+        description: "Close the meeting: merge remaining duplicates, give every proposal a verdict (recommend with rank and binding conditions, drop, or park for the Judge), and list only the questions only the Judge can answer.",
+        parameters: obj({ merges: opt(arr(obj({ keep: str(), drop: str() }))), decisions: arr(obj({ proposal: str(), verdict: oneOf(["recommend", "drop", "park"] as const), reason: str(), rank: opt(int()), conditions: opt(arr(str())) })), openQuestions: opt(arr(str())) }),
         execute: async (_i, a: unknown) => {
           const p = CloseSchema.safeParse(a ?? {});
-          if (!p.success) return text("Not accepted: openQuestions must be a list of short questions. Submit again.", true);
+          if (!p.success) return text(`Not accepted: ${p.error.issues[0]?.path.join(".")} ${p.error.issues[0]?.message}. Submit again.`, true);
+          const merged = board.apply(roleId, p.data.merges.map((m) => ({ kind: "merge" as const, keep: m.keep, drop: m.drop })));
+          const decided = board.apply(roleId, p.data.decisions.map((d) => ({ kind: "decide" as const, proposal: d.proposal, verdict: d.verdict, reason: d.reason, conditions: d.conditions, ...(d.rank ? { rank: d.rank } : {}) })));
+          const res = { lines: [...merged.lines, ...decided.lines], errors: [...merged.errors, ...decided.errors], evidence: [...merged.evidence, ...decided.evidence], added: [] };
+          const left = board.undecided();
+          if (left.length > 0) {
+            if (res.lines.length) await o.emit({ type: "board_updated", actor, payload: { proposals: board.snapshot() } });
+            return text(`Not accepted yet: ${[...res.errors, `no verdict yet for ${left.join(", ")}`].join("; ")}. Submit again with a verdict for each of them.`, true);
+          }
           openQuestions.push(...p.data.openQuestions);
-          await publish({ lines: [], errors: [], evidence: [], added: [] });
+          await publish(res);
           return { ...text("Accepted."), terminate: true };
         },
       });
@@ -226,7 +240,7 @@ export async function runMeeting(o: MeetingOptions): Promise<MeetingResult> {
         name: "submit_turn",
         label: "submit_turn",
         description: "Submit what your statement changes on the board: add a proposal, give or change a stance (perspectives), merge two proposals (Facilitator). Evidence: a pool id or a new quote.",
-        parameters: obj({ respondsTo: opt(oneOf(["facilitator", "user_value", "feasibility", "risk", "judge"] as const)), changes: opt(arr(changeParams)) }),
+        parameters: obj({ respondsTo: opt(oneOf(["facilitator", "user_value", "feasibility", "risk", "judge"] as const)), changes: opt(arr(changeParams)), ...(roleId === "facilitator" && phase === "steer" ? { endDiscussion: opt(bool()) } : {}) }),
         execute: async (_i, a: unknown) => {
           const p = TurnSchema.safeParse(a ?? {});
           if (!p.success) return text(`Not accepted: ${p.error.issues[0]?.path.join(".")} ${p.error.issues[0]?.message}. Submit again.`, true);
@@ -242,6 +256,11 @@ export async function runMeeting(o: MeetingOptions): Promise<MeetingResult> {
           res.errors.unshift(...errors);
           // A perspective's discussion turn must change the board; the Facilitator may only talk.
           if (roleId !== "facilitator" && res.lines.length === 0) return text(`Not accepted: ${res.errors.join("; ") || "no change"}. Every statement gives or changes at least one stance or adds a proposal. Submit again.`, true);
+          // R11.14: the Facilitator may end the discussion once at least one discussion statement was made.
+          if (roleId === "facilitator" && phase === "steer" && p.data.endDiscussion) {
+            if (discussed > 0) endRequested = true;
+            else res.errors.push("the discussion can end only after at least one statement");
+          }
           await publish(res, p.data.respondsTo);
           return { ...text(`Accepted.${res.errors.length ? ` Skipped: ${res.errors.join("; ")}.` : ""}`), terminate: true };
         },
@@ -315,8 +334,7 @@ export async function runMeeting(o: MeetingOptions): Promise<MeetingResult> {
   await statement("facilitator", "open", "Open the discussion: merge proposals that mean the same thing (merge), so that at most 4 remain, then tell the Judge in at most 100 words what is on the board and where the perspectives differ. Ask the Judge one question with ask_judge when the answer would change the direction. Then submit_turn.", 0);
   // 3. Discussion, driven by speaking signals; code picks the speaker and ends it.
   let sinceSteer = 0;
-  let discussed = 0;
-  while (!o.signal.aborted && discussed < maxStatements && !timeUp()) {
+  while (!o.signal.aborted && !endRequested && discussed < maxStatements && !timeUp()) {
     const heard = await deliver();
     const sig = await signals();
     if (o.signal.aborted) break;
@@ -334,16 +352,16 @@ export async function runMeeting(o: MeetingOptions): Promise<MeetingResult> {
     const ask = `Your statement now (at most 80 words, to the Judge and the others). ${want?.intent ? `You wanted to: ${want.intent}. ` : ""}${miss.length ? `The board still needs your stance on: ${miss.join(", ")}. ` : ""}Respond to one statement (respondsTo), cite evidence by pool id or a new quote, and submit_turn.`;
     await statement(pick.next, "discuss", ask, 2);
     discussed++;
-    if (++sinceSteer >= 4 && !board.complete()) {
+    if (++sinceSteer >= 4) {
       sinceSteer = 0;
       await deliver();
-      await statement("facilitator", "steer", "Steer in at most 60 words: sum up what changed and name what is still open. Merge duplicates if needed. Then submit_turn.", 0);
+      await statement("facilitator", "steer", "Steer in at most 60 words: sum up what changed and name what is still open. Merge duplicates if needed. If you have heard enough to decide, set endDiscussion. Then submit_turn.", 0);
     }
   }
   // 4. Close: open questions, unanswered cards closed; the summary is built by code from the board (R11.12).
   await deliver();
   await closeCards();
-  await statement("facilitator", "close", "Close the meeting in at most 100 words: where the perspectives agree, where they still differ, and what the Judge decides next. Then submit_close with the open questions.", 0);
+  await statement("facilitator", "close", "Close the meeting as its decider. In at most 120 words tell the Judge what you recommend and in which order, what you drop and why, and what only the Judge can decide. Then submit_close: merge any remaining duplicates, give every proposal a verdict (recommend with rank 1, 2, … and the conditions that bind it; drop; or park for the Judge), and list only the questions you cannot decide yourself.", 0);
   if (o.signal.aborted) return { ok: false, reason: "stopped", stats };
   const proposals = board.snapshot();
   if (proposals.length === 0) return { ok: false, reason: "the meeting ended without any proposal on the board", stats };

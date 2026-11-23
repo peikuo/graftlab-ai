@@ -51,6 +51,7 @@ const proposal = fc.record({
   evidence: fc.array(evidence, { maxLength: 2 }),
   evidenceStatus: fc.constantFrom("passed" as const, "unverified" as const),
   stances: fc.record({ user_value: stance, feasibility: stance, risk: stance }, { requiredKeys: [] }),
+  verdict: opt(fc.record({ verdict: fc.constantFrom("recommend" as const, "drop" as const, "park" as const), reason: ne, rank: opt(pos), conditions: fc.array(ne, { maxLength: 2 }) }, { requiredKeys: ["verdict", "reason", "conditions"] })),
   addedBy: ne,
 });
 const perspective = fc.constantFrom("user_value" as const, "feasibility" as const, "risk" as const);

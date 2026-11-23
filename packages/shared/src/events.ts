@@ -84,6 +84,8 @@ export const ProposalSchema = z.object({
   evidence: z.array(EvidenceRefSchema),
   evidenceStatus: z.enum(["passed", "unverified"]),
   stances: z.object({ user_value: StanceSchema.optional(), feasibility: StanceSchema.optional(), risk: StanceSchema.optional() }),
+  // R11.14: the Facilitator's verdict (an LLM judgment; the Judge decides in the decision step).
+  verdict: z.object({ verdict: z.enum(["recommend", "drop", "park"]), reason: z.string().min(1), rank: z.number().int().positive().optional(), conditions: z.array(z.string()) }).optional(),
   addedBy: z.string().min(1),
 });
 export type Proposal = z.infer<typeof ProposalSchema>;

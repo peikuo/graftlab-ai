@@ -379,3 +379,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .evidence-none { margin: 2px 0 0; }
 .board-change .changes { gap: 2px; }
 .board-change .changes li::before { content: "→ "; color: var(--muted); }
+.verdict { margin: 6px 0 4px; padding: 6px 8px; border-radius: 8px; background: var(--surface-2, #f1f5f4); }
+.verdict-conditions { margin-top: 4px; gap: 2px; }
+.proposal.v-recommend { border-color: var(--working); }
+.proposal.v-drop { opacity: 0.7; }

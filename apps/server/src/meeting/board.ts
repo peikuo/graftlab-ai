@@ -1,7 +1,7 @@
 // Proposal_Board and Evidence_Pool (design.md, "Meeting"; R11.11-R11.13, R24). Pure Studio code: every change a
 // role submits is validated here, quotes are checked by the evidence checker, and the plain-language lines the
 // Judge sees ("Against “Tag suggestions”: …") are written here, never by the model.
-import type { EvidenceRef, Proposal, RoleId } from "@graftlab/shared";
+import { stripIds, type EvidenceRef, type Proposal, type RoleId } from "@graftlab/shared";
 import { checkRef, normalize, type EvidenceFiles } from "../evidence/check.ts";
 
 export const PERSPECTIVES = ["user_value", "feasibility", "risk"] as const;
@@ -27,6 +27,13 @@ interface StanceRec {
   conditions?: string;
   evidenceIds: string[];
 }
+export type VerdictKind = "recommend" | "drop" | "park";
+interface VerdictRec {
+  verdict: VerdictKind;
+  reason: string;
+  rank?: number;
+  conditions: string[];
+}
 interface ProposalRec {
   id: string;
   title: string;
@@ -34,12 +41,14 @@ interface ProposalRec {
   purpose: Purpose;
   evidenceIds: string[];
   stances: Partial<Record<Perspective, StanceRec>>;
+  verdict?: VerdictRec;
   addedBy: RoleId;
 }
 export type Change =
   | { kind: "add"; title: string; userChange: string; purpose: Purpose; evidence: EvidenceEntry[]; stance?: StanceKind; reason?: string; conditions?: string }
   | { kind: "stance"; proposal: string; stance: StanceKind; reason: string; conditions?: string; evidence: EvidenceEntry[] }
-  | { kind: "merge"; keep: string; drop: string };
+  | { kind: "merge"; keep: string; drop: string }
+  | { kind: "decide"; proposal: string; verdict: VerdictKind; reason: string; rank?: number; conditions?: string[] };
 export interface ApplyResult {
   /** Plain-language lines for the Judge, one per accepted change. */
   lines: string[];
@@ -54,7 +63,7 @@ export interface ApplyResult {
 export const MAX_PROPOSALS = 5;
 /** Reasons and conditions are cut by code so the board stays readable (R11.13); the cut is marked with "…". */
 export const short = (t: string, max: number) => {
-  const s = t.trim().replace(/\s+/g, " ");
+  const s = stripIds(t).text.trim().replace(/\s+/g, " ");
   if (s.length <= max) return s;
   const cut = s.slice(0, max);
   return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), max - 20)).replace(/[,;:.\s]+$/, "")}…`;
@@ -127,7 +136,7 @@ export class Board {
         }
         const ids = this.#resolve(c.evidence, by, res.added, res.errors);
         ids.forEach((i) => used.add(i));
-        const p: ProposalRec = { id: `P${this.#nextP++}`, title: c.title.trim(), userChange: c.userChange.trim(), purpose: c.purpose, evidenceIds: ids, stances: {}, addedBy: by };
+        const p: ProposalRec = { id: `P${this.#nextP++}`, title: short(c.title, 100), userChange: short(c.userChange, 300), purpose: c.purpose, evidenceIds: ids, stances: {}, addedBy: by };
         const stance = c.stance ?? "support";
         p.stances[perspective] = { stance, reason: short(c.reason ?? c.userChange, REASON), ...(c.conditions ? { conditions: short(c.conditions, COND) } : {}), evidenceIds: ids };
         this.#proposals.push(p);
@@ -146,12 +155,32 @@ export class Board {
         ids.forEach((i) => used.add(i));
         const before = p.stances[perspective]?.stance;
         const reason = short(c.reason, REASON);
+        delete p.verdict; // a changed stance reopens the Facilitator's verdict
         const conditions = c.conditions ? short(c.conditions, COND) : undefined;
         p.stances[perspective] = { stance: c.stance, reason, ...(conditions ? { conditions } : {}), evidenceIds: ids };
         const verb = c.stance === "support" ? "Supports" : c.stance === "against" ? "Against" : "Supports";
         const cond = c.stance === "conditional" && conditions ? ` only if ${conditions}` : "";
         const changed = before && before !== c.stance ? " (changed its view)" : "";
         res.lines.push(`${verb} ${q(p.title)}${cond}${changed}: ${reason}`);
+      } else if (c.kind === "decide") {
+        if (by !== "facilitator") {
+          res.errors.push("only the Facilitator gives verdicts");
+          continue;
+        }
+        const p = this.find(c.proposal);
+        if (!p) {
+          res.errors.push(`no proposal ${q(c.proposal)} on the board`);
+          continue;
+        }
+        // R11.14, R24.5: a recommendation needs at least one quote that Studio code found in the files.
+        if (c.verdict === "recommend" && !this.#hasPassed(p)) {
+          res.errors.push(`${q(p.title)} cannot be recommended: no quote from the code was found for it; park it for the Judge or drop it`);
+          continue;
+        }
+        const conditions = (c.conditions ?? []).map((x) => short(x, COND)).filter(Boolean).slice(0, 4);
+        p.verdict = { verdict: c.verdict, reason: short(c.reason, REASON), ...(c.verdict === "recommend" && c.rank ? { rank: c.rank } : {}), conditions };
+        const what = c.verdict === "recommend" ? `Recommends ${q(p.title)}${c.rank ? ` as number ${c.rank}` : ""}` : c.verdict === "drop" ? `Drops ${q(p.title)}` : `Leaves ${q(p.title)} for you to decide`;
+        res.lines.push(`${what}${conditions.length ? `, only if ${conditions.join("; ")}` : ""}: ${p.verdict.reason}`);
       } else {
         if (by !== "facilitator") {
           res.errors.push("only the Facilitator can merge proposals");
@@ -172,6 +201,14 @@ export class Board {
     res.evidence = [...used].map((i) => this.#ref(i));
     return res;
   }
+  #hasPassed(p: ProposalRec): boolean {
+    const ids = [...p.evidenceIds, ...Object.values(p.stances).flatMap((s) => s.evidenceIds)];
+    return ids.some((i) => this.#pool.get(i)?.status === "passed");
+  }
+  /** Proposals without a verdict (the close is refused until there are none). */
+  undecided(): string[] {
+    return this.#proposals.filter((p) => !p.verdict).map((p) => p.id);
+  }
   #ref(id: string): EvidenceRef {
     const { addedBy: _by, ...ref } = this.#pool.get(id)!;
     return ref;
@@ -191,6 +228,7 @@ export class Board {
       stances: Object.fromEntries(
         Object.entries(p.stances).map(([r, s]) => [r, { stance: s.stance, reason: s.reason, ...(s.conditions ? { conditions: s.conditions } : {}), ...this.#refs(s.evidenceIds) }]),
       ),
+      ...(p.verdict ? { verdict: p.verdict } : {}),
       addedBy: p.addedBy,
     }));
   }
@@ -211,6 +249,7 @@ export class Board {
       lines.push(`${p.id} ${q(p.title)} [purpose ${p.purpose}] — for the user: ${p.userChange}${p.evidenceIds.length ? ` (evidence ${p.evidenceIds.join(", ")})` : ""}`);
       for (const r of PERSPECTIVES) {
         const s = p.stances[r];
+        if (r === "user_value" && p.verdict) lines.push(`  Facilitator verdict: ${p.verdict.verdict}${p.verdict.rank ? ` #${p.verdict.rank}` : ""} — ${p.verdict.reason}`);
         lines.push(`  ${PLAIN_ROLE[r]}: ${s ? `${s.stance}${s.conditions ? ` (only if ${s.conditions})` : ""} — ${s.reason}${s.evidenceIds.length ? ` (${s.evidenceIds.join(", ")})` : ""}` : "no stance yet"}`);
       }
     }

@@ -8,13 +8,31 @@ const PURPOSE: Record<string, string> = { A: "AI takes over a step people do now
 const STANCE: Record<string, { text: string; cls: string }> = { support: { text: "supports", cls: "green" }, against: { text: "against", cls: "red" }, conditional: { text: "only if", cls: "amber" } };
 const ROLES = ["user_value", "feasibility", "risk"] as const;
 
+const VERDICT: Record<string, { text: (rank?: number) => string; cls: string }> = {
+  recommend: { text: (rank) => (rank ? `Recommended · #${rank}` : "Recommended"), cls: "green" },
+  park: { text: () => "Left for you to decide", cls: "amber" },
+  drop: { text: () => "Dropped", cls: "slate" },
+};
 function ProposalCard({ p }: { p: Proposal }) {
+  const v = p.verdict;
   return (
-    <li className="proposal">
+    <li className={`proposal${v ? ` v-${v.verdict}` : ""}`}>
       <div className="proposal-head">
         <strong>{p.title}</strong>
         <span className="badge slate">{PURPOSE[p.purpose]}</span>
       </div>
+      {v && (
+        <div className="verdict">
+          <span className={`badge ${VERDICT[v.verdict]!.cls}`}>{VERDICT[v.verdict]!.text(v.rank)}</span> <span className="small">{v.reason}</span>
+          {v.conditions.length > 0 && (
+            <ul className="clean small verdict-conditions">
+              {v.conditions.map((c) => (
+                <li key={c}>Only if {c.charAt(0).toLowerCase() + c.slice(1).replace(/\.$/, "")}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       <p className="small">{p.userChange}</p>
       <ul className="clean stances">
         {ROLES.map((r) => {
@@ -51,16 +69,20 @@ export function BoardView({ events }: { events: StudioEvent[] }) {
   if (!proposals) return null;
   const open = final?.type === "meeting_summary" ? final.payload.openQuestions : [];
   const complete = proposals.filter((p) => ROLES.every((r) => p.stances[r])).length;
+  // After the close: recommended by rank, then the ones left for the Judge, then the dropped ones.
+  const order = (p: Proposal) => (p.verdict?.verdict === "recommend" ? (p.verdict.rank ?? 50) : p.verdict?.verdict === "park" ? 100 : p.verdict ? 200 : 150);
+  const sorted = [...proposals].sort((a, b) => order(a) - order(b));
   return (
     <div className="brief board">
       <h3>
-        {final ? "Meeting result" : "Proposals on the table"} <span className="badge slate">LLM judgment</span>
+        {final ? "Meeting result" : "Proposals on the table"} <span className="badge slate">{final ? "Facilitator's recommendation · LLM judgment" : "LLM judgment"}</span>
       </h3>
       <p className="muted small">
         {proposals.length} {proposals.length === 1 ? "proposal" : "proposals"}; {complete} with a view from all three perspectives.
+        {final ? " You accept or reject each one in the next step." : ""}
       </p>
       <ul className="clean proposals">
-        {proposals.map((p) => (
+        {sorted.map((p) => (
           <ProposalCard key={p.id} p={p} />
         ))}
       </ul>

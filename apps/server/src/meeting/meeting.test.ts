@@ -22,7 +22,11 @@ const team: Script = async (c, tools) => {
     return `My view as ${c.roleId} [E1].`;
   }
   if (tools.has("submit_signal")) return void (await call(tools, "submit_signal", { speak: false }));
-  if (tools.has("submit_close")) return void (await call(tools, "submit_close", { openQuestions: ["Which model provider?"] }));
+  if (tools.has("submit_close")) {
+    const ids = [...new Set([...c.prompt.matchAll(/^(P\d+) “/gm)].map((m) => m[1]!))];
+    await call(tools, "submit_close", { decisions: ids.map((id, i) => ({ proposal: id, verdict: "recommend", rank: i + 1, reason: "All three support it", conditions: i === 0 ? ["off by default"] : [] })), openQuestions: ["Which model provider?"] });
+    return "I recommend these.";
+  }
   if (c.roleId === "facilitator") return void (await call(tools, "submit_turn", {}));
   const missing = [...c.prompt.matchAll(/P\d+/g)].map((m) => m[0]);
   const need = /still needs your stance on: ([P\d, ]+)/.exec(c.prompt)?.[1]?.split(", ") ?? missing.slice(0, 1);
@@ -177,5 +181,34 @@ describe("runMeeting", () => {
       return team(c, tools);
     });
     expect(await runMeeting(o)).toMatchObject({ ok: false, reason: "the meeting ended without any proposal on the board" });
+  });
+  it("the Facilitator concludes: every proposal gets a verdict; the close is refused until then (R11.14)", async () => {
+    const outs: string[] = [];
+    const { o, events } = setup(async (c, tools) => {
+      if (tools.has("submit_close")) {
+        outs.push(await call(tools, "submit_close", { decisions: [{ proposal: "P1", verdict: "drop", reason: "Too risky" }] }));
+        return team(c, tools);
+      }
+      return team(c, tools);
+    });
+    const r = await runMeeting(o);
+    expect(outs[0]).toMatch(/^Not accepted yet: no verdict yet for P2, P3/);
+    expect(r.ok).toBe(true);
+    const ps = events.find((e) => e.type === "meeting_summary")!.payload.proposals;
+    expect(ps.find((p: { id: string }) => p.id === "P1").verdict).toMatchObject({ verdict: "recommend", rank: 1, conditions: ["off by default"] });
+    expect(ps.every((p: { verdict?: unknown }) => p.verdict)).toBe(true);
+    const close = events.findLast((e) => e.type === "statement_submitted" && e.payload.phase === "close")!.payload;
+    expect(close.changes[0]).toBe("Recommends “Idea of user_value” as number 1, only if off by default: All three support it");
+  });
+  it("the Facilitator can end the discussion in a steering turn after one statement", async () => {
+    const { o, calls } = setup(async (c, tools) => {
+      if (tools.has("submit_signal")) return void (await call(tools, "submit_signal", { speak: true, kind: "disagree" }));
+      if (c.roleId === "facilitator" && tools.has("submit_turn") && /Steer/.test(c.prompt)) return void (await call(tools, "submit_turn", { endDiscussion: true }));
+      return team(c, tools);
+    }, { maxStatements: 10 });
+    await runMeeting(o);
+    const discuss = calls.filter((c) => c.roleId !== "facilitator" && c.tools.includes("submit_turn")).length;
+    expect(discuss).toBe(4); // the first steering turn comes after 4 statements and ends it
+    expect(calls.at(-1)!.tools).toContain("submit_close");
   });
 });
