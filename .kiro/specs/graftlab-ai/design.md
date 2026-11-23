@@ -719,10 +719,10 @@ DeepSeek caches prompt prefixes on disk by default (api-docs.deepseek.com/guides
   | Speaking signals | off | only "do I want to speak" (measured 0.7 s) |
   | Decision draft | low | the structure of the options needs thought (measured: without thinking the options lost their variety) |
   | Decision assessments | off | the evidence is given; a judgment per option (measured 99 to 186 s to 12 to 20 s, similar content) |
-  | Planner plan draft | low | splits the chosen approach into stories with contracts |
+  | Planner plan draft | low | splits the chosen approach into stories with contracts (measured 2026-11-23 on the linkding Decision_Doc: low 280 s, 2 stories on the chosen approach; off 41 s, but 4 stories over the whole scope, one of them large) |
   | Plan assessments (Feasibility, Risk) | off | a judgment per story, as for the decision assessments |
   | Facilitator final plan | low | weighs the assessments and decides |
-  | Planner documents | low | reads the target's files for the run environment |
+  | Planner documents | off | reads the target's files for the run environment (measured 2026-11-23: low 307 s, off 86 s with the same files read and a correct start command) |
 
 - Our own cache is separate and deterministic: the Repo_Map and the Repo_Memo are cached per commit (R10.9), so a repeated Task makes no memo calls at all.
 

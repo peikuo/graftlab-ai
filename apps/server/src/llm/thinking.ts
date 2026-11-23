@@ -16,5 +16,5 @@ export const THINKING = {
   planDraft: "low",
   planAssessment: "off",
   planFinal: "low",
-  documents: "low",
+  documents: "off",
 } as const satisfies Record<string, Thinking>;

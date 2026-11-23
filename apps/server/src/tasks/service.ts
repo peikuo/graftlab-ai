@@ -533,6 +533,7 @@ export class TaskService {
       decisionMarkdown: frozen.markdown,
       plan: p,
       needsRunEnvironment: ctx.task.repoKind === "adapted" && p.backlog.stories.some((s) => s.featureContract.executionKind === "source_change"),
+      ...(ctx.task.adapterId ? { environmentNote: await this.#environmentNote(ctx.task.adapterId) } : {}),
       files: read.files,
       evidence: read.evidence,
       emit: ctx.emit,
@@ -553,6 +554,12 @@ export class TaskService {
     await this.#writeDoc(ctx, "task_board", "TASK_BOARD.md", renderTaskBoard(board), board, v);
     ctx.patch({ docsComplete: true });
     return "done";
+  }
+
+  /** The Run_Environment's facts for the Planner's run environment (design: Containers, Network policy). */
+  async #environmentNote(adapterId: string): Promise<string> {
+    const a = JSON.parse(await readFile(join(this.#o.adaptersDir ?? "adapters", adapterId, "adapter.json"), "utf8")) as { devSandbox?: { preinstalled?: string[] } };
+    return `The changed software runs in a container without internet access, so install steps that download packages fail; already installed: ${(a.devSandbox?.preinstalled ?? []).join(", ")}. The app must listen on 0.0.0.0, not 127.0.0.1, so the Studio can reach it.`;
   }
 
   async #checkHints(adapterId: string): Promise<string> {

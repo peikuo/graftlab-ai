@@ -28,7 +28,7 @@ export const StorySchema = z
     title: line(100),
     priority: z.number().int().min(1).max(9),
     userStory: line(400),
-    acceptanceCriteria: z.array(line(300)).min(1, "at least one acceptance criterion").max(6),
+    acceptanceCriteria: z.array(line(300)).min(1, "at least one acceptance criterion").max(10),
     demoPoint: z.object({ description: line(300) }).strict(),
     /** Decision_Doc sections the story uses, for example "workflow:w1", "scope", "approach". */
     references: z.array(line(80)).max(8),
@@ -137,10 +137,10 @@ export function buildPlan(input: unknown, decisionVersion: number): BuildPlanRes
       title: s.title,
       priority: s.priority,
       userStory: s.userStory,
-      acceptanceCriteria: s.acceptanceCriteria,
+      acceptanceCriteria: s.acceptanceCriteria.slice(0, 10),
       demoPoint: { description: s.demoPoint },
       references: s.references,
-      featureContract: { ...s.featureContract, budgets: { ...DEFAULT_BUDGETS }, derivedFromDecisionVersion: decisionVersion },
+      featureContract: { ...s.featureContract, shouldDo: s.featureContract.shouldDo.slice(0, 8), shouldNotDo: s.featureContract.shouldNotDo.slice(0, 8), budgets: { ...DEFAULT_BUDGETS }, derivedFromDecisionVersion: decisionVersion },
     };
     const r = StorySchema.safeParse(candidate);
     if (!r.success) {
@@ -180,7 +180,7 @@ export const RunEnvironmentSchema = z
     port: z.number().int().min(1).max(65535),
     healthPath: text.regex(/^\//),
     /** Quotes from the target's own files that the commands come from; checked by code. */
-    evidence: z.array(Quote.extend({ status: z.enum(["passed", "unverified"]).optional() })).max(6),
+    evidence: z.array(Quote.extend({ status: z.enum(["passed", "unverified"]).optional() })).max(10),
   })
   .strict();
 export type RunEnvironment = z.infer<typeof RunEnvironmentSchema>;

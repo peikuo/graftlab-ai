@@ -19,6 +19,9 @@ export interface DocumentsOptions {
   plan: Plan;
   /** Adapted_Repo with a source-change story: the design needs a run environment from the target's files. */
   needsRunEnvironment: boolean;
+  /** What the run environment offers (from the Adapter): preinstalled dependencies, no internet. */
+  environmentNote?: string;
+  thinking?: "off" | "low";
   files: Map<string, string>;
   evidence: EvidenceFiles;
   emit: Emit;
@@ -36,6 +39,8 @@ export function checkDocuments(a: unknown, o: Pick<DocumentsOptions, "plan" | "n
   const x = (a ?? {}) as { requirements?: Record<string, unknown>; design?: Record<string, unknown>; tasks?: Record<string, unknown> };
   const problems: string[] = [];
   const req = RequirementsDocSchema.safeParse({ ...x.requirements, decisionVersion: v });
+  const design0 = x.design as { runEnvironment?: { evidence?: unknown[] } } | undefined;
+  if (Array.isArray(design0?.runEnvironment?.evidence)) design0.runEnvironment.evidence = design0.runEnvironment.evidence.slice(0, 10);
   const des = DesignDocSchema.safeParse({ ...x.design, decisionVersion: v });
   const tas = TasksDocSchema.safeParse({ ...x.tasks, decisionVersion: v });
   for (const [name, r] of [["requirements", req], ["design", des], ["tasks", tas]] as const) if (!r.success) problems.push(`${name}: ${r.error.issues[0]?.path.join(".")} ${r.error.issues[0]?.message}`);
@@ -92,15 +97,18 @@ export async function runDocuments(o: DocumentsOptions): Promise<DocumentsResult
       },
     },
   ];
+  const runEnv = o.needsRunEnvironment
+    ? ` The design needs \`runEnvironment\`: read the software's own files (for example its Dockerfile, scripts, package.json, pyproject.toml, README) and give the build and start commands, the app port and the health path, each backed by quotes copied exactly from those files. Never guess a command.${o.environmentNote ? ` ${o.environmentNote}` : ""}`
+    : "";
   const ask = [
     `The Judge confirmed this plan:\n\n${renderPlanMarkdown(o.plan)}`,
-    `Write the requirements, design and tasks documents for it. Cover every story (by its id).${o.needsRunEnvironment ? " The design needs `runEnvironment`: read the software's own files (for example its Dockerfile, scripts, package.json, pyproject.toml, README) and give the build and start commands, the app port and the health path, each backed by quotes copied exactly from those files. Never guess a command." : ""} Then submit_documents. Tell the Judge in at most 80 words what the documents contain.`,
+    `Write the requirements, design and tasks documents for it. Cover every story (by its id).${runEnv} Then submit_documents. Tell the Judge in at most 80 words what the documents contain.`,
   ].join("\n\n---\n\n");
   const prompt = `# Frozen Decision_Doc (version ${o.plan.decisionVersion})\n\n${o.decisionMarkdown}\n\n---\n\n# Your role\n\n${roleText(o.rules, "planner")}\n\n---\n\n${ask}`;
-  const r = await o.runTurn({ roleId: "planner", purpose: "statement", systemPrompt: system, prompt, tools, signal: o.signal, idPrefix: `${o.idPrefix}-docs`, thinkingLevel: THINKING.documents });
+  const r = await o.runTurn({ roleId: "planner", purpose: "statement", systemPrompt: system, prompt, tools, signal: o.signal, idPrefix: `${o.idPrefix}-docs`, thinkingLevel: o.thinking ?? THINKING.documents });
   if (!docs && !o.signal.aborted && r.stopReason !== "error") {
     await o.emit({ type: "failure", actor: { kind: "role", roleId: "planner" }, payload: { failureClass: "llm_output_format_invalid", source: "llm", detail: `Planner ended the turn without valid documents (${r.error ?? (r.toolCalls === 0 ? "it answered without the submit tool" : "no valid submission")}); one retry` } });
-    await o.runTurn({ roleId: "planner", purpose: "statement", systemPrompt: system, prompt: `${prompt}\n\nYou ended your turn without a valid submit_documents. Call it now.`, tools, signal: o.signal, idPrefix: `${o.idPrefix}-docsr`, thinkingLevel: THINKING.documents });
+    await o.runTurn({ roleId: "planner", purpose: "statement", systemPrompt: system, prompt: `${prompt}\n\nYou ended your turn without a valid submit_documents. Call it now.`, tools, signal: o.signal, idPrefix: `${o.idPrefix}-docsr`, thinkingLevel: o.thinking ?? THINKING.documents });
   }
   const got = docs as { requirements: RequirementsDoc; design: DesignDoc; tasks: TasksDoc } | null;
   if (!got) return { ok: false, reason: o.signal.aborted ? "stopped" : "the Planner did not submit valid documents" };

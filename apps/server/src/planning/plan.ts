@@ -28,6 +28,8 @@ export interface PlanningOptions {
   runTurn: (o: Pick<TurnOptions, "roleId" | "purpose" | "systemPrompt" | "prompt" | "tools" | "signal" | "idPrefix" | "thinkingLevel">) => Promise<TurnResult>;
   signal: AbortSignal;
   idPrefix: string;
+  /** Thinking per step (defaults from the table in llm/thinking.ts); used to measure alternatives. */
+  thinking?: { draft?: "off" | "low"; assess?: "off" | "low"; final?: "off" | "low" };
 }
 type Built = Extract<ReturnType<typeof buildPlan>, { ok: true }>;
 export type PlanningResult = { ok: true; plan: Plan } | { ok: false; reason: string };
@@ -102,7 +104,7 @@ export async function runPlanning(o: PlanningOptions): Promise<PlanningResult> {
     },
   };
   const askDraft = "Write the plan from the Frozen Decision_Doc: the sprint goal, 1 to 4 stories (each with a Feature_Contract and exactly one demo point) and the Definition_of_Done. Then submit_plan. Tell the Judge in at most 80 words what the plan contains.";
-  if (!(await turn("planner", askDraft, [...readTools, draftTool], () => draft !== null, THINKING.planDraft))) return { ok: false, reason: o.signal.aborted ? "stopped" : "the Planner did not submit a valid plan" };
+  if (!(await turn("planner", askDraft, [...readTools, draftTool], () => draft !== null, o.thinking?.draft ?? THINKING.planDraft))) return { ok: false, reason: o.signal.aborted ? "stopped" : "the Planner did not submit a valid plan" };
   const d = draft as { input: unknown; built: Built } | null;
   if (!d) return { ok: false, reason: "no plan" };
 
@@ -128,7 +130,7 @@ export async function runPlanning(o: PlanningOptions): Promise<PlanningResult> {
   });
   const askAssess = (r: "feasibility" | "risk") =>
     `Assess every story of the Planner's plan from your viewpoint:\n${storiesText}\n\n${r === "feasibility" ? "For each: the effort (small, medium or large) in this code and your main concern in one sentence." : "For each: the main risk in one sentence and the condition that keeps it acceptable."} Then submit_plan_assessment. Tell the Judge in at most 60 words what matters most.`;
-  await Promise.all((["feasibility", "risk"] as const).map((r) => turn(r, askAssess(r), [assessTool(r)], () => parts[r].length > 0, THINKING.planAssessment)));
+  await Promise.all((["feasibility", "risk"] as const).map((r) => turn(r, askAssess(r), [assessTool(r)], () => parts[r].length > 0, o.thinking?.assess ?? THINKING.planAssessment)));
   if (o.signal.aborted) return { ok: false, reason: "stopped" };
 
   // (3) The Facilitator decides the final plan.
@@ -151,7 +153,7 @@ export async function runPlanning(o: PlanningOptions): Promise<PlanningResult> {
     .map((r) => `${NAME[r]}:\n${parts[r].length ? parts[r].map((x) => `- ${x.storyId}: ${r === "feasibility" ? `effort ${x.effort}; ${x.concerns ?? ""}` : `${x.risk}${x.conditions ? `; condition: ${x.conditions}` : ""}`}`).join("\n") : "- no assessment was submitted"}`)
     .join("\n\n");
   const askFinal = `You decide the final plan. The Planner's plan (JSON):\n${JSON.stringify(d.input)}\n\nThe assessments (LLM judgments):\n${assessed}\n\nKeep what is right; change, split, merge, drop or reorder stories where the assessments give a reason. A large story should become a smaller first version when that still meets the Decision_Doc. Keep story ids for stories you keep. Then submit_final_plan with a note on what you changed and why (or "no changes" and why). Tell the Judge in at most 80 words what you decided.`;
-  if (!(await turn("facilitator", askFinal, [finalTool], () => final !== null, THINKING.planFinal))) return { ok: false, reason: o.signal.aborted ? "stopped" : "the Facilitator did not submit a valid final plan" };
+  if (!(await turn("facilitator", askFinal, [finalTool], () => final !== null, o.thinking?.final ?? THINKING.planFinal))) return { ok: false, reason: o.signal.aborted ? "stopped" : "the Facilitator did not submit a valid final plan" };
   const f = final as { built: Built; note: string } | null;
   if (!f) return { ok: false, reason: "no final plan" };
   const plan = PlanSchema.safeParse({
