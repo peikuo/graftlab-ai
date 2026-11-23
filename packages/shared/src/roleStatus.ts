@@ -56,7 +56,8 @@ export function roleStatus(state: UiState, actor: ActorKey, now: number, recency
   }
 
   // 3. An open card opened by the role.
-  const card = Object.values(state.cards).find((c) => c.openedBy === actor && !c.answered);
+  // A non-blocking meeting question does not make the role wait; an expired card is closed.
+  const card = Object.values(state.cards).find((c) => c.openedBy === actor && !c.answered && !c.expired && c.blocking);
   if (card) return { kind: "waiting_for_user", text: "waiting for you", working: false };
 
   // 4-7. An open message.

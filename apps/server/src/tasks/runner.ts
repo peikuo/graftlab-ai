@@ -45,8 +45,20 @@ export interface NodeContext {
   fail(failureClass: FailureClass, source: PayloadOf<"failure">["source"], detail: string, actor?: Actor): Promise<void>;
   /** Opens a card and waits for the Judge's answer. */
   askJudge(card: Omit<PayloadOf<"card_opened">, "cardId">, actor?: Actor): Promise<JudgeAnswer>;
+  /**
+   * Opens a non-blocking card (R5.3, R11.4): returns at once. `answer` resolves when the Judge answers (after
+   * card_answered is recorded); `close()` closes an unanswered card with card_expired.
+   */
+  openCard(card: Omit<PayloadOf<"card_opened">, "cardId" | "blocking">, actor?: Actor): Promise<OpenCard>;
   /** Opens a card and waits at most `waitMs`; without an answer the card expires (card_expired) and null is returned (R5.3, R11.4). */
   askJudgeFor(card: Omit<PayloadOf<"card_opened">, "cardId">, waitMs: number, actor?: Actor): Promise<JudgeAnswer | null>;
+}
+
+export interface OpenCard {
+  cardId: string;
+  answer: Promise<JudgeAnswer>;
+  /** Closes the card unanswered (card_expired); no effect after an answer. */
+  close(): Promise<boolean>;
 }
 
 /** A node handler does the node's work and returns its validated outcome. */
@@ -171,6 +183,31 @@ export class TaskRunner {
         const a = await Promise.race([answered, aborted]);
         await self.#append({ type: "card_answered", node: self.#task.node, actor: { kind: "judge" }, payload: { cardId, ...(a.optionId ? { optionId: a.optionId } : {}), ...(a.text ? { text: a.text } : {}) } });
         return a;
+      },
+      openCard: async (card, actor = { kind: "role", roleId: "facilitator" }) => {
+        const cardId = `card-${++self.#cardSeq}`;
+        const openedAt = self.#clock.now();
+        let settled = false;
+        const answer = new Promise<JudgeAnswer>((resolve) =>
+          self.#cards.set(cardId, (a) => {
+            settled = true;
+            void self
+              .#append({ type: "card_answered", node: self.#task.node, actor: { kind: "judge" }, payload: { cardId, ...(a.optionId ? { optionId: a.optionId } : {}), ...(a.text ? { text: a.text } : {}) } })
+              .then(() => resolve(a));
+          }),
+        );
+        await self.#append({ type: "card_opened", node: self.#task.node, actor, payload: { cardId, ...card, blocking: false } });
+        return {
+          cardId,
+          answer,
+          close: async () => {
+            if (settled || !self.#cards.has(cardId)) return false;
+            self.#cards.delete(cardId);
+            settled = true;
+            await self.#append({ type: "card_expired", node: self.#task.node, actor: SYSTEM, payload: { cardId, waitedS: Math.round((self.#clock.now() - openedAt) / 1000) } });
+            return true;
+          },
+        };
       },
       askJudgeFor: async (card, waitMs, actor = { kind: "role", roleId: "facilitator" }) => {
         const cardId = `card-${++self.#cardSeq}`;

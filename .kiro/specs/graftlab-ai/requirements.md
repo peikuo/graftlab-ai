@@ -103,6 +103,8 @@ Moved to `reference-target-linkding.md`, section "Verified linkding facts" (incl
 - **Agent_Role**: An AI agent inside the Studio, defined by the function it performs in one flow step, not by a human job title (decided by the user, 2026-11-22). Function agents: Reader, Explorer, Facilitator, Planner, Reviewer; the Code_Agent is the development agent. Meeting_Perspectives take part only in the meeting. See "Roles and Queue Rules".
 - **Repo_Memo**: The summaries of a downloaded repository: the Repo_Brief (one generic description of the whole repository, written before the meeting from the README, the docs and a planned set of files) and the Repo_Index (file memos and directory memos, built in the background). Tests, vendored and generated files get only a code-built map entry. Agents start from the brief, then open only the files they need. An LLM description, not evidence.
 - **Repo_Brief**: The part of the Repo_Memo that the meeting waits for; see Requirement 10.7 and 10.11.
+- **Proposal_Board**: The shared state of the meeting: the proposed AI changes, each with what changes for the user, a purpose tag, evidence, and one stance per Meeting_Perspective; see Requirement 11.11.
+- **Evidence_Pool**: The quotes checked by Studio code during the meeting, each with an internal id that agents use to cite it; the ids are never shown to the Judge (Requirement 11.13).
 - **Repo_Index**: The background part of the Repo_Memo; see Requirement 10.12.
 - **Meeting_Perspective**: An Agent_Role that only speaks in the meeting and argues from one fixed viewpoint, so that the Judge sees real disagreement: User_Value (what the user gains, purpose A or B), Feasibility (interfaces, data, effort, how it can be built) and Risk (what can go wrong; safety rules are still enforced by Studio code).
 - **Reviewer**: The Agent_Role that, in the development stage, reviews the files changed by the Code_Agent against the Feature_Contract and the Decision_Doc and answers technical questions of the Code_Agent; for stories whose confirmed approach executes the workflow by operating linkding through its API, it designs the Demo_Case. Its verdicts and Demo_Cases are LLM judgments (assessments, not guarantees) and are never success.
@@ -456,7 +458,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 
 1. WHILE a Task is running, THE Interjection_Input SHALL be available at all times.
 2. WHERE the Judge selects a specific Agent_Role as addressee, THE Studio SHALL deliver the message to that role as the primary recipient.
-3. WHEN an Agent_Role asks the Judge a question, THE Workspace SHALL display an inline question card with predefined options and a free-text field.
+3. WHEN an Agent_Role asks the Judge a question, THE Workspace SHALL display an inline question card with predefined options and a free-text field. A meeting question does not block the meeting (Requirement 11.4); a card still open when the meeting ends is closed as unanswered and listed as an open question.
 4. WHEN a decision, a confirmation or a Checkpoint_Demo needs the Judge, THE Workspace SHALL display an inline confirm/reject card worded in feature terms (feature name, what it does, the demo), without file names, paths or diffs.
 5. WHEN a Code_Agent question or a Reviewer escalation about a feature or requirement needs the Judge, THE Workspace SHALL display it as a question card phrased in feature terms.
 6. WHEN the Judge answers a card, THE Studio SHALL record the answer in the Event_Stream and deliver it to the asking role.
@@ -549,16 +551,19 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 
 #### Acceptance Criteria
 
-1. WHEN evidence gathering finishes (reading, and for an Adapted_Repo the Sandbox start and the Browser_Use experience or their recorded failure, or the Judge ends gathering early), THE Studio SHALL start the meeting, led by the Facilitator, and give a turn to each of the three Meeting_Perspectives User_Value, Feasibility and Risk.
+1. WHEN evidence gathering finishes (reading, and for an Adapted_Repo the Sandbox start and the Browser_Use experience or their recorded failure, or the Judge ends gathering early), THE Studio SHALL start the meeting, led by the Facilitator: first the three Meeting_Perspectives User_Value, Feasibility and Risk prepare their positions at the same time, then they discuss, where after each statement or Judge message every perspective signals whether it wants to speak and to whom it responds, and Studio code picks the next speaker by fixed rules (revised with the user 2026-11-24: a fixed turn order is not a discussion).
 2. IF an Agent_Role does not produce a schema-valid statement in its turn, THEN THE Studio SHALL record that role's turn as failed (Requirement 23) and SHALL NOT present the role as having contributed.
 3. THE Studio SHALL display each statement with the speaking Agent_Role name.
-4. THE Meeting_Perspectives SHOULD discuss the repository from their own viewpoint and SHOULD state disagreements openly, and the Facilitator SHOULD ask the Judge at least one question before presenting a conclusion (best effort, measured, not guaranteed; Process Principle 5).
+4. THE Meeting_Perspectives SHOULD discuss the repository from their own viewpoint, SHOULD respond to each other and SHOULD state disagreements openly, and the Facilitator SHOULD ask the Judge at least one question before presenting a conclusion (best effort, measured, not guaranteed; Process Principle 5). A question does not stop the meeting: the discussion continues and the answer is delivered when it arrives.
 5. THE Studio SHALL require each conclusion to carry an evidence reference (source file path, and the line number where available) in the stage output schema and SHALL validate the reference as in Requirement 24.
 6. IF a conclusion lacks an evidence reference or its evidence fails validation, THEN THE Studio SHALL mark it Unverified.
 7. THE Studio SHALL require each analyzed workflow to carry a purpose A or purpose B tag in the stage output schema; which tag the Agent_Roles choose is best effort and is confirmed by the Judge in the Decision_Doc.
 8. THE Studio SHALL record each statement and each Judge answer into the Event_Stream.
 9. WHEN the meeting starts, THE Studio SHALL first present a summary of the gathered evidence, labeled partial when the Judge ended gathering early and labeled "experience unavailable" when the Sandbox start or the Browser_Use experience failed.
 10. WHEN the meeting starts, THE Studio SHALL deliver to the Agent_Roles the Judge messages received during evidence gathering.
+11. THE meeting SHALL work on a shared Proposal_Board: each proposal has a name, what changes for the user, a purpose tag, its evidence, and one stance per Meeting_Perspective (supports, against, or only under conditions, with a reason). Statements change the board; Studio code validates every change and keeps the board.
+12. THE Studio SHALL end the discussion when every proposal has a stance from every Meeting_Perspective and no perspective wants to speak, or at the statement or time limit, or when the Judge ends it; the meeting summary SHALL be built by Studio code from the board, the open questions and the unanswered cards.
+13. THE Workspace SHALL show the meeting in plain language: statements are written for the Judge without evidence numbers, file paths or tool syntax; evidence is shown as the quoted lines with their file and check mark behind a "why we think so" fold; evidence numbers, tool arguments and speaking signals in raw form appear only in Engineering_Details.
 
 ### Requirement 12: User interjects at any time
 

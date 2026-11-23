@@ -2,7 +2,7 @@
 // The UI state is a pure function of the event list. Live, reconnect and Replay all fold through reduce(),
 // which ignores events at or below the last applied seq, so duplicates and resends are harmless.
 // roleStatus() (R2) is added with the Workspace milestone; this state keeps the facts it needs.
-import type { Actor, FailureClass, RoleId, StudioEvent } from "./events.ts";
+import type { Actor, FailureClass, PayloadOf, RoleId, StudioEvent } from "./events.ts";
 import type { NodeId, TerminalId } from "./flow/ids.ts";
 
 export type ActorKey = "judge" | "system" | "verifier" | "code_agent" | RoleId;
@@ -46,6 +46,8 @@ export interface CardState {
   answered: boolean;
   /** No answer within the wait (card_expired); the meeting continued. */
   expired?: boolean;
+  /** false for a meeting question: the asking role keeps working (R5.3). */
+  blocking: boolean;
 }
 
 export interface UiState {
@@ -62,6 +64,8 @@ export interface UiState {
   lastEventByActor: Partial<Record<ActorKey, { seq: number; ts: string; type: StudioEvent["type"] }>>;
   openTools: Record<string, { actor: ActorKey; tool: string; ts: string }>;
   decisionDocs: { version: number; hash: string; frozen: boolean }[];
+  /** Each perspective's signal in the latest speaking round (R11.1); absent for the role that just spoke. */
+  signals: Partial<Record<ActorKey, { speak: boolean; kind?: string; intent?: string; seq: number }>>;
   questions: Record<string, { questionId: string; from: ActorKey; askedParty: "reviewer" | "judge"; ts: string; answered: boolean }>;
   /** Latest failure and latest other event per actor, for the "blocked" Role_Status rule. */
   lastFailureByActor: Partial<Record<ActorKey, { seq: number; ts: string; detail: string }>>;
@@ -86,6 +90,7 @@ export const initialUiState: UiState = {
   lastEventByActor: {},
   openTools: {},
   decisionDocs: [],
+  signals: {},
   questions: {},
   lastFailureByActor: {},
   lastOtherByActor: {},
@@ -100,10 +105,18 @@ export const initialUiState: UiState = {
 export const ALWAYS_NARRATED: ReadonlySet<StudioEvent["type"]> = new Set([
   "task_created", "node_entered", "transition_rejected", "file_read", "finding_recorded", "message_completed",
   "message_incomplete", "tool_started", "judge_message", "card_opened", "card_answered", "decision_doc_frozen",
-  "decision_item_reviewed", "browser_action", "code_change", "memo_written", "reading_planned", "repo_brief", "index_progress", "card_expired", "statement_submitted", "meeting_summary", "review_verdict", "question_opened", "question_answered",
+  "decision_item_reviewed", "browser_action", "code_change", "memo_written", "reading_planned", "repo_brief", "index_progress", "card_expired", "statement_submitted", "signals_collected", "meeting_summary", "review_verdict", "question_opened", "question_answered",
   "verifier_result", "failure", "terminal_reached",
 ]);
 
+const ROLE_PLAIN: Record<string, string> = { facilitator: "Facilitator", user_value: "User_Value", feasibility: "Feasibility", risk: "Risk", judge: "you" };
+const KIND_PLAIN: Record<string, string> = { disagree: "wants to disagree", answer: "wants to answer", add: "wants to add something", agree: "wants to agree" };
+/** One speaking round in plain words (R11.13): who wants to speak and why, and who speaks next. */
+export function signalsText(p: PayloadOf<"signals_collected">): string {
+  const wanting = p.signals.filter((s) => s.speak).map((s) => `${ROLE_PLAIN[s.roleId]} ${KIND_PLAIN[s.kind ?? "add"]}`);
+  const head = wanting.length ? wanting.join(", ") : "Nobody asked to speak";
+  return p.next ? `${head}. ${ROLE_PLAIN[p.next]} speaks next${p.reason ? ` (${p.reason})` : ""}.` : `${head}. ${p.reason}`;
+}
 /** The Reader's submit tools in plain words (their arguments stay in Engineering_Details). */
 const SUBMIT_PLAIN: Record<string, string> = {
   submit_reading_plan: "Submitted the reading plan",
@@ -112,6 +125,10 @@ const SUBMIT_PLAIN: Record<string, string> = {
   submit_directory_memo: "Submitted a folder summary",
   submit_statement: "Submitted the statement",
   submit_meeting_summary: "Submitted the meeting summary",
+  submit_position: "Submitted the position",
+  submit_turn: "Changed the proposal board",
+  submit_signal: "Said whether it wants to speak",
+  submit_close: "Closed the meeting",
   ask_judge: "Asked you a question",
 };
 function refOf(e: StudioEvent): string | undefined {
@@ -144,15 +161,17 @@ export function narrate(e: StudioEvent): { text: string; path?: string; failure?
       return path === undefined ? { text: e.payload.text } : { text: e.payload.text, path };
     }
     case "card_expired":
-      return { text: `No answer within ${e.payload.waitedS} s; the meeting continued without it` };
+      return { text: `The question was closed without an answer after ${e.payload.waitedS} s; it is listed as an open question` };
     case "statement_submitted":
-      return { text: e.payload.summary };
+      return { text: e.payload.changes.length ? e.payload.changes.join(" · ") : "Spoke without changing the proposals" };
+    case "signals_collected":
+      return { text: signalsText(e.payload) };
     case "meeting_summary":
-      return { text: `Meeting summary: ${e.payload.findings.length} findings, ${e.payload.workflows.length} workflows, ${e.payload.openQuestions.length} open questions` };
+      return { text: `Meeting summary: ${e.payload.proposals.length} proposals, ${e.payload.openQuestions.length} open questions` };
     case "repo_brief":
       return { text: e.payload.fromCache ? "Repo brief loaded from the cache (same commit)" : "Wrote the repo brief" };
     case "index_progress":
-      return { text: e.payload.state === "started" ? `Background index started: ${e.payload.total} files` : e.payload.state === "finished" ? `Background index finished: ${e.payload.done} of ${e.payload.total} files` : `Background index stopped at ${e.payload.done} of ${e.payload.total} files` };
+      return { text: e.payload.state === "started" ? `Background index started: ${e.payload.total} files` : e.payload.state === "finished" ? `Background index finished: ${e.payload.done} of ${e.payload.total} files` : e.payload.state === "paused" ? `Background index paused for the meeting at ${e.payload.done} of ${e.payload.total}` : `Background index stopped at ${e.payload.done} of ${e.payload.total} files` };
     case "reading_planned":
       return { text: `Planned to read ${e.payload.files.length} files${e.payload.byCode ? " (plan by code)" : ""}` };
     case "memo_written": {
@@ -172,7 +191,7 @@ export function narrate(e: StudioEvent): { text: string; path?: string; failure?
         ? { text: `The submission was not accepted (${e.payload.outputSummary.replace(/\s*Submit again\.?$/, "").replace(/^Not accepted:\s*/, "").replace(/\.$/, "")}); it is corrected and sent again`, failure: true }
         : { text: `${e.payload.tool} failed: ${e.payload.outputSummary}`, failure: true };
     case "judge_message":
-      return { text: e.payload.status === "queued" ? `${e.payload.text} (queued until the meeting starts)` : e.payload.text };
+      return { text: e.payload.status === "queued" && e.node !== "meeting" ? `${e.payload.text} (queued until the meeting starts)` : e.payload.text };
     case "card_opened":
       return { text: e.payload.title };
     case "card_answered":
@@ -306,7 +325,7 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
     case "card_opened":
       s.cards = {
         ...state.cards,
-        [e.payload.cardId]: { cardId: e.payload.cardId, kind: e.payload.kind, title: e.payload.title, openedBy: actor, openedSeq: e.seq, answered: false },
+        [e.payload.cardId]: { cardId: e.payload.cardId, kind: e.payload.kind, title: e.payload.title, openedBy: actor, openedSeq: e.seq, answered: false, blocking: e.payload.blocking !== false },
       };
       break;
     case "card_answered": {
@@ -314,6 +333,9 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
       if (c) s.cards = { ...state.cards, [c.cardId]: { ...c, answered: true } };
       break;
     }
+    case "signals_collected":
+      s.signals = Object.fromEntries(e.payload.signals.map((x) => [x.roleId, { speak: x.speak, ...(x.kind ? { kind: x.kind } : {}), ...(x.intent ? { intent: x.intent } : {}), seq: e.seq }]));
+      break;
     case "card_expired": {
       const c = state.cards[e.payload.cardId];
       if (c) s.cards = { ...state.cards, [c.cardId]: { ...c, expired: true } };

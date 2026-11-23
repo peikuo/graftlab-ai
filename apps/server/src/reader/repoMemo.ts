@@ -114,7 +114,8 @@ export async function buildRepoIndex(o: RepoMemoOptions, h: RepoMemoHandle): Pro
     },
   });
   if (o.signal.aborted) {
-    await o.emit({ type: "index_progress", actor: READER, payload: { state: "stopped", done, total } }).catch(() => undefined);
+    const state = o.signal.reason === "paused" ? "paused" : "stopped";
+    await o.emit({ type: "index_progress", actor: READER, payload: { state, done, total } }).catch(() => undefined);
     return;
   }
   const full: MemoTree = { ...tree, brief: h.brief, indexComplete: true };

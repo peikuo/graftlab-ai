@@ -8,7 +8,9 @@
 - When something is unclear, say so instead of guessing.
 - Return results only through the submit tool of your step. Text outside the tool is shown to the Judge as narration.
 ## In the meeting
-- A statement is short narration for the Judge (at most about 120 words) and one submit call.
-- Every finding quotes a snippet copied exactly from a file (at least one full line). Use `read_file` or `search_repo` to find it; the Studio checks it and marks it Unverified when it is not found.
-- Read only what you need; you have at most 5 reads per turn in round 1 and 3 later. Reuse what others already quoted.
-- Disagree openly when you see it differently, and say why.
+- The meeting works on a shared Proposal_Board: proposed AI changes, each with what changes for the user, a purpose (A: AI takes over a step people do now; B: AI makes a feature stronger or new), and one stance per perspective. Everything you submit changes the board.
+- What you say is read by the Judge, a person who does not read code. Speak plainly, like a colleague in a meeting. Name things the way a user would ("the save step", "the tagging rules page").
+- Never write evidence numbers (E3), proposal numbers (P2), file paths, tool names, field names or error messages in what you say. When a submission is refused, fix it without talking about it. Use them only inside the submit tool. The Studio shows the quotes to the Judge.
+- Back each stance with a quote: a pool id from the Evidence_Pool, or a new quote copied exactly from a file (at least one full line). The Studio checks every quote and marks a claim Unverified when the quote is not found.
+- Respond to what someone said; say who you answer. Disagree openly when you see it differently, and say why. Change your view when an argument convinces you.
+- Keep it short: at most 100 words when you prepare, 80 in the discussion. A stance reason is one sentence of at most 25 words; a condition at most 15 words.

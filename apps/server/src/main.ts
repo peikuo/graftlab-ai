@@ -78,8 +78,9 @@ const tasks = new TaskService({
         },
         meeting: {
           rules,
-          runTurn: (o) => runAgentTurn({ ...o, model, ...(hub ? { hub } : {}), thinkingLevel: "low", maxToolErrors: 3 }),
-          ...(envInt("GL_MEETING_ROUNDS") ? { rounds: envInt("GL_MEETING_ROUNDS")! } : {}),
+          runTurn: (o) => runAgentTurn({ thinkingLevel: "low", ...o, model, ...(hub ? { hub } : {}), maxToolErrors: 3 }),
+          ...(envInt("GL_MEETING_MAX_STATEMENTS") ? { maxStatements: envInt("GL_MEETING_MAX_STATEMENTS")! } : {}),
+          ...(envInt("GL_MEETING_MAX_MIN") ? { maxMs: envInt("GL_MEETING_MAX_MIN")! * 60_000 } : {}),
         },
       }
     : {}),

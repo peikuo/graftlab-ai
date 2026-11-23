@@ -30,7 +30,9 @@ const atSource = (node: NodeId) => taskStateArb.map((t): TaskState => placeAt(t,
 
 /** A state at the edge's source whose outcome satisfies the edge guard when some outcome can (80%). */
 const guardSatisfyingAt = (edge: FlowEdge): fc.Arbitrary<TaskState> =>
-  fc.tuple(atSource(edge.from), fc.nat(), fc.integer({ min: 0, max: 9 })).map(([t, pick, coin]) => {
+  fc.tuple(atSource(edge.from), fc.nat(), fc.integer({ min: 0, max: 9 })).map(([t0, pick, coin]) => {
+    // A retry edge leaves failure_review only after a failure at its target; set it, or such edges are rarely sampled.
+    const t = edge.from === "failure_review" && edge.id.startsWith("retry_") && coin >= 2 ? { ...t0, failure: { node: edge.to, failureClass: "interface_call_failure" as const, detail: "test failure" } } : t0;
     if (coin < 2) return t;
     const fits = NODE_OUTCOMES.filter((o) => edge.guard({ ...t, outcome: o }));
     return fits.length > 0 ? { ...t, outcome: fits[pick % fits.length]! } : t;

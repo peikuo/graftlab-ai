@@ -58,7 +58,7 @@ export const NODES: Record<NodeId, FlowNode> = {
   meeting: {
     id: "meeting",
     kind: "agent_loop",
-    tools: ["read_file", "search_repo", "record_finding", "submit_statement", "ask_judge", "submit_meeting_summary"],
+    tools: ["read_file", "search_repo", "read_memo", "search_memo", "submit_position", "submit_signal", "submit_turn", "ask_judge", "submit_close"],
     timeoutS: min(25),
     requirements: "R11, R12, R24",
   },

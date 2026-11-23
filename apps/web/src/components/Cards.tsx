@@ -16,7 +16,7 @@ const HEAD: Record<string, string> = {
   new_version: "needs a new decision",
 };
 
-export function CardView({ event, answered, events, onAnswer, extra }: { event: CardEvent; answered: boolean; events: StudioEvent[]; onAnswer: AnswerFn; extra?: ReactNode }) {
+export function CardView({ event, answered, expired = false, events, onAnswer, extra }: { event: CardEvent; answered: boolean; expired?: boolean; events: StudioEvent[]; onAnswer: AnswerFn; extra?: ReactNode }) {
   const p = event.payload;
   const [text, setText] = useState("");
   const [status, setStatus] = useState<{ kind: "idle" | "sending" | "received" | "failed"; detail?: string }>({ kind: "idle" });
@@ -36,12 +36,15 @@ export function CardView({ event, answered, events, onAnswer, extra }: { event: 
         <span>
           {w.name} {HEAD[p.kind] ?? "asks you"}
         </span>
-        {!answered && <span className="badge amber">Your turn</span>}
+        {!answered && !expired && <span className="badge amber">{p.blocking === false ? "Your turn · the team keeps talking" : "Your turn"}</span>}
+        {expired && <span className="badge slate">closed</span>}
       </div>
       <p className="icard-title">{p.title}</p>
       {p.body && <p className="icard-body">{p.body}</p>}
       {extra}
-      {answered && answer?.type === "card_answered" ? (
+      {expired ? (
+        <p className="icard-body">Closed without an answer; it is listed as an open question.</p>
+      ) : answered && answer?.type === "card_answered" ? (
         <p className="icard-answer">
           <span aria-hidden="true">✓</span> You answered: {p.options.find((o) => o.id === answer.payload.optionId)?.label ?? answer.payload.text}
         </p>

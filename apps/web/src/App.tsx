@@ -110,7 +110,7 @@ export function App() {
   };
   const loadFile = useCallback((path: string) => (taskId ? api.fileText(taskId, path) : Promise.resolve(null)), [taskId]);
 
-  const openCard = useMemo(() => Object.values(state.cards).find((c) => !c.answered), [state]);
+  const openCard = useMemo(() => Object.values(state.cards).find((c) => !c.answered && !c.expired), [state]);
   // Progress from data only (R7.1): files read out of the planned count announced by the Repo_Reader.
   const planned = useMemo(() => {
     for (const e of events) if (e.type === "finding_recorded" && e.payload.kind === "note") {

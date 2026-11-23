@@ -57,7 +57,9 @@ export function InterjectionInput({ state, events, queue, onSend }: { state: UiS
         : delivered || (record?.type === "judge_message" && record.payload.status === "delivered")
           ? "Delivered to the team"
           : record?.type === "judge_message" && record.payload.status === "queued"
-            ? "Received. The team reads it when the meeting starts."
+            ? record.node === "meeting"
+              ? "Received. The team hears it before the next statement."
+              : "Received. The team reads it when the meeting starts."
             : "Received";
 
   const submit = async () => {

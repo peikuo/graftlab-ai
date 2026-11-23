@@ -8,3 +8,4 @@ export * from "./flow/ids.ts";
 export * from "./flow/guards.ts";
 export * from "./flow/graph.ts";
 export * from "./flow/transition.ts";
+export * from "./text.ts";

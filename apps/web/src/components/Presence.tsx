@@ -5,6 +5,7 @@
 import { roleStatus, type UiState } from "@graftlab/shared";
 import { ROLE_CARDS, type RoleCard } from "../roles.ts";
 
+const SIGNAL_PLAIN: Record<string, string> = { disagree: "wants to disagree", answer: "wants to answer", add: "wants to add something", agree: "wants to agree" };
 function verifierSummary(state: UiState): string {
   const items = state.verifierResults.flatMap((r) => r.items);
   if (items.length === 0) return "checking…";
@@ -39,6 +40,9 @@ function VerifierCard({ card, state }: { card: RoleCard; state: UiState }) {
 export function PresenceCard({ card, state, now }: { card: RoleCard; state: UiState; now: number }) {
   if (card.kind === "verifier") return <VerifierCard card={card} state={state} />;
   const st = roleStatus(state, card.key, now);
+  // In the discussion, an idle perspective shows its latest speaking signal in words (from signals_collected).
+  const sig = state.node === "meeting" && st.kind === "idle" ? state.signals[card.key] : undefined;
+  const sigText = sig ? (sig.speak ? `${SIGNAL_PLAIN[sig.kind ?? "add"]}${sig.intent ? `: ${sig.intent}` : ""}` : "listening") : null;
   return (
     <li className={`agent s-${st.kind}${st.working ? " working" : ""}`} aria-label={`${card.name}: ${st.text}`} title={card.job}>
       <span className="agent-avatar" aria-hidden="true">{card.avatar}</span>
@@ -46,7 +50,7 @@ export function PresenceCard({ card, state, now }: { card: RoleCard; state: UiSt
         <div className="agent-name">{card.name}</div>
         <div className="agent-status">
           <span className="dot" aria-hidden="true" />
-          <span className="agent-status-text">{st.kind === "idle" ? card.job : st.text}</span>
+          <span className="agent-status-text">{st.kind === "idle" ? (sigText ?? card.job) : st.text}</span>
         </div>
       </div>
     </li>

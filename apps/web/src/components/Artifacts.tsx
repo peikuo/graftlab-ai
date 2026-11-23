@@ -4,12 +4,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { StudioEvent, UiState } from "@graftlab/shared";
 import { BriefView } from "./Brief.tsx";
-import { MeetingSummaryView } from "./MeetingSummary.tsx";
+import { BoardView } from "./Board.tsx";
 
 type Tab = "found" | "app" | "decision";
 
 function tabOf(e: StudioEvent): Tab | null {
-  if (e.type === "file_read" || e.type === "finding_recorded" || e.type === "evidence_summary" || e.type === "reading_planned" || e.type === "repo_brief" || e.type === "meeting_summary") return "found";
+  if (e.type === "file_read" || e.type === "finding_recorded" || e.type === "evidence_summary" || e.type === "reading_planned" || e.type === "repo_brief" || e.type === "meeting_summary" || e.type === "board_updated") return "found";
   if (e.type === "browser_action" || e.type === "browser_observation") return "app";
   if (e.type === "decision_doc_version" || e.type === "decision_doc_frozen" || e.type === "artifact_updated") return "decision";
   return null;
@@ -90,7 +90,7 @@ export function ArtifactArea({ state, events, loadFile }: { state: UiState; even
       <div className="details-body" role="tabpanel">
         {active === "found" && (
             <>
-              <MeetingSummaryView events={events} />
+              <BoardView events={events} />
               <BriefView events={events} {...(loadFile ? { open: (p: string) => setPicked(p) } : {})} />
               {studioNotes.length > 0 && (
                 <>

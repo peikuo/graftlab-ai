@@ -36,13 +36,24 @@ const evidence = fc.record(
   { requiredKeys: ["path", "snippet"] },
 );
 
-const workflow = fc.record({
-  name: ne,
-  purpose: fc.constantFrom("A" as const, "B" as const, "unclear" as const),
-  description: str,
+const stance = fc.record({
+  stance: fc.constantFrom("support" as const, "against" as const, "conditional" as const),
+  reason: ne,
+  conditions: opt(str),
   evidence: fc.array(evidence, { maxLength: 2 }),
   evidenceStatus: fc.constantFrom("passed" as const, "unverified" as const),
+}, { requiredKeys: ["stance", "reason", "evidence", "evidenceStatus"] });
+const proposal = fc.record({
+  id: idA,
+  title: ne,
+  userChange: str,
+  purpose: fc.constantFrom("A" as const, "B" as const, "unclear" as const),
+  evidence: fc.array(evidence, { maxLength: 2 }),
+  evidenceStatus: fc.constantFrom("passed" as const, "unverified" as const),
+  stances: fc.record({ user_value: stance, feasibility: stance, risk: stance }, { requiredKeys: [] }),
+  addedBy: ne,
 });
+const perspective = fc.constantFrom("user_value" as const, "feasibility" as const, "risk" as const);
 /** Drops keys whose value is undefined, as JSON serialization does. */
 function clean<T>(o: T): T {
   return JSON.parse(JSON.stringify(o)) as T;
@@ -70,7 +81,7 @@ const P: { [K in EventType]: fc.Arbitrary<PayloadOf<K>> } = {
   message_started: fc.record({
     messageId: idA,
     roleId: opt(role),
-    purpose: fc.constantFrom("statement" as const, "review" as const, "operator" as const, "code_agent_step" as const, "memo" as const),
+    purpose: fc.constantFrom("statement" as const, "review" as const, "operator" as const, "code_agent_step" as const, "memo" as const, "signal" as const),
   }),
   message_progress: fc.record({
     messageId: idA,
@@ -87,14 +98,23 @@ const P: { [K in EventType]: fc.Arbitrary<PayloadOf<K>> } = {
   }),
   reading_planned: fc.record({ files: fc.array(fc.record({ path, why: str }), { maxLength: 4 }), byCode: fc.boolean(), dropped: fc.nat({ max: 5 }) }),
   repo_brief: fc.record({ content: fc.constant({}), fromCache: fc.boolean() }),
-  index_progress: fc.record({ state: fc.constantFrom("started" as const, "finished" as const, "stopped" as const), done: fc.nat({ max: 50 }), total: fc.nat({ max: 50 }) }),
+  index_progress: fc.record({ state: fc.constantFrom("started" as const, "finished" as const, "stopped" as const, "paused" as const), done: fc.nat({ max: 50 }), total: fc.nat({ max: 50 }) }),
   card_expired: fc.record({ cardId: idA, waitedS: fc.nat({ max: 200 }) }),
-  statement_submitted: fc.record({ roleId: fc.constantFrom("facilitator" as const, "user_value" as const, "feasibility" as const, "risk" as const), round: fc.nat({ max: 3 }), summary: ne, workflows: fc.array(workflow, { maxLength: 2 }) }),
-  meeting_summary: fc.record({
-    findings: fc.array(fc.record({ claim: ne, evidence: fc.array(evidence, { maxLength: 2 }), evidenceStatus: fc.constantFrom("passed" as const, "unverified" as const) }), { maxLength: 3 }),
-    workflows: fc.array(workflow, { maxLength: 2 }),
-    openQuestions: fc.array(str, { maxLength: 2 }),
+  statement_submitted: fc.record({
+    roleId: fc.constantFrom("facilitator" as const, "user_value" as const, "feasibility" as const, "risk" as const),
+    phase: fc.constantFrom("prepare" as const, "open" as const, "discuss" as const, "steer" as const, "close" as const),
+    respondsTo: opt(fc.constantFrom("judge" as const, "risk" as const)),
+    changes: fc.array(ne, { maxLength: 3 }),
+    evidence: fc.array(evidence, { maxLength: 2 }),
   }),
+  evidence_added: fc.record({ items: fc.array(fc.record({ path, snippet: str, status: fc.constantFrom("passed" as const, "unverified" as const), id: opt(idA), addedBy: perspective }, { requiredKeys: ["path", "snippet", "addedBy"] }), { maxLength: 3 }) }),
+  board_updated: fc.record({ proposals: fc.array(proposal, { maxLength: 3 }) }),
+  signals_collected: fc.record({
+    signals: fc.array(fc.record({ roleId: perspective, speak: fc.boolean(), kind: opt(fc.constantFrom("disagree" as const, "answer" as const, "add" as const, "agree" as const)), about: opt(str), intent: opt(str) }), { maxLength: 3 }),
+    next: fc.option(perspective, { nil: null }),
+    reason: str,
+  }),
+  meeting_summary: fc.record({ proposals: fc.array(proposal, { maxLength: 3 }), openQuestions: fc.array(str, { maxLength: 2 }) }),
   memo_written: fc.record({
     path: fc.oneof(fc.constant(""), path),
     level: fc.constantFrom("file" as const, "directory" as const, "root" as const),
@@ -129,6 +149,7 @@ const P: { [K in EventType]: fc.Arbitrary<PayloadOf<K>> } = {
     body: str,
     options: fc.array(fc.record({ id: idA, label: ne }), { maxLength: 3 }),
     allowFreeText: fc.boolean(),
+    blocking: opt(fc.boolean()),
   }),
   card_answered: fc.record({ cardId: idA, optionId: opt(idA), text: opt(str) }),
   artifact_updated: fc.record({

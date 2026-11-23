@@ -360,3 +360,22 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .stepper li.unavailable .num { background: var(--waiting-soft); color: #92400e; border-color: transparent; }
 .stepper li.unavailable { color: #92400e; }
 .step-note { display: block; font-size: 11px; color: var(--muted); }
+
+/* Proposal_Board and evidence (R11.11-R11.13) */
+.proposals { gap: 12px; margin-top: 8px; }
+.proposal { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: #fff; }
+.proposal-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 14px; }
+.proposal > p { margin: 4px 0 8px; }
+.stances { gap: 6px; }
+.stance { display: grid; grid-template-columns: 112px 1fr; gap: 8px; font-size: 13px; line-height: 1.45; }
+.stance-who { color: var(--muted); white-space: nowrap; }
+.stance.s-none { opacity: 0.7; }
+.evidence { margin: 4px 0 0; font-size: 12.5px; }
+.evidence summary { cursor: pointer; color: var(--accent-ink); display: inline-flex; gap: 6px; align-items: center; }
+.evidence ul { margin: 6px 0; gap: 8px; }
+.evidence blockquote { margin: 0 0 2px; padding: 4px 8px; border-left: 3px solid var(--working); background: var(--surface-2, #f1f5f4); font-family: ui-monospace, Menlo, monospace; font-size: 12px; white-space: pre-wrap; }
+.ev.bad blockquote { border-left-color: var(--failure); }
+.ev-ok { color: var(--working); }
+.evidence-none { margin: 2px 0 0; }
+.board-change .changes { gap: 2px; }
+.board-change .changes li::before { content: "→ "; color: var(--muted); }

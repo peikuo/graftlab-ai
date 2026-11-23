@@ -64,8 +64,8 @@ export interface TaskServiceOptions {
   meeting?: {
     rules: RuntimeRules;
     runTurn: (o: Omit<TurnOptions, "model">) => Promise<TurnResult>;
-    rounds?: number;
-    questionWaitMs?: number;
+    maxStatements?: number;
+    maxMs?: number;
   };
 }
 
@@ -77,6 +77,10 @@ export class TaskService {
   #meta: RepoMeta | null = null;
   /** Stops the background Repo_Index of the current Task (Task end, abort, or a new Task). */
   #index: AbortController | null = null;
+  /** (Re)starts the background Repo_Index of the current Task; set by the reading step. */
+  #startIndex: (() => void) | null = null;
+  /** Judge messages already handed to the meeting (by seq). */
+  #judgeSeen = 0;
   /** What the reading step produced, for the meeting of the same Task. */
   #read: { memo: RepoMemoHandle; files: Map<string, string>; evidence: EvidenceFiles } | null = null;
 
@@ -143,6 +147,8 @@ export class TaskService {
 
     this.#index?.abort();
     this.#index = null;
+    this.#startIndex = null;
+    this.#judgeSeen = 0;
     this.#read = null;
     await this.#store?.close().catch(() => undefined);
     this.#store = store;
@@ -196,7 +202,6 @@ export class TaskService {
       return "failed";
     }
     const taskId = ctx.task.taskId;
-    const index = new AbortController();
     const opts = (signal: AbortSignal, prefix: string) => ({
       files,
       repo: { owner: meta.owner, repo: meta.repo, sha: meta.sha },
@@ -220,16 +225,33 @@ export class TaskService {
     ctx.patch({ briefReady: true });
     const texts = new Map(files.map((f) => [f.path, f.text]));
     this.#read = { memo: handle, files: texts, evidence: filesFrom(texts, skipped) };
-    // The meeting does not wait for the index; it stops at Task end, abort or a new Task.
-    this.#index = index;
-    void buildRepoIndex(opts(index.signal, "index"), handle).catch(async (e: unknown) => {
-      if (index.signal.aborted) return;
-      await ctx.emit({ type: "failure", actor: { kind: "role", roleId: "reader" }, payload: { failureClass: "interface_call_failure", source: "llm", detail: `the background index stopped: ${(e as Error).message}` } }).catch(() => undefined);
-    });
+    // The meeting does not wait for the index; it pauses during the meeting and stops at Task end, abort or a new Task.
+    let run = 0;
+    this.#startIndex = () => {
+      if (this.#index && !this.#index.signal.aborted) return;
+      const index = new AbortController();
+      this.#index = index;
+      void buildRepoIndex(opts(index.signal, `index${++run}`), handle).catch(async (e: unknown) => {
+        if (index.signal.aborted) return;
+        await ctx.emit({ type: "failure", actor: { kind: "role", roleId: "reader" }, payload: { failureClass: "interface_call_failure", source: "llm", detail: `the background index stopped: ${(e as Error).message}` } }).catch(() => undefined);
+      });
+    };
+    this.#startIndex();
     return "done";
   }
 
-  /** The meeting (R11): evidence summary by code, then the fixed turn order; leaving needs a valid summary. */
+  /** Judge messages not yet handed to the meeting, including those sent during gathering (R11.10, R12.2). */
+  #takeJudgeMessages() {
+    const out: { text: string; to: string; clientMsgId: string }[] = [];
+    for (const e of this.#store?.events() ?? []) {
+      if (e.seq <= this.#judgeSeen) continue;
+      this.#judgeSeen = e.seq;
+      if (e.type === "judge_message" && e.payload.status === "queued") out.push({ text: e.payload.text, to: e.payload.to, clientMsgId: e.payload.clientMsgId });
+    }
+    return out;
+  }
+
+  /** The meeting (R11): evidence summary by code, preparation, discussion by speaking signals; leaving needs a board with a proposal. */
   async #meetingStep(ctx: Parameters<NodeHandler>[0]): Promise<"done" | "failed"> {
     const m = this.#o.meeting;
     const read = this.#read;
@@ -252,6 +274,8 @@ export class TaskService {
         g.partial ? "Evidence gathering was ended early by the Judge (partial)." : "",
       ].filter(Boolean).join("\n\n")}`,
     ].join("\n\n");
+    // The background index pauses so it does not compete with the meeting for model calls.
+    this.#index?.abort("paused");
     const r = await runMeeting({
       rules: m.rules,
       context,
@@ -259,13 +283,15 @@ export class TaskService {
       evidence: read.evidence,
       memo: read.memo.tree,
       emit: ctx.emit,
-      askJudgeFor: (card, waitMs, actor) => ctx.askJudgeFor(card, waitMs, actor),
+      openCard: (card, actor) => ctx.openCard(card, actor),
+      takeJudgeMessages: () => this.#takeJudgeMessages(),
       runTurn: (t) => m.runTurn({ ...t, emit: ctx.emit }),
       signal: ctx.signal,
       idPrefix: `${ctx.task.taskId}-meeting`,
-      ...(m.rounds ? { rounds: m.rounds } : {}),
-      ...(m.questionWaitMs ? { questionWaitMs: m.questionWaitMs } : {}),
+      ...(m.maxStatements ? { maxStatements: m.maxStatements } : {}),
+      ...(m.maxMs ? { maxMs: m.maxMs } : {}),
     });
+    if (!ctx.signal.aborted) this.#startIndex?.();
     if (r.ok) return "done";
     if (ctx.signal.aborted) return "failed";
     await ctx.fail("llm_output_format_invalid", "llm", r.reason);

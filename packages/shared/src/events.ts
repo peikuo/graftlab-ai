@@ -63,15 +63,30 @@ export const EvidenceRefSchema = z.object({
   snippet: z.string(),
   status: z.enum(["passed", "unverified"]).optional(),
   reason: z.string().optional(),
+  /** Internal Evidence_Pool id (meeting only); never shown to the Judge. */
+  id: z.string().optional(),
 });
-// R11.7, R18.6: an analyzed workflow with its purpose tag; the evidence is checked by code.
-export const WorkflowSchema = z.object({
-  name: z.string().min(1),
-  purpose: z.enum(["A", "B", "unclear"]),
-  description: z.string(),
+// R11.11: the Proposal_Board. Evidence is resolved by code (checked quotes with their internal pool id); the
+// pool id is never shown to the Judge (R11.13).
+export const STANCES = ["support", "against", "conditional"] as const;
+export const StanceSchema = z.object({
+  stance: z.enum(STANCES),
+  reason: z.string().min(1),
+  conditions: z.string().optional(),
   evidence: z.array(EvidenceRefSchema),
   evidenceStatus: z.enum(["passed", "unverified"]),
 });
+export const ProposalSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  userChange: z.string(),
+  purpose: z.enum(["A", "B", "unclear"]),
+  evidence: z.array(EvidenceRefSchema),
+  evidenceStatus: z.enum(["passed", "unverified"]),
+  stances: z.object({ user_value: StanceSchema.optional(), feasibility: StanceSchema.optional(), risk: StanceSchema.optional() }),
+  addedBy: z.string().min(1),
+});
+export type Proposal = z.infer<typeof ProposalSchema>;
 
 export type EvidenceRef = z.infer<typeof EvidenceRefSchema>;
 
@@ -104,7 +119,7 @@ export const PAYLOADS = {
   message_started: z.object({
     messageId: id,
     roleId: RoleIdSchema.optional(),
-    purpose: z.enum(["statement", "review", "operator", "code_agent_step", "memo"]),
+    purpose: z.enum(["statement", "review", "operator", "code_agent_step", "memo", "signal"]),
   }),
   // Carries no text (design.md, "Gaps found"): it only proves the stream is alive.
   message_progress: z.object({
@@ -140,7 +155,7 @@ export const PAYLOADS = {
   // R10.7, R10.11: the Repo_Brief record (validated by RepoBriefRecordSchema on the server), so Replay needs no other file.
   repo_brief: z.object({ content: z.unknown(), fromCache: z.boolean() }),
   // R10.12: background Repo_Index progress (started, then finished or stopped).
-  index_progress: z.object({ state: z.enum(["started", "finished", "stopped"]), done: count, total: count }),
+  index_progress: z.object({ state: z.enum(["started", "finished", "stopped", "paused"]), done: count, total: count }),
   message_incomplete: z.object({ messageId: id, partialText: z.string(), reason: nonEmpty }),
   tool_started: z.object({ callId: id, tool: nonEmpty, inputSummary: z.string() }),
   tool_finished: z.object({ callId: id, tool: nonEmpty, ok: z.boolean(), outputSummary: z.string() }),
@@ -167,18 +182,30 @@ export const PAYLOADS = {
     body: z.string(),
     options: z.array(z.object({ id: id, label: nonEmpty })),
     allowFreeText: z.boolean(),
+    /** false: the asking role keeps working; the answer is delivered when it arrives (R5.3, R11.4). */
+    blocking: z.boolean().optional(),
   }),
   card_answered: z.object({ cardId: id, optionId: z.string().optional(), text: z.string().optional() }),
   // R5.3, R11.4: no answer within the wait; the asking role is told and the meeting continues.
   card_expired: z.object({ cardId: id, waitedS: count }),
-  // R11.5, R11.7, R18.6: a meeting statement; its findings are separate finding_recorded events (checked by code).
-  statement_submitted: z.object({ roleId: RoleIdSchema, round: count, summary: nonEmpty, workflows: z.array(WorkflowSchema) }),
-  // R15.1: the Facilitator's closing summary; findings and workflows carry checked evidence.
-  meeting_summary: z.object({
-    findings: z.array(z.object({ claim: nonEmpty, evidence: z.array(EvidenceRefSchema), evidenceStatus: z.enum(["passed", "unverified"]) })),
-    workflows: z.array(WorkflowSchema),
-    openQuestions: z.array(z.string()),
+  // R11.13: what a statement changed, in plain words written by code, and the quotes it relied on.
+  statement_submitted: z.object({
+    roleId: RoleIdSchema,
+    phase: z.enum(["prepare", "open", "discuss", "steer", "close"]),
+    respondsTo: z.union([RoleIdSchema, z.literal("judge")]).optional(),
+    changes: z.array(z.string()),
+    evidence: z.array(EvidenceRefSchema),
   }),
+  evidence_added: z.object({ items: z.array(EvidenceRefSchema.extend({ addedBy: RoleIdSchema })) }),
+  board_updated: z.object({ proposals: z.array(ProposalSchema) }),
+  // R11.1: one speaking round; `next` is picked by code.
+  signals_collected: z.object({
+    signals: z.array(z.object({ roleId: RoleIdSchema, speak: z.boolean(), kind: z.enum(["disagree", "answer", "add", "agree"]).optional(), about: z.string().optional(), intent: z.string().optional() })),
+    next: RoleIdSchema.nullable(),
+    reason: z.string(),
+  }),
+  // R11.12, R15.1: built by code from the board.
+  meeting_summary: z.object({ proposals: z.array(ProposalSchema), openQuestions: z.array(z.string()) }),
   artifact_updated: z.object({
     artifactKind: z.enum([
       "file",

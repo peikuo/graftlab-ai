@@ -3,7 +3,8 @@
 // chat bubbles that stream with a caret and are replaced by the persisted Complete_Message, and reasoning is
 // collapsed and labeled. Every row still maps to its events (Property 5 holds on the reducer's feed).
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { FeedEntry, MessageState, StudioEvent, UiState } from "@graftlab/shared";
+import { stripIds, type FeedEntry, type MessageState, type StudioEvent, type UiState } from "@graftlab/shared";
+import { EvidenceFold } from "./Evidence.tsx";
 import { ACTOR_LABEL } from "../roles.ts";
 import type { LiveBuffer } from "../useStudio.ts";
 import { CardView, type AnswerFn } from "./Cards.tsx";
@@ -43,6 +44,7 @@ type Row =
   | { kind: "judge"; key: string; entry: FeedEntry }
   | { kind: "group"; key: string; actor: string; type: FoldKey; entries: FeedEntry[] }
   | { kind: "background"; key: string; entries: FeedEntry[] }
+  | { kind: "statement"; key: string; entry: FeedEntry }
   | { kind: "line"; key: string; entry: FeedEntry };
 
 function toRows(feed: FeedEntry[], events: StudioEvent[]): Row[] {
@@ -82,6 +84,10 @@ function toRows(feed: FeedEntry[], events: StudioEvent[]): Row[] {
     }
     if (entry.type === "card_opened") {
       rows.push({ kind: "card", key: `c${entry.seq}`, entry });
+      continue;
+    }
+    if (entry.type === "statement_submitted") {
+      rows.push({ kind: "statement", key: `s${entry.seq}`, entry });
       continue;
     }
     if (entry.type === "judge_message") {
@@ -124,8 +130,12 @@ function MessageBubble({ m, live, events }: { m: MessageState; live?: LiveBuffer
   const endEvent = events.find((e) => (e.type === "message_completed" || e.type === "message_incomplete") && e.payload.messageId === m.messageId);
   const end = m.status === "open" ? Date.now() : Date.parse(endEvent?.ts ?? m.startedTs);
   const seconds = Math.max(0, Math.round((end - Date.parse(m.startedTs)) / 1000));
-  const text = m.status === "open" ? (live?.text ?? "") : (m.text ?? "");
+  // Statements are for the Judge: internal evidence ids are removed (R11.13).
+  const raw = m.status === "open" ? (live?.text ?? "") : (m.text ?? "");
+  const text = m.purpose === "statement" ? stripIds(raw).text : raw;
   const reasoning = m.status === "open" ? live?.reasoning : m.reasoning;
+  // Speaking signals are shown as one line per round (signals_collected), not as messages.
+  if (m.purpose === "signal") return null;
   // Summary calls answer only through a submit tool: no speech bubble, one compact line with the real timing.
   if (m.purpose === "memo" && !text) {
     return (
@@ -175,6 +185,25 @@ function MessageBubble({ m, live, events }: { m: MessageState; live?: LiveBuffer
   );
 }
 
+/** What a statement changed on the Proposal_Board, in words written by code, and the quotes behind it. */
+function StatementRow({ entry, event }: { entry: FeedEntry; event: StudioEvent | undefined }) {
+  if (event?.type !== "statement_submitted") return null;
+  const p = event.payload;
+  if (p.changes.length === 0) return null;
+  return (
+    <div className="step board-change" title={time(entry.ts)}>
+      <span className="step-avatar" aria-hidden="true">📋</span>
+      <div className="step-main">
+        <ul className="clean small changes">
+          {p.changes.map((c, i) => (
+            <li key={i}>{c}</li>
+          ))}
+        </ul>
+        {p.evidence.length > 0 && <EvidenceFold evidence={p.evidence} />}
+      </div>
+    </div>
+  );
+}
 function BackgroundRow({ row, events }: { row: Extract<Row, { kind: "background" }>; events: StudioEvent[] }) {
   const [open, setOpen] = useState(false);
   const w = who("reader");
@@ -338,7 +367,7 @@ export function ActivityFeed({ state, events, buffers, onAnswer, cardExtra, inli
             case "card": {
               const opened = events.find((e) => e.seq === r.entry.seq);
               if (opened?.type !== "card_opened" || !r.entry.ref) return null;
-              return <CardView key={r.key} event={opened} answered={state.cards[r.entry.ref]?.answered ?? false} events={events} onAnswer={onAnswer} extra={cardExtra?.(r.entry.ref)} />;
+              return <CardView key={r.key} event={opened} answered={state.cards[r.entry.ref]?.answered ?? false} expired={state.cards[r.entry.ref]?.expired ?? false} events={events} onAnswer={onAnswer} extra={cardExtra?.(r.entry.ref)} />;
             }
             case "judge":
               return (
@@ -352,6 +381,8 @@ export function ActivityFeed({ state, events, buffers, onAnswer, cardExtra, inli
               );
             case "group":
               return <GroupRow key={r.key} row={r} />;
+            case "statement":
+              return <StatementRow key={r.key} entry={r.entry} event={bySeq.get(r.entry.seq)} />;
             case "background":
               return <BackgroundRow key={r.key} row={r} events={events} />;
             case "line":
