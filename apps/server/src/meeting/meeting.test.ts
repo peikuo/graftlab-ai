@@ -13,12 +13,12 @@ type Call = { roleId: string; purpose: string; thinking?: string; systemPrompt: 
 type Script = (c: Call, tools: Tools) => Promise<string | void>;
 const call = async (tools: Tools, name: string, args: unknown) => ((await tools.get(name)!.execute("id", args as never, undefined as never, undefined as never)).content[0] as { text: string }).text;
 const quote = { path: "app/models.py", snippet: "url = models.URLField()" };
-const position = (title: string) => ({ quotes: [quote], proposals: [{ kind: "new", title, userChange: `With ${title} users save time.`, purpose: "B", quotes: [1], reason: "Users do this by hand" }] });
+const position = (title: string, effort?: string) => ({ quotes: [quote], proposals: [{ kind: "new", title, userChange: `With ${title} users save time.`, purpose: "B", quotes: [1], reason: "Users do this by hand", ...(effort ? { effort } : {}) }] });
 
 /** Default team: each perspective proposes its own idea, then gives stances on the others when picked; nobody signals. */
 const team: Script = async (c, tools) => {
   if (tools.has("submit_position")) {
-    await call(tools, "submit_position", position(`Idea of ${c.roleId}`));
+    await call(tools, "submit_position", position(`Idea of ${c.roleId}`, c.roleId === "feasibility" ? "large" : undefined));
     return `My view as ${c.roleId} [E1].`;
   }
   if (tools.has("submit_signal")) return void (await call(tools, "submit_signal", { speak: false }));
@@ -30,7 +30,7 @@ const team: Script = async (c, tools) => {
   if (c.roleId === "facilitator") return void (await call(tools, "submit_turn", {}));
   const missing = [...c.prompt.matchAll(/P\d+/g)].map((m) => m[0]);
   const need = /still needs your stance on: ([P\d, ]+)/.exec(c.prompt)?.[1]?.split(", ") ?? missing.slice(0, 1);
-  await call(tools, "submit_turn", { respondsTo: "facilitator", changes: need.map((p) => ({ kind: "stance", proposal: p, stance: "support", reason: "Fits", evidence: [{ id: "E1" }] })) });
+  await call(tools, "submit_turn", { respondsTo: "facilitator", changes: need.map((p) => ({ kind: "stance", proposal: p, stance: "support", reason: "Fits", evidence: [{ id: "E1" }], ...(c.roleId === "feasibility" ? { effort: "small" } : {}) })) });
   return "I agree, it fits.";
 };
 function setup(script: Script, extra: Partial<MeetingOptions> = {}) {
@@ -112,7 +112,7 @@ describe("runMeeting", () => {
     expect(calls.at(-1)!.prompt).toContain("My view as risk.");
     expect(calls.at(-1)!.prompt).not.toContain("My view as risk [E1]");
     const st = events.find((e) => e.type === "statement_submitted" && e.payload.phase === "discuss")!.payload;
-    expect(st.changes[0]).toMatch(/^Supports “Idea of .+”: Fits$/);
+    expect(st.changes[0]).toMatch(/^Supports “Idea of .+”(, a small change)?: Fits$/);
     expect(st.evidence[0]).toMatchObject({ path: "app/models.py", status: "passed" });
   });
   it("a question does not block: the answer arrives as a Judge input; an unanswered card is closed at the end and listed (R5.3)", async () => {
@@ -226,5 +226,22 @@ describe("runMeeting", () => {
     expect(outs[1]).toMatch(/^Accepted/);
     const kinds = Object.fromEntries(events.find((e) => e.type === "meeting_summary")!.payload.proposals.map((p: { title: string; kind: string }) => [p.title, p.kind]));
     expect(kinds).toMatchObject({ "Better tags": "improve", "Ask your library": "new" });
+  });
+  it("Feasibility must state the effort; a large one is named an engineering risk (R37.9)", async () => {
+    const outs: string[] = [];
+    const { o, events } = setup(async (c, tools) => {
+      if (c.roleId === "feasibility" && tools.has("submit_position") && outs.length === 0) {
+        outs.push(await call(tools, "submit_position", position("No effort given")));
+        outs.push(await call(tools, "submit_position", position("Big one", "large")));
+        return "ok";
+      }
+      return team(c, tools);
+    });
+    await runMeeting(o);
+    expect(outs[0]).toMatch(/effort \(small, medium or large\) is needed/);
+    const prep = events.find((e) => e.type === "statement_submitted" && e.actor.roleId === "feasibility" && e.payload.phase === "prepare")!.payload;
+    expect(prep.changes[0]).toBe("Proposed a new capability, “Big one”");
+    const big = events.find((e) => e.type === "meeting_summary")!.payload.proposals.find((p: { title: string }) => p.title === "Big one");
+    expect(big.stances.feasibility.effort).toBe("large");
   });
 });

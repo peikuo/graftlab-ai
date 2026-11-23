@@ -21,8 +21,10 @@ export interface EvidenceEntry {
   snippet?: string;
 }
 export type PoolItem = EvidenceRef & { id: string; addedBy: RoleId };
+export type Effort = "small" | "medium" | "large";
 interface StanceRec {
   stance: StanceKind;
+  effort?: Effort;
   reason: string;
   conditions?: string;
   evidenceIds: string[];
@@ -46,8 +48,8 @@ interface ProposalRec {
   addedBy: RoleId;
 }
 export type Change =
-  | { kind: "add"; idea?: IdeaKind; title: string; userChange: string; purpose: Purpose; evidence: EvidenceEntry[]; stance?: StanceKind; reason?: string; conditions?: string }
-  | { kind: "stance"; proposal: string; stance: StanceKind; reason: string; conditions?: string; evidence: EvidenceEntry[] }
+  | { kind: "add"; idea?: IdeaKind; title: string; userChange: string; purpose: Purpose; evidence: EvidenceEntry[]; stance?: StanceKind; reason?: string; conditions?: string; effort?: Effort }
+  | { kind: "stance"; proposal: string; stance: StanceKind; reason: string; conditions?: string; evidence: EvidenceEntry[]; effort?: Effort }
   | { kind: "merge"; keep: string; drop: string }
   | { kind: "decide"; proposal: string; verdict: VerdictKind; reason: string; rank?: number; conditions?: string[] };
 export interface ApplyResult {
@@ -131,6 +133,10 @@ export class Board {
           res.errors.push(`the board already has ${MAX_PROPOSALS} proposals; give a stance on one of them instead`);
           continue;
         }
+        if (perspective === "feasibility" && !c.effort) {
+          res.errors.push(`effort (small, medium or large) is needed for ${q(c.title)}`);
+          continue;
+        }
         const existing = this.find(c.title);
         if (existing) {
           res.errors.push(`a proposal named ${q(existing.title)} exists (${existing.id}); give your stance on it instead`);
@@ -140,7 +146,7 @@ export class Board {
         ids.forEach((i) => used.add(i));
         const p: ProposalRec = { id: `P${this.#nextP++}`, kind: c.idea ?? "improve", title: short(c.title, 100), userChange: short(c.userChange, 300), purpose: c.purpose, evidenceIds: ids, stances: {}, addedBy: by };
         const stance = c.stance ?? "support";
-        p.stances[perspective] = { stance, reason: short(c.reason ?? c.userChange, REASON), ...(c.conditions ? { conditions: short(c.conditions, COND) } : {}), evidenceIds: ids };
+        p.stances[perspective] = { stance, ...(perspective === "feasibility" && c.effort ? { effort: c.effort } : {}), reason: short(c.reason ?? c.userChange, REASON), ...(c.conditions ? { conditions: short(c.conditions, COND) } : {}), evidenceIds: ids };
         this.#proposals.push(p);
         res.lines.push(`Proposed ${p.kind === "new" ? "a new capability, " : ""}${q(p.title)}${stance === "conditional" && c.conditions ? `, only if ${short(c.conditions, COND)}` : ""}`);
       } else if (c.kind === "stance") {
@@ -153,17 +159,23 @@ export class Board {
           res.errors.push(`no proposal ${q(c.proposal)} on the board`);
           continue;
         }
+        // R37.9: Feasibility states the effort with every stance (it may keep its earlier estimate).
+        const effort = perspective === "feasibility" ? (c.effort ?? p.stances.feasibility?.effort) : undefined;
+        if (perspective === "feasibility" && !effort) {
+          res.errors.push(`effort (small, medium or large) is needed for ${q(p.title)}`);
+          continue;
+        }
         const ids = this.#resolve(c.evidence, by, res.added, res.errors);
         ids.forEach((i) => used.add(i));
         const before = p.stances[perspective]?.stance;
         const reason = short(c.reason, REASON);
         delete p.verdict; // a changed stance reopens the Facilitator's verdict
         const conditions = c.conditions ? short(c.conditions, COND) : undefined;
-        p.stances[perspective] = { stance: c.stance, reason, ...(conditions ? { conditions } : {}), evidenceIds: ids };
+        p.stances[perspective] = { stance: c.stance, ...(effort ? { effort } : {}), reason, ...(conditions ? { conditions } : {}), evidenceIds: ids };
         const verb = c.stance === "support" ? "Supports" : c.stance === "against" ? "Against" : "Supports";
         const cond = c.stance === "conditional" && conditions ? ` only if ${conditions}` : "";
         const changed = before && before !== c.stance ? " (changed its view)" : "";
-        res.lines.push(`${verb} ${q(p.title)}${cond}${changed}: ${reason}`);
+        res.lines.push(`${verb} ${q(p.title)}${cond}${changed}${effort ? `, ${effort === "large" ? "a large change (engineering risk)" : `a ${effort} change`}` : ""}: ${reason}`);
       } else if (c.kind === "decide") {
         if (by !== "facilitator") {
           res.errors.push("only the Facilitator gives verdicts");
@@ -229,7 +241,7 @@ export class Board {
       purpose: p.purpose,
       ...this.#refs(p.evidenceIds),
       stances: Object.fromEntries(
-        Object.entries(p.stances).map(([r, s]) => [r, { stance: s.stance, reason: s.reason, ...(s.conditions ? { conditions: s.conditions } : {}), ...this.#refs(s.evidenceIds) }]),
+        Object.entries(p.stances).map(([r, s]) => [r, { stance: s.stance, ...(s.effort ? { effort: s.effort } : {}), reason: s.reason, ...(s.conditions ? { conditions: s.conditions } : {}), ...this.#refs(s.evidenceIds) }]),
       ),
       ...(p.verdict ? { verdict: p.verdict } : {}),
       addedBy: p.addedBy,
@@ -253,7 +265,7 @@ export class Board {
       for (const r of PERSPECTIVES) {
         const s = p.stances[r];
         if (r === "user_value" && p.verdict) lines.push(`  Facilitator verdict: ${p.verdict.verdict}${p.verdict.rank ? ` #${p.verdict.rank}` : ""} — ${p.verdict.reason}`);
-        lines.push(`  ${PLAIN_ROLE[r]}: ${s ? `${s.stance}${s.conditions ? ` (only if ${s.conditions})` : ""} — ${s.reason}${s.evidenceIds.length ? ` (${s.evidenceIds.join(", ")})` : ""}` : "no stance yet"}`);
+        lines.push(`  ${PLAIN_ROLE[r]}: ${s ? `${s.stance}${s.effort ? ` [effort ${s.effort}]` : ""}${s.conditions ? ` (only if ${s.conditions})` : ""} — ${s.reason}${s.evidenceIds.length ? ` (${s.evidenceIds.join(", ")})` : ""}` : "no stance yet"}`);
       }
     }
     lines.push("", "## Evidence_Pool (checked by Studio code)");

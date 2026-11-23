@@ -1032,6 +1032,7 @@ Note (hosting consequence, Open item 46): live execution (flow steps F4-F10) nee
 6. IF a claim in an Assessment lacks evidence or its evidence fails the check of Requirement 24, THEN THE Studio SHALL mark it Unverified.
 7. THE Agent_Roles and the Judge SHALL decide the approach at flow step F6, and THE Studio SHALL record the decision in the Decision_Doc.
 8. THE Studio SHALL give the Code_Agent and the development stage no tool and no transition that changes the confirmed approach.
+9. THE Feasibility Meeting_Perspective SHALL state the effort of every proposal in the meeting and of every Approach_Option in the decision step as small, medium or large, with a small first version for a large one; THE Studio SHALL mark every large proposal and option as an engineering risk ("large change") in the Workspace and SHALL list it among the Decision_Doc risks (decided by the user 2026-11-24: a demo needs the effort judged, and too much work is a risk to raise).
 9. IF a need to change or extend the confirmed approach arises after the Decision_Doc is Frozen, THEN THE Studio SHALL return the Task to flow step F6 and SHALL require a new Decision_Doc version (Requirement 16) before any development continues.
 10. THE Studio SHALL measure the accuracy of Assessments against later Verifier results in the benchmark (design-stage item) and SHALL NOT present an Assessment as a prediction that is guaranteed.
 

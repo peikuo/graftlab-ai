@@ -2,12 +2,16 @@
 // exactly one complete approach; "Send back" only when every item has a verdict and one is rejected; "Freeze"
 // only when every item is accepted. The same conditions are enforced again by the server (or the demo engine).
 import { useState } from "react";
+import type { EvidenceRef } from "@graftlab/shared";
+import { EvidenceFold } from "./Evidence.tsx";
 
 export interface ReviewOption {
   id: string;
   label: string;
   detail: string;
   complete: boolean; // has executable acceptance checks (R37.5)
+  effort?: string;
+  largeRisk?: boolean; // R37.9: a large change is an engineering risk
 }
 
 export interface ReviewItem {
@@ -17,6 +21,7 @@ export interface ReviewItem {
   details?: string[];
   unverified?: string;
   options?: ReviewOption[]; // only for the approach item
+  evidence?: EvidenceRef[];
   hash: string;
 }
 
@@ -53,6 +58,7 @@ interface Props {
   selected: string | null;
   history: string[];
   busy: boolean;
+  error?: string | null;
   onSelect: (optionId: string) => void;
   onReview: (item: ReviewItem, verdict: "accept" | "reject", reason?: string) => void;
   onSendBack: () => void;
@@ -85,9 +91,13 @@ function ItemRow({ item, verdict, selected, busy, onSelect, onReview }: { item: 
           {item.options.map((o) => (
             <label key={o.id} className={o.complete ? "" : "incomplete"}>
               <input type="radio" name={`opt-${item.id}`} checked={selected === o.id} disabled={!o.complete} onChange={() => onSelect(o.id)} />
-              <span>
-                {o.label} <span className="muted">· {o.detail}</span>
-                {!o.complete && <span className="muted"> · cannot be chosen: it has no acceptance check</span>}
+              <span className="ropt">
+                <strong>{o.label}</strong>
+                {o.largeRisk && <span className="badge red">large change · engineering risk</span>}
+                {!o.complete && <span className="badge slate">cannot be chosen: no acceptance check</span>}
+                {o.detail.split("\n").map((l) => (
+                  <span key={l} className="ropt-line small">{l}</span>
+                ))}
               </span>
             </label>
           ))}
@@ -95,6 +105,7 @@ function ItemRow({ item, verdict, selected, busy, onSelect, onReview }: { item: 
         </fieldset>
       )}
       {item.unverified && <p className="failure-text small">⚠ Unverified: {item.unverified}</p>}
+      {item.evidence && item.evidence.length > 0 && <EvidenceFold evidence={item.evidence} />}
       {state === "reject" && verdict?.reason && <p className="ritem-reason">Your reason: “{verdict.reason}”. It goes back to the team when you send the draft back.</p>}
       {state === "pending" &&
         (rejecting ? (
@@ -141,7 +152,8 @@ export function DecisionReview(p: Props) {
       <ol className="ritems">
         {p.draft.items.map((i) => (
           <ItemRow
-            key={i.id}
+            // A changed item is a new row: open reject forms of the previous draft must not carry over.
+            key={`${i.id}:${i.hash}`}
             item={i}
             verdict={p.verdicts[i.id]?.itemHash === i.hash ? p.verdicts[i.id] : undefined}
             selected={p.selected}
@@ -151,6 +163,7 @@ export function DecisionReview(p: Props) {
           />
         ))}
       </ol>
+      {p.error && <p className="failure-text small" role="alert">Not done: {p.error}</p>}
       <div className="review-bar">
         <span className="muted small">
           {s.canFreeze

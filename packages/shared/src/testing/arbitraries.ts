@@ -38,6 +38,7 @@ const evidence = fc.record(
 
 const stance = fc.record({
   stance: fc.constantFrom("support" as const, "against" as const, "conditional" as const),
+  effort: opt(fc.constantFrom("small" as const, "medium" as const, "large" as const)),
   reason: ne,
   conditions: opt(str),
   evidence: fc.array(evidence, { maxLength: 2 }),
@@ -101,6 +102,8 @@ const P: { [K in EventType]: fc.Arbitrary<PayloadOf<K>> } = {
   reading_planned: fc.record({ files: fc.array(fc.record({ path, why: str }), { maxLength: 4 }), byCode: fc.boolean(), dropped: fc.nat({ max: 5 }) }),
   repo_brief: fc.record({ content: fc.constant({}), fromCache: fc.boolean() }),
   index_progress: fc.record({ state: fc.constantFrom("started" as const, "finished" as const, "stopped" as const, "paused" as const), done: fc.nat({ max: 50 }), total: fc.nat({ max: 50 }) }),
+  decision_draft: fc.record({ draftId: idA, number: pos, content: fc.constant({}), items: fc.constant([]) }),
+  decision_approach_selected: fc.record({ draftId: idA, optionId: idA }),
   card_expired: fc.record({ cardId: idA, waitedS: fc.nat({ max: 200 }) }),
   statement_submitted: fc.record({
     roleId: fc.constantFrom("facilitator" as const, "user_value" as const, "feasibility" as const, "risk" as const),

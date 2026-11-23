@@ -105,7 +105,7 @@ export const initialUiState: UiState = {
 export const ALWAYS_NARRATED: ReadonlySet<StudioEvent["type"]> = new Set([
   "task_created", "node_entered", "transition_rejected", "file_read", "finding_recorded", "message_completed",
   "message_incomplete", "tool_started", "judge_message", "card_opened", "card_answered", "decision_doc_frozen",
-  "decision_item_reviewed", "browser_action", "code_change", "memo_written", "reading_planned", "repo_brief", "index_progress", "card_expired", "statement_submitted", "signals_collected", "meeting_summary", "review_verdict", "question_opened", "question_answered",
+  "decision_item_reviewed", "browser_action", "code_change", "memo_written", "reading_planned", "repo_brief", "index_progress", "card_expired", "decision_draft", "decision_approach_selected", "statement_submitted", "signals_collected", "meeting_summary", "review_verdict", "question_opened", "question_answered",
   "verifier_result", "failure", "terminal_reached",
 ]);
 
@@ -160,6 +160,10 @@ export function narrate(e: StudioEvent): { text: string; path?: string; failure?
       const path = e.payload.evidence[0]?.path;
       return path === undefined ? { text: e.payload.text } : { text: e.payload.text, path };
     }
+    case "decision_draft":
+      return { text: `Decision draft ${e.payload.number} is ready for your review` };
+    case "decision_approach_selected":
+      return { text: "You chose an approach" };
     case "card_expired":
       return { text: `The question was closed without an answer after ${e.payload.waitedS} s; it is listed as an open question` };
     case "statement_submitted":

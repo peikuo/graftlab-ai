@@ -8,6 +8,8 @@ import type { AnswerFn } from "./components/Cards.tsx";
 import { InterjectionInput, type SendFn } from "./components/Chrome.tsx";
 import { ActivityFeed } from "./components/Feed.tsx";
 import { NowBar, Stepper } from "./components/Guide.tsx";
+import { DecisionReview } from "./components/DecisionReview.tsx";
+import { deriveDecision } from "./liveDecision.ts";
 import { PresenceColumn } from "./components/Presence.tsx";
 import { useStudio } from "./useStudio.ts";
 
@@ -121,10 +123,22 @@ export function App() {
   }, [events]);
   const filesRead = state.feed.filter((f) => f.type === "file_read").length;
   const [home, setHome] = useState(true);
+  const decision = useMemo(() => deriveDecision(events), [events]);
+  const [deciding, setDeciding] = useState(false);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
 
   if (!taskId || (home && state.terminal)) return <Home status={status} onCreated={() => setHome(false)} />;
 
   const isOperator = live.queue?.role === "operator";
+  const reviewing = state.node === "awaiting_confirmation" && !!decision.draft;
+  const act = async (action: "review" | "select" | "send-back" | "freeze", body: Record<string, string>) => {
+    if (!taskId || !decision.draft) return;
+    setDeciding(true);
+    setDecisionError(null);
+    const r = await api.decision(taskId, action, { draftId: decision.draft.draftId, ...body });
+    setDeciding(false);
+    if (!r.ok) setDecisionError(r.error);
+  };
   const detail = state.node === "reading" ? readingPhase(events, filesRead, planned) : null;
   const gathering = state.node === "sandbox_start" || state.node === "browser_experience";
 
@@ -155,7 +169,12 @@ export function App() {
         )}
       </header>
       <Stepper state={state} unavailable={events.some((e) => e.type === "evidence_summary" && e.payload.experienceUnavailable) ? ["try"] : []} />
-      <NowBar state={state} yourTurn={openCard ? openCard.title : null} detail={detail} onGo={() => openCard && document.getElementById(`card-${openCard.cardId}`)?.scrollIntoView({ behavior: "smooth", block: "center" })} />
+      <NowBar
+        state={state}
+        yourTurn={openCard ? openCard.title : reviewing ? "The decision draft is ready: accept or reject each item, then freeze it." : null}
+        detail={detail}
+        onGo={() => document.getElementById(openCard ? `card-${openCard.cardId}` : "decision-review")?.scrollIntoView({ behavior: "smooth", block: "center" })}
+      />
       {live.error && <div className="banner failure-text" role="alert">{live.error}</div>}
       {gathering && isOperator && (
         <div className="gather-bar">
@@ -166,7 +185,28 @@ export function App() {
       <main className="workspace">
         <PresenceColumn state={state} now={live.now} />
         <div className="center">
-          <ActivityFeed state={state} events={events} buffers={live.buffers} onAnswer={answer} />
+          <ActivityFeed
+            state={state}
+            events={events}
+            buffers={live.buffers}
+            onAnswer={answer}
+            inline={
+              decision.draft && (reviewing || state.node === "deciding") ? (
+                <DecisionReview
+                  draft={decision.draft}
+                  verdicts={decision.verdicts}
+                  selected={decision.selected}
+                  history={decision.history}
+                  busy={!reviewing || !isOperator || deciding}
+                  error={decisionError}
+                  onSelect={(optionId) => act("select", { optionId })}
+                  onReview={(item, verdict, reason) => act("review", { itemId: item.id, itemHash: item.hash, verdict, ...(reason ? { reason } : {}) })}
+                  onSendBack={() => act("send-back", {})}
+                  onFreeze={() => act("freeze", {})}
+                />
+              ) : null
+            }
+          />
           <InterjectionInput state={state} events={events} queue={live.queue} onSend={send} />
         </div>
         <ArtifactArea state={state} events={events} loadFile={loadFile} />

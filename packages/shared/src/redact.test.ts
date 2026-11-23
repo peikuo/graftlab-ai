@@ -43,3 +43,16 @@ describe("SecretRegistry", () => {
     expect(r.redact(input)).toEqual({ value: { a: "plain" }, hits: [] });
   });
 });
+
+describe("redact: shared references and cycles", () => {
+  it("keeps an object that appears twice (not a cycle) and still ends a real cycle", () => {
+    const r = new SecretRegistry();
+    r.register("k", "test-secret-value-123");
+    const shared = { path: "a.py", snippet: "x = 1" };
+    const out = r.redact({ content: { evidence: [shared] }, items: [{ evidence: [shared] }] }).value;
+    expect(out.items[0]!.evidence[0]).toEqual(shared);
+    const loop: Record<string, unknown> = { a: 1 };
+    loop.self = loop;
+    expect((r.redact(loop).value as Record<string, unknown>).self).toBe("[Circular]");
+  });
+});

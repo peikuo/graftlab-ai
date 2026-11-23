@@ -58,11 +58,13 @@ export class SecretRegistry {
   /**
    * Walks every string (values and object keys) of a JSON-like value and redacts it. Returns a new value.
    * Only plain objects and arrays are walked (events are plain JSON); other objects are returned unchanged,
-   * and a repeated reference becomes "[Circular]", so the walk always terminates.
+   * and only a real cycle (an object inside itself) becomes "[Circular]", so the walk always terminates. A
+   * shared reference (the same object in two places, not a cycle) is walked again: found 2026-11-24, when a
+   * decision draft's items shared evidence objects with its content and were stored as "[Circular]".
    */
   redact<T>(value: T): RedactResult<T> {
     const hits = new Set<string>();
-    const seen = new WeakSet<object>();
+    const onPath = new WeakSet<object>();
     const isPlain = (v: object) => {
       const p = Object.getPrototypeOf(v);
       return p === Object.prototype || p === null;
@@ -75,12 +77,16 @@ export class SecretRegistry {
       }
       if (!v || typeof v !== "object") return v;
       if (!Array.isArray(v) && !isPlain(v)) return v;
-      if (seen.has(v)) return "[Circular]";
-      seen.add(v);
-      if (Array.isArray(v)) return v.map(walk);
-      const out: Record<string, unknown> = {};
-      for (const [k, x] of Object.entries(v)) out[walk(k) as string] = walk(x);
-      return out;
+      if (onPath.has(v)) return "[Circular]";
+      onPath.add(v);
+      try {
+        if (Array.isArray(v)) return v.map(walk);
+        const out: Record<string, unknown> = {};
+        for (const [k, x] of Object.entries(v)) out[walk(k) as string] = walk(x);
+        return out;
+      } finally {
+        onPath.delete(v);
+      }
     };
     if (this.#ordered.length === 0) return { value, hits: [] };
     return { value: walk(value) as T, hits: [...hits] };

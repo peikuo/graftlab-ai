@@ -16,6 +16,12 @@ import type { Emit, TurnOptions, TurnResult } from "../runtime/pi.ts";
 import type { RuntimeRules } from "../roles/rules.ts";
 import { filesFrom, type EvidenceFiles } from "../evidence/check.ts";
 import { runMeeting } from "../meeting/meeting.ts";
+import { runDecisionDraft } from "../decision/draft.ts";
+import { DecisionDesk, type Verdict } from "../decision/desk.ts";
+import { splitItems } from "../decision/items.ts";
+import { renderDecisionDoc } from "../decision/render.ts";
+import { mkdir, writeFile } from "node:fs/promises";
+import type { DecisionDocContent, Proposal, ReviewItemData } from "@graftlab/shared";
 import type { Lease } from "../queue/lease.ts";
 import { TaskRunner, closeInterruptedTask, type Clock, type JudgeAnswer, type NodeHandler } from "./runner.ts";
 
@@ -52,6 +58,8 @@ export interface TaskServiceOptions {
   limits?: ReadLimits;
   clock?: Clock;
   taskTimeoutMs?: number;
+  /** Where the Adapters live (adapters/<id>/adapter.json). */
+  adaptersDir?: string;
   /** The Reader's LLM side (R10.7); without it the reading step stops honestly after the download. */
   reader?: {
     makeWriter: (emit: Emit, idPrefix: string) => MemoWriter & BriefWriter;
@@ -81,6 +89,8 @@ export class TaskService {
   #startIndex: (() => void) | null = null;
   /** Judge messages already handed to the meeting (by seq). */
   #judgeSeen = 0;
+  /** The decision step of the current Task (R15, R16). */
+  #decision: { draft?: { draftId: string; number: number; content: DecisionDocContent; items: ReviewItemData[] }; verdicts: Map<string, Verdict>; selected?: string | null; rejections?: { itemId: string; title: string; reason: string }[]; desk?: DecisionDesk; frozen: number } = { verdicts: new Map(), frozen: 0 };
   /** What the reading step produced, for the meeting of the same Task. */
   #read: { memo: RepoMemoHandle; files: Map<string, string>; evidence: EvidenceFiles } | null = null;
 
@@ -149,6 +159,7 @@ export class TaskService {
     this.#index = null;
     this.#startIndex = null;
     this.#judgeSeen = 0;
+    this.#decision = { verdicts: new Map(), frozen: 0 };
     this.#read = null;
     await this.#store?.close().catch(() => undefined);
     this.#store = store;
@@ -265,15 +276,7 @@ export class TaskService {
     const g = ctx.task.gathering;
     const summary = { findings: agentFindings, skipped, experienceNotes: [], screenshotRefs: [], ...(g.experienceUnavailable ? { experienceUnavailable: g.experienceUnavailable } : {}), partial: g.partial };
     await ctx.emit({ type: "evidence_summary", actor: { kind: "system" }, payload: summary });
-    const context = [
-      `## Repo_Brief (written by the Reader; an LLM description, not evidence)\n\n${renderBrief(read.memo.brief).replace(/^## Repo brief\n/, "")}`,
-      `## Evidence summary (built by Studio code)\n\n${[
-        agentFindings.length ? `Findings so far:\n${agentFindings.map((f) => `- ${f}`).join("\n")}` : "No findings were recorded during reading.",
-        skipped.length ? `Skipped while reading:\n${skipped.map((s) => `- ${s}`).join("\n")}` : "",
-        g.experienceUnavailable ? `App experience unavailable: ${g.experienceUnavailable}.` : "",
-        g.partial ? "Evidence gathering was ended early by the Judge (partial)." : "",
-      ].filter(Boolean).join("\n\n")}`,
-    ].join("\n\n");
+    const context = this.#contextFor(ctx, read);
     // The background index pauses so it does not compete with the meeting for model calls.
     this.#index?.abort("paused");
     const r = await runMeeting({
@@ -296,6 +299,134 @@ export class TaskService {
     if (ctx.signal.aborted) return "failed";
     await ctx.fail("llm_output_format_invalid", "llm", r.reason);
     return "failed";
+  }
+
+  /** Drafting (R15.1, R15.2, R37): Facilitator draft, Feasibility and Risk assessments, merged by code. */
+  async #decidingStep(ctx: Parameters<NodeHandler>[0]): Promise<"done" | "failed"> {
+    const m = this.#o.meeting;
+    const read = this.#read;
+    const events = this.#store?.events() ?? [];
+    const summary = events.findLast((e) => e.type === "meeting_summary");
+    if (!m || !read || summary?.type !== "meeting_summary") {
+      await ctx.fail("interface_call_failure", "llm", !m ? "the decision roles are not configured (no LLM profile)" : "the decision step has no meeting result from this Task");
+      return "failed";
+    }
+    const cards = new Map(events.flatMap((e) => (e.type === "card_opened" ? [[e.payload.cardId, e.payload] as const] : [])));
+    const judgeAnswers = events.flatMap((e) => {
+      if (e.type !== "card_answered") return [];
+      const c = cards.get(e.payload.cardId);
+      if (!c || c.kind !== "question") return [];
+      return [`${c.title} → ${c.options.find((o) => o.id === e.payload.optionId)?.label ?? e.payload.text ?? ""}`];
+    });
+    const d = this.#decision;
+    const r = await runDecisionDraft({
+      rules: m.rules,
+      context: this.#contextFor(ctx, read),
+      proposals: summary.payload.proposals as Proposal[],
+      openQuestions: summary.payload.openQuestions,
+      judgeAnswers,
+      ...(ctx.task.adapterId ? { checkHints: await this.#checkHints(ctx.task.adapterId) } : {}),
+      files: read.files,
+      evidence: read.evidence,
+      emit: ctx.emit,
+      runTurn: (t) => m.runTurn({ ...t, emit: ctx.emit }),
+      signal: ctx.signal,
+      idPrefix: `${ctx.task.taskId}-decide${(d.draft?.number ?? 0) + 1}`,
+      ...(d.draft && d.rejections ? { previous: { content: d.draft.content, rejections: d.rejections } } : {}),
+    });
+    if (!r.ok) {
+      if (ctx.signal.aborted) return "failed";
+      await ctx.fail("llm_output_format_invalid", "llm", r.reason);
+      return "failed";
+    }
+    const number = (d.draft?.number ?? 0) + 1;
+    const items = splitItems(r.content);
+    d.draft = { draftId: `draft-${number}`, number, content: r.content, items };
+    delete d.rejections;
+    await ctx.emit({ type: "decision_draft", actor: { kind: "role", roleId: "facilitator" }, payload: { draftId: d.draft.draftId, number, content: r.content, items } });
+    return "done";
+  }
+
+  /** The Judge reviews item by item, chooses one approach, then sends back or freezes (R5.7, R15.3, R15.11). */
+  async #confirmationStep(ctx: Parameters<NodeHandler>[0]): Promise<"send_back" | "confirmed" | "judge_end" | "failed"> {
+    const d = this.#decision;
+    if (!d.draft) {
+      await ctx.fail("interface_call_failure", "persistence", "there is no decision draft to review");
+      return "failed";
+    }
+    const desk = new DecisionDesk({
+      draftId: d.draft.draftId,
+      content: d.draft.content,
+      items: d.draft.items,
+      verdicts: d.verdicts,
+      ...(d.selected ? { selected: d.selected } : {}),
+      nextVersion: d.frozen + 1,
+      emit: async (e) => {
+        await ctx.emit({ ...e, actor: { kind: "judge" } } as never);
+        ctx.patch({ review: desk.review() });
+      },
+    });
+    d.desk = desk;
+    ctx.patch({ review: desk.review() });
+    const stopped = new Promise<null>((res) => ctx.signal.addEventListener("abort", () => res(null), { once: true }));
+    const out = await Promise.race([desk.outcome, stopped]);
+    delete d.desk;
+    d.selected = desk.selected;
+    if (!out) return "failed";
+    ctx.patch({ review: desk.review() });
+    if (out.kind === "send_back") {
+      d.rejections = out.rejections;
+      return "send_back";
+    }
+    if (out.kind === "confirmed") {
+      d.frozen = out.version;
+      ctx.patch({ frozenVersion: out.version });
+      return "confirmed";
+    }
+    return "judge_end";
+  }
+
+  /** A Judge action on the decision draft; every rule is checked again by the desk (R5.7, R28.6). */
+  async decision(taskId: string, action: "review" | "select" | "send-back" | "freeze" | "end", body: { draftId?: string; itemId?: string; itemHash?: string; verdict?: "accept" | "reject"; reason?: string; optionId?: string }, sessionId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    if (this.#runner?.task.taskId !== taskId) return { ok: false, status: 404, error: "no such Task" };
+    const desk = this.#decision.desk;
+    if (!desk || this.#runner.task.node !== "awaiting_confirmation") return { ok: false, status: 409, error: "no decision draft is waiting for review" };
+    const draftId = body.draftId ?? "";
+    if (action === "review") return body.itemId && body.itemHash && body.verdict ? desk.reviewItem(draftId, body.itemId, body.itemHash, body.verdict, body.reason) : { ok: false, status: 400, error: "itemId, itemHash and verdict are required" };
+    if (action === "select") return body.optionId ? desk.select(draftId, body.optionId) : { ok: false, status: 400, error: "optionId is required" };
+    if (action === "send-back") return desk.sendBack(draftId);
+    if (action === "freeze") return desk.freeze(draftId, sessionId);
+    if (this.#runner.task.repoKind !== "other") return { ok: false, status: 409, error: "ending before the freeze is only for repositories the Studio cannot run" };
+    return desk.end();
+  }
+
+  async #checkHints(adapterId: string): Promise<string> {
+    const a = JSON.parse(await readFile(join(this.#o.adaptersDir ?? "adapters", adapterId, "adapter.json"), "utf8")) as { api?: { read?: { method: string; path: string }[] }; testSelectionHint?: string };
+    return [
+      "# How the Verifier can check this app (from its Adapter)",
+      "Acceptance check kinds (JSON):",
+      '- {"id","kind":"test_suite","command":["python","manage.py","test","bookmarks.tests.<module>"],"timeoutS":600}: runs tests in the development sandbox.',
+      '- {"id","kind":"browser_check","target":"run_environment","steps":[{"op":"goto","path":"/bookmarks"},{"op":"expectText","text":"…"},{"op":"click","role":"button","name":"…"},{"op":"fill","role":"textbox","name":"…","value":"…"},{"op":"expectRole","role":"…","name":"…"}]}: drives the changed app in a browser.',
+      '- {"id","kind":"api_readback","target":"run_environment","expect":[{"key":"<bookmark url>","mustExist":true,"fields":{"tag_names":["…"]}}]}: reads bookmarks back through the API.',
+      `Read endpoints: ${(a.api?.read ?? []).map((r) => `${r.method} ${r.path}`).join(", ")}.`,
+      a.testSelectionHint ? `Tests: ${a.testSelectionHint}` : "",
+    ].filter(Boolean).join("\n");
+  }
+
+  /** The stable Task context of every meeting and decision turn (one cached prefix): Repo_Brief and evidence summary. */
+  #contextFor(ctx: Parameters<NodeHandler>[0], read: { memo: RepoMemoHandle }): string {
+    const events = this.#store?.events() ?? [];
+    const s = events.find((e) => e.type === "evidence_summary");
+    const sum = s?.type === "evidence_summary" ? s.payload : { findings: [], skipped: [], partial: ctx.task.gathering.partial, experienceUnavailable: ctx.task.gathering.experienceUnavailable };
+    return [
+      `## Repo_Brief (written by the Reader; an LLM description, not evidence)\n\n${renderBrief(read.memo.brief).replace(/^## Repo brief\n/, "")}`,
+      `## Evidence summary (built by Studio code)\n\n${[
+        sum.findings.length ? `Findings so far:\n${sum.findings.map((f) => `- ${f}`).join("\n")}` : "No findings were recorded during reading.",
+        sum.skipped.length ? `Skipped while reading:\n${sum.skipped.map((x) => `- ${x}`).join("\n")}` : "",
+        sum.experienceUnavailable ? `App experience unavailable: ${sum.experienceUnavailable}.` : "",
+        sum.partial ? "Evidence gathering was ended early by the Judge (partial)." : "",
+      ].filter(Boolean).join("\n\n")}`,
+    ].join("\n\n");
   }
 
   #handlers(): Partial<Record<NodeId, NodeHandler>> {
@@ -354,6 +485,19 @@ export class TaskService {
         return "failed";
       },
       meeting: (ctx) => this.#meetingStep(ctx),
+      deciding: (ctx) => this.#decidingStep(ctx),
+      awaiting_confirmation: (ctx) => this.#confirmationStep(ctx),
+      frozen: async (ctx) => {
+        // The Decision_Doc as an Output_Doc (layer C), next to REPO_MEMO.md.
+        const e = this.#store?.events().findLast((x) => x.type === "decision_doc_frozen");
+        const v = this.#store?.events().findLast((x) => x.type === "decision_doc_version");
+        if (e?.type === "decision_doc_frozen" && v?.type === "decision_doc_version") {
+          const dir = join(this.#o.dataDir, "tasks", ctx.task.taskId, "docs");
+          await mkdir(dir, { recursive: true });
+          await writeFile(join(dir, "DECISION_DOC.md"), renderDecisionDoc(v.payload.content as DecisionDocContent, e.payload));
+        }
+        return "done";
+      },
     };
   }
 }

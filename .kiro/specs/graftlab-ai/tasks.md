@@ -343,33 +343,42 @@ Conventions:
     - _Requirements: 3.11, 11.6, 11.9, 12.2, 12.5, 27.7_
 
 - [ ] 7. F6: decision step, Decision_Doc schema, versions, hash and freeze (target 2026-11-25)
-  - [ ] 7.1 Implement the Decision_Doc schema, canonical hash and versions
+  - [x] 7.1 Implement the Decision_Doc schema, canonical hash and versions
+    - Done 2026-11-24: `packages/shared/src/decision.ts`, `apps/server/src/decision/hash.ts`
     - zod schema for every R15.2 section; canonical JSON (sorted keys, UTF-8) and sha256 over content only; immutable frozen versions; version n+1 on change
     - Design: Decision_Doc
     - _Requirements: 15.2, 15.6, 16.1, 16.4, 16.5_
-  - [ ]* 7.2 Write property test for hash recomputation
+  - [x]* 7.2 Write property test for hash recomputation
+    - Done 2026-11-24: `decision.property.test.ts`, 200 runs
     - **Property 8: Decision_Doc hash recomputation**
     - **Validates: Requirements 16.5**
-  - [ ] 7.3 Implement the deciding node
+  - [x] 7.3 Implement the deciding node
+    - Done 2026-11-24: `decision/draft.ts`, 3 tests
+    - Plan (2026-11-24): Facilitator draft from the meeting summary, then Feasibility and Risk assessments in parallel, merged and checked by code; effort small | medium | large with large flagged as engineering risk (R37.9), also on the meeting board
     - Meeting_Perspectives propose Approach_Options; Feasibility and Risk add Assessments and the Facilitator adds the executable Acceptance_Checks labeled "LLM assessment, not a guarantee"; `submit_decision_draft`; `assessment.complete` computed by code; evidence check of claims and endpoints
     - Design: Decision step
     - _Requirements: 15.1, 15.2, 15.8, 15.9, 15.10, 24.4, 37.1, 37.2, 37.3, 37.5, 37.6, 37.7_
-  - [ ] 7.4 Implement confirmation and freeze
+  - [x] 7.4 Implement confirmation and freeze
+    - Done 2026-11-24: `decision/desk.ts`, `decision/items.ts`, HTTP actions, 5 tests
     - Item review per `ui/screen-4-decide.png`: draft split into review items by code, accept or reject with a reason (`decision_item_reviewed`), send back only when every item has a verdict, unchanged items keep their verdict by `itemHash`, freeze only when every item is accepted
     - Confirm card in feature words with exactly one selectable approach or combination; freeze records version, hash, session and time (`decision_doc_frozen`); request changes back to `deciding`; Other_Repo end before freeze to `analysis_only`; guards block planning while unconfirmed
     - Design: Decision step, Flow_Graph
     - _Requirements: 5.7, 15.3, 15.4, 15.5, 15.11, 16.2, 16.3, 25.1, 37.4_
-  - [ ]* 7.5 Write property test for confirmable options
+  - [x]* 7.5 Write property test for confirmable options
+    - Done 2026-11-24: `decision.property.test.ts`, 100 runs
     - **Property 10: Only complete approach options can be confirmed**
     - **Validates: Requirements 15.11, 37.4, 37.5**
-  - [ ] 7.6 Build the Decision_Doc view
+  - [x] 7.6 Build the Decision_Doc view
+    - Done 2026-11-24: review in the timeline, confirmation record in the Decision tab, `DECISION_DOC.md`
     - Artifact_Area view with version number, Unverified marks, assessment labels, UI impact section and the version history with hashes and confirmation records
     - Design: Decision step, Web app
     - _Requirements: 4.5, 15.8, 15.9, 16.4, 37.3_
-  - [ ]* 7.7 Write unit tests for the decision step
+  - [x]* 7.7 Write unit tests for the decision step
+    - Done 2026-11-24: `desk.test.ts`, `draft.test.ts`
     - Planning blocked while unconfirmed; in-place edit of a frozen version rejected; version chain after a change request
     - _Requirements: 15.4, 15.6, 16.1, 16.2_
-  - [ ] 7.8 Demo and verify: decision step
+  - [x] 7.8 Demo and verify: decision step
+    - Done 2026-11-24 on linkding (`scripts/live-walk-m7-decision.mjs`): meeting 315 s, draft 1 after 316 s with 3 options (medium, medium, large flagged as engineering risk), the Judge chose one, rejected the screen item with a reason and sent it back; draft 2 after 152 s kept 4 of 7 items unchanged (their verdicts carried over) and reworded the screen item as asked; freeze created version 1; the recomputed hash equals the recorded one; DECISION_DOC.md written. Found and fixed: the redactor stored shared objects as "[Circular]" (now only real cycles); a reject form stayed open on the next draft (row key now includes the item hash). Open: drafting takes 2.5 to 5 minutes
     - Show the user a real decision step on linkding ending in a frozen Decision_Doc, and a change request that creates version 2; check that the recomputed hash equals the recorded one and that an option without an Acceptance_Check cannot be selected
     - _Requirements: 15.3, 16.5, 37.5_
 

@@ -171,12 +171,18 @@ export function ArtifactArea({ state, events, loadFile }: { state: UiState; even
           ))}
         {active === "decision" && (
             <ul className="clean">
-              {state.decisionDocs.map((d) => (
-                <li key={d.version} className="doc-row">
-                  <span aria-hidden="true">{d.frozen ? "🔒" : "📝"}</span> Decision v{d.version} {d.frozen ? "· locked" : "· draft"}
-                  <span className="mono muted small"> {d.hash.slice(0, 10)}</span>
-                </li>
-              ))}
+              {state.decisionDocs.map((d) => {
+                const f = events.findLast((e) => e.type === "decision_doc_frozen" && e.payload.version === d.version);
+                return (
+                  <li key={d.version} className="doc-row">
+                    <span aria-hidden="true">{d.frozen ? "🔒" : "📝"}</span> Decision version {d.version} {d.frozen ? "· locked" : ""}
+                    <div className="muted small">
+                      Fingerprint <span className="mono" title={d.hash}>{d.hash.slice(0, 12)}</span>
+                      {f?.type === "decision_doc_frozen" ? ` · confirmed ${new Date(f.payload.confirmedAt).toLocaleString()}` : ""}
+                    </div>
+                  </li>
+                );
+              })}
               {docs.map((e) =>
                 e.type === "artifact_updated" ? (
                   <li key={e.seq} className="doc-row">

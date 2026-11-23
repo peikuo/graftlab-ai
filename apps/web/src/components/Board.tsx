@@ -46,6 +46,7 @@ function ProposalCard({ p }: { p: Proposal }) {
               {s ? (
                 <span className="stance-body">
                   <span className={`badge ${STANCE[s.stance]!.cls}`}>{STANCE[s.stance]!.text}</span>
+                  {s.effort && <span className={`badge ${s.effort === "large" ? "red" : "slate"}`}>{s.effort === "large" ? "large change · engineering risk" : `${s.effort} change`}</span>}
                   {s.stance === "conditional" && s.conditions ? <strong> {s.conditions}</strong> : null} {s.reason}
                   {s.evidenceStatus === "unverified" && <span className="badge red">Unverified</span>}
                   {s.evidence.length > 0 && <EvidenceFold evidence={s.evidence} />}

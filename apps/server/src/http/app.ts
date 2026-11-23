@@ -17,6 +17,7 @@ export interface TaskApi {
   abort(taskId: string): boolean;
   endGathering(taskId: string): boolean;
   fileText(taskId: string, path: string): Promise<string | null>;
+  decision(taskId: string, action: "review" | "select" | "send-back" | "freeze" | "end", body: { draftId?: string; itemId?: string; itemHash?: string; verdict?: "accept" | "reject"; reason?: string; optionId?: string }, sessionId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
 }
 
 export interface StudioOptions {
@@ -184,6 +185,28 @@ export function createStudio(opts: StudioOptions): Studio {
     return { taskId: r.taskId };
   });
 
+  // Decision step (R5.7, R15.3, R15.11): operator only; the desk checks every rule again.
+  const DecisionBody = z.object({
+    draftId: z.string().max(40).optional(),
+    itemId: z.string().max(40).optional(),
+    itemHash: z.string().max(80).optional(),
+    verdict: z.enum(["accept", "reject"]).optional(),
+    reason: z.string().max(1000).optional(),
+    optionId: z.string().max(40).optional(),
+  });
+  for (const action of ["review", "select", "send-back", "freeze", "end"] as const) {
+    app.post<{ Params: { id: string } }>(`/api/tasks/:id/decision/${action}`, async (req, reply) => {
+      const denied = await command(req);
+      if (denied) return reply.code(denied.status).send({ error: denied.error });
+      if (!opts.tasks) return reply.code(503).send({ error: "not available on this server" });
+      const body = DecisionBody.safeParse(req.body ?? {});
+      if (!body.success) return reply.code(400).send({ error: "invalid request" });
+      const clean = Object.fromEntries(Object.entries(body.data).filter(([, v]) => v !== undefined));
+      const r = await opts.tasks.decision(req.params.id, action, clean, readSession(req) ?? "unknown");
+      if (!r.ok) return reply.code(r.status).send({ error: r.error });
+      return { accepted: true };
+    });
+  }
   app.post<{ Params: { id: string } }>("/api/tasks/:id/abort", async (req, reply) => {
     const denied = await command(req);
     if (denied) return reply.code(denied.status).send({ error: denied.error });

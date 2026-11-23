@@ -383,3 +383,6 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .verdict-conditions { margin-top: 4px; gap: 2px; }
 .proposal.v-recommend { border-color: var(--working); }
 .proposal.v-drop { opacity: 0.7; }
+.ropt { display: grid; gap: 2px; }
+.ropt .badge { justify-self: start; }
+.ropt-line { color: var(--muted); white-space: pre-wrap; }

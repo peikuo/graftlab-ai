@@ -69,8 +69,11 @@ export const EvidenceRefSchema = z.object({
 // R11.11: the Proposal_Board. Evidence is resolved by code (checked quotes with their internal pool id); the
 // pool id is never shown to the Judge (R11.13).
 export const STANCES = ["support", "against", "conditional"] as const;
+export const EFFORTS = ["small", "medium", "large"] as const;
 export const StanceSchema = z.object({
   stance: z.enum(STANCES),
+  /** Feasibility only (R37.9). */
+  effort: z.enum(EFFORTS).optional(),
   reason: z.string().min(1),
   conditions: z.string().optional(),
   evidence: z.array(EvidenceRefSchema),
@@ -227,6 +230,10 @@ export const PAYLOADS = {
   }),
   // The content is validated by the Decision_Doc schema of the decision milestone (schemas/decisionDoc.ts).
   decision_doc_version: z.object({ version: z.number().int().positive(), content: z.unknown(), hash: nonEmpty }),
+  // R5.7: a draft (not a version); content validated by DecisionDocContentSchema, items split and hashed by code.
+  decision_draft: z.object({ draftId: id, number: z.number().int().positive(), content: z.unknown(), items: z.array(z.unknown()) }),
+  // R15.11, R37.4: the Judge's choice of exactly one complete Approach_Option for a draft.
+  decision_approach_selected: z.object({ draftId: id, optionId: id }),
   decision_doc_frozen: z.object({
     version: z.number().int().positive(),
     hash: nonEmpty,

@@ -25,7 +25,7 @@ const EntrySchema = z.object({ id: z.string().max(20).optional(), path: z.string
 export const PositionSchema = z.object({
   quotes: capped(QuoteSchema, 8).default([]),
   proposals: capped(
-    z.object({ kind: z.enum(["improve", "new"]), title: line(120), userChange: line(400), purpose: Purpose, quotes: z.array(z.number().int().positive()).default([]), stance: z.enum(["support", "conditional"]).default("support"), reason: line(400), conditions: z.string().max(300).optional() }),
+    z.object({ kind: z.enum(["improve", "new"]), title: line(120), userChange: line(400), purpose: Purpose, quotes: z.array(z.number().int().positive()).default([]), stance: z.enum(["support", "conditional"]).default("support"), reason: line(400), conditions: z.string().max(300).optional(), effort: z.enum(["small", "medium", "large"]).optional() }),
     2,
   ),
 });
@@ -34,6 +34,7 @@ const ChangeIn = z.object({
   idea: z.enum(["improve", "new"]).optional(),
   proposal: z.string().max(200).optional(),
   stance: Stance.optional(),
+  effort: z.enum(["small", "medium", "large"]).optional(),
   reason: z.string().max(400).optional(),
   conditions: z.string().max(300).optional(),
   title: z.string().max(120).optional(),
@@ -58,6 +59,7 @@ const changeParams = obj({
   idea: opt(oneOf(["improve", "new"] as const)),
   proposal: opt(str()),
   stance: opt(oneOf(["support", "against", "conditional"] as const)),
+  effort: opt(oneOf(["small", "medium", "large"] as const)),
   reason: opt(str()),
   conditions: opt(str()),
   title: opt(str()),
@@ -198,7 +200,7 @@ export async function runMeeting(o: MeetingOptions): Promise<MeetingResult> {
         name: "submit_position",
         label: "submit_position",
         description: "Submit your position: quotes copied exactly from files, and up to 2 proposals that cite quotes by their number (1 = first quote). At least one proposal must be kind new: a capability the software cannot offer today.",
-        parameters: obj({ quotes: opt(arr(obj({ path: str(), line: opt(int()), snippet: str() }))), proposals: arr(obj({ kind: oneOf(["improve", "new"] as const), title: str(), userChange: str(), purpose: oneOf(["A", "B", "unclear"] as const), quotes: opt(arr(int())), stance: opt(oneOf(["support", "conditional"] as const)), reason: str(), conditions: opt(str()) })) }),
+        parameters: obj({ quotes: opt(arr(obj({ path: str(), line: opt(int()), snippet: str() }))), proposals: arr(obj({ kind: oneOf(["improve", "new"] as const), title: str(), userChange: str(), purpose: oneOf(["A", "B", "unclear"] as const), quotes: opt(arr(int())), stance: opt(oneOf(["support", "conditional"] as const)), reason: str(), conditions: opt(str()), effort: opt(oneOf(["small", "medium", "large"] as const)) })) }),
         execute: async (_i, a: unknown) => {
           const p = PositionSchema.safeParse(a);
           if (!p.success) return text(`Not accepted: ${p.error.issues[0]?.path.join(".")} ${p.error.issues[0]?.message}. Submit again.`, true);
@@ -207,7 +209,7 @@ export async function runMeeting(o: MeetingOptions): Promise<MeetingResult> {
           // Perspectives prepare at the same time: a proposal another one already added becomes a stance on it.
           const changes: Change[] = p.data.proposals.map((x) => {
             const evidence = x.quotes.flatMap((n) => (p.data.quotes[n - 1] ? [p.data.quotes[n - 1]!] : []));
-            const cond = x.conditions ? { conditions: x.conditions } : {};
+            const cond = { ...(x.conditions ? { conditions: x.conditions } : {}), ...(x.effort ? { effort: x.effort } : {}) };
             const existing = board.find(x.title);
             return existing ? { kind: "stance", proposal: existing.id, stance: x.stance, reason: x.reason, ...cond, evidence } : { kind: "add", idea: x.kind, title: x.title, userChange: x.userChange, purpose: x.purpose, stance: x.stance, reason: x.reason, ...cond, evidence };
           });
@@ -252,8 +254,8 @@ export async function runMeeting(o: MeetingOptions): Promise<MeetingResult> {
           const errors: string[] = [];
           for (const c of p.data.changes) {
             if (c.kind === "merge" && c.keep && c.drop) changes.push({ kind: "merge", keep: c.keep, drop: c.drop });
-            else if (c.kind === "stance" && c.proposal && c.stance && c.reason) changes.push({ kind: "stance", proposal: c.proposal, stance: c.stance, reason: c.reason, ...(c.conditions ? { conditions: c.conditions } : {}), evidence: c.evidence });
-            else if (c.kind === "add" && c.title && c.userChange && c.purpose) changes.push({ kind: "add", ...(c.idea ? { idea: c.idea } : {}), title: c.title, userChange: c.userChange, purpose: c.purpose, evidence: c.evidence, ...(c.stance ? { stance: c.stance } : {}), ...(c.reason ? { reason: c.reason } : {}), ...(c.conditions ? { conditions: c.conditions } : {}) });
+            else if (c.kind === "stance" && c.proposal && c.stance && c.reason) changes.push({ kind: "stance", proposal: c.proposal, stance: c.stance, reason: c.reason, ...(c.conditions ? { conditions: c.conditions } : {}), ...(c.effort ? { effort: c.effort } : {}), evidence: c.evidence });
+            else if (c.kind === "add" && c.title && c.userChange && c.purpose) changes.push({ kind: "add", ...(c.idea ? { idea: c.idea } : {}), title: c.title, userChange: c.userChange, purpose: c.purpose, evidence: c.evidence, ...(c.stance ? { stance: c.stance } : {}), ...(c.reason ? { reason: c.reason } : {}), ...(c.conditions ? { conditions: c.conditions } : {}), ...(c.effort ? { effort: c.effort } : {}) });
             else errors.push(`a ${c.kind} change is missing fields`);
           }
           const res = board.apply(roleId, changes);

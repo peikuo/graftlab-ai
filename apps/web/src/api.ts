@@ -46,6 +46,8 @@ export const api = {
   playFixture: (name: string, speed: number) => post<{ taskId: string }>("/api/dev/fixture", { name, speed }),
   createTask: (url: string) => post<{ taskId: string }>("/api/tasks", { url }),
   abort: (taskId: string) => post<{ accepted: boolean }>(`/api/tasks/${encodeURIComponent(taskId)}/abort`),
+  decision: (taskId: string, action: "review" | "select" | "send-back" | "freeze" | "end", body: Record<string, string>) =>
+    post<{ accepted: boolean }>(`/api/tasks/${encodeURIComponent(taskId)}/decision/${action}`, body),
   endGathering: (taskId: string) => post<{ accepted: boolean }>(`/api/tasks/${encodeURIComponent(taskId)}/gathering/end`),
   async status(): Promise<{ liveExecution: boolean; reason?: string; creating: boolean } | null> {
     try {

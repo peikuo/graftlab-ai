@@ -27,7 +27,9 @@ describe("Board", () => {
     ]);
     expect(r.lines).toEqual(["Supports “Tag suggestions” only if the user turns it on: Page text leaves the server"]);
     expect(r.errors).toEqual(["no proposal “P9” on the board"]);
-    b.apply("feasibility", [{ kind: "stance", proposal: "P1", stance: "against", reason: "No hook", evidence: [{ path: "app/models.py", snippet: "def save_hook(self):" }] }]);
+    expect(b.apply("feasibility", [{ kind: "stance", proposal: "P1", stance: "against", reason: "No hook", evidence: [] }]).errors[0]).toMatch(/effort/);
+    const fe = b.apply("feasibility", [{ kind: "stance", proposal: "P1", stance: "against", effort: "large", reason: "No hook", evidence: [{ path: "app/models.py", snippet: "def save_hook(self):" }] }]);
+    expect(fe.lines[0]).toBe("Against “Tag suggestions”, a large change (engineering risk): No hook");
     expect(b.snapshot()[0]!.stances.feasibility).toMatchObject({ stance: "against", evidenceStatus: "unverified", evidence: [{ reason: "snippet_absent" }] });
     expect(b.complete()).toBe(true);
   });
@@ -76,7 +78,7 @@ describe("Facilitator verdicts (R11.14)", () => {
     expect(r.lines).toEqual(["Recommends “Tags” as number 1, only if off by default: All support it", "Leaves “Bulk retag” for you to decide: Depends on how much undo you want"]);
     expect(b.snapshot()[0]!.verdict).toEqual({ verdict: "recommend", rank: 1, reason: "All support it", conditions: ["off by default"] });
     expect(b.undecided()).toEqual([]);
-    b.apply("feasibility", [{ kind: "stance", proposal: "P1", stance: "against", reason: "changed (P2)", evidence: [] }]);
+    b.apply("feasibility", [{ kind: "stance", proposal: "P1", stance: "against", effort: "small", reason: "changed (P2)", evidence: [] }]);
     expect(b.undecided()).toEqual(["P1"]);
     expect(b.snapshot()[0]!.stances.feasibility!.reason).toBe("changed");
   });

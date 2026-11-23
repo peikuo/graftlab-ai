@@ -56,6 +56,7 @@ const tasks = new TaskService({
     ...(process.env.GL_GITHUB_RAW ? { rawBase: process.env.GL_GITHUB_RAW } : {}),
   }),
   adapters: await loadAdapters(join(root, "adapters")),
+  adaptersDir: join(root, "adapters"),
   runtimeRulesVersion,
   llm: { profile: llm.profile, model: llm.model },
   lease,
