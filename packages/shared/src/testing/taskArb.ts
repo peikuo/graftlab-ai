@@ -36,6 +36,8 @@ export const taskStateArb: fc.Arbitrary<TaskState> = fc
       { nil: undefined },
     ),
     backlogValid: fc.boolean(),
+    planConfirmed: fc.boolean(),
+    planSentBackReason: fc.option(fc.constantFrom("not what I want", " "), { nil: undefined }),
     briefReady: fc.boolean(),
     docsComplete: fc.boolean(),
     stories: storiesArb,
@@ -53,7 +55,7 @@ export const taskStateArb: fc.Arbitrary<TaskState> = fc
   })
   .map((r) =>
     r.consistent
-      ? { ...r, repoKind: "adapted" as const, frozenVersion: r.frozenVersion ?? 1, backlogValid: true, docsComplete: true, targetCheckPassed: true }
+      ? { ...r, repoKind: "adapted" as const, frozenVersion: r.frozenVersion ?? 1, backlogValid: true, planConfirmed: true, docsComplete: true, targetCheckPassed: true }
       : r,
   )
   .map((r) => {
@@ -68,6 +70,8 @@ export const taskStateArb: fc.Arbitrary<TaskState> = fc
       frozenVersion: r.frozenVersion,
       briefReady: r.briefReady,
       backlogValid: r.backlogValid,
+      planConfirmed: r.planConfirmed,
+      ...(r.planSentBackReason !== undefined ? { planSentBackReason: r.planSentBackReason } : {}),
       docsComplete: r.docsComplete,
       stories: r.stories,
       pendingUnconfirmed: [],

@@ -17,6 +17,7 @@ export const NODE_IDS = [
   "frozen",
   // planning and documents
   "planning",
+  "plan_review",
   "documenting",
   "adapter_branch_2",
   "target_check",

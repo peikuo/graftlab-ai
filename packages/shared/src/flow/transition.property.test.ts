@@ -8,7 +8,7 @@ import { GATHERING_NODES, type NodeId } from "./ids.ts";
 import { transition } from "./transition.ts";
 
 const POST_FREEZE: NodeId[] = [
-  "frozen", "planning", "documenting", "adapter_branch_2", "target_check", "docs_only",
+  "frozen", "planning", "plan_review", "documenting", "adapter_branch_2", "target_check", "docs_only",
   "story_develop", "story_review", "story_ask", "story_run", "story_checkpoint", "verifying",
   "api_read", "api_plan", "api_suggest", "api_confirm", "api_try_one", "api_write_batch", "api_read_back",
 ];
@@ -86,6 +86,8 @@ describe("transition", () => {
           const fromOk =
             (task.node === "adapter_branch" && task.repoKind === "other") ||
             (GATHERING_NODES as readonly NodeId[]).includes(task.node) ||
+            // R19.12: the Judge sends the plan back with a reason.
+            (task.node === "plan_review" && task.outcome === "send_back" && !!task.planSentBackReason?.trim()) ||
             judgeRetry;
           expect(fromOk).toBe(true);
         }
@@ -110,6 +112,7 @@ describe("transition", () => {
         if (task.node === "failure_review" && edgeId.startsWith("retry_")) {
           expect(to).toBe(task.failure!.node);
         }
+        if (to === "documenting") expect(task.planConfirmed && task.backlogValid).toBe(true);
         if (edgeId === "freeze") {
           expect(task.review!.accepted).toBe(task.review!.total);
           expect(task.review!.approachComplete).toBe(true);

@@ -19,6 +19,7 @@ export const ROLE_IDS = [
 ] as const;
 export const MEETING_PERSPECTIVES = ["user_value", "feasibility", "risk"] as const satisfies readonly (typeof ROLE_IDS)[number][];
 export const RoleIdSchema = z.enum(ROLE_IDS);
+export const OUTPUT_DOC_KINDS = ["product_backlog", "sprint_plan", "definition_of_done", "task_board", "requirements", "design", "tasks", "demo_review_note", "retrospective"] as const;
 export type RoleId = z.infer<typeof RoleIdSchema>;
 
 export const NodeIdSchema = z.enum(NODE_IDS);
@@ -189,6 +190,8 @@ export const PAYLOADS = {
     body: z.string(),
     options: z.array(z.object({ id: id, label: nonEmpty })),
     allowFreeText: z.boolean(),
+    /** Options that are sent only together with a written reason (for example sending the plan back, R19.12). */
+    textRequiredFor: z.array(id).optional(),
     /** false: the asking role keeps working; the answer is delivered when it arrives (R5.3, R11.4). */
     blocking: z.boolean().optional(),
   }),
@@ -252,6 +255,12 @@ export const PAYLOADS = {
       message: "a rejection needs a reason",
       path: ["reason"],
     }),
+  // R19, R20: the plan the Judge reviews (content validated by PlanSchema), its confirmation or send back.
+  plan_proposed: z.object({ planId: id, number: z.number().int().positive(), content: z.unknown() }),
+  plan_confirmed: z.object({ planId: id, decisionVersion: z.number().int().positive() }),
+  plan_sent_back: z.object({ planId: id, reason: nonEmpty }),
+  // One Agile_Docs or analyzed-repository document (R20.4: every one records its Decision_Doc version).
+  output_doc: z.object({ kind: z.enum(OUTPUT_DOC_KINDS), decisionVersion: z.number().int().positive(), content: z.unknown(), ref: nonEmpty }),
   browser_action: z.object({ action: nonEmpty, target: z.string(), ok: z.boolean() }),
   browser_observation: z.object({ snapshotSummary: z.string(), screenshotRef: z.string().optional() }),
   code_change: z.object({

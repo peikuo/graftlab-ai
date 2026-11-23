@@ -235,6 +235,8 @@ export class TaskRunner {
   }
 
   async #runNode(): Promise<NodeOutcome> {
+    // An abort or timeout that arrived between two nodes (no handler was running to interrupt) applies now.
+    if (this.#forced) return this.#forced;
     const node = this.#task.node;
     const ctrl = new AbortController();
     this.#nodeAbort = ctrl;

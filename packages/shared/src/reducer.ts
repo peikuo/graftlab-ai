@@ -4,6 +4,7 @@
 // roleStatus() (R2) is added with the Workspace milestone; this state keeps the facts it needs.
 import type { Actor, FailureClass, PayloadOf, RoleId, StudioEvent } from "./events.ts";
 import type { NodeId, TerminalId } from "./flow/ids.ts";
+import { OUTPUT_DOC_TITLES } from "./planning.ts";
 
 export type ActorKey = "judge" | "system" | "verifier" | "code_agent" | RoleId;
 
@@ -77,6 +78,10 @@ export interface UiState {
   visitedNodes: NodeId[];
   /** The node left by the latest transition (for example the step that failed before failure_review). */
   previousNode: NodeId | null;
+  /** The latest plan (R19.11): its content as proposed, and whether the Judge confirmed or sent it back. */
+  plan?: { planId: string; number: number; content: unknown; status: "proposed" | "confirmed" | "sent_back"; reason?: string; seq: number };
+  /** The latest document of each kind (R20.4; older Decision_Doc versions are marked by the view, R20.10). */
+  outputDocs: Partial<Record<string, { kind: string; decisionVersion: number; ref: string; content: unknown; seq: number }>>;
 }
 
 export const initialUiState: UiState = {
@@ -99,6 +104,7 @@ export const initialUiState: UiState = {
   verifierResults: [],
   visitedNodes: [],
   previousNode: null,
+  outputDocs: {},
 };
 
 /** Event types that always produce exactly one Activity_Feed entry (Property 5). */
@@ -106,6 +112,7 @@ export const ALWAYS_NARRATED: ReadonlySet<StudioEvent["type"]> = new Set([
   "task_created", "node_entered", "transition_rejected", "file_read", "finding_recorded", "message_completed",
   "message_incomplete", "tool_started", "judge_message", "card_opened", "card_answered", "decision_doc_frozen",
   "decision_item_reviewed", "browser_action", "code_change", "memo_written", "reading_planned", "repo_brief", "index_progress", "card_expired", "decision_draft", "decision_approach_selected", "statement_submitted", "signals_collected", "meeting_summary", "review_verdict", "question_opened", "question_answered",
+  "plan_proposed", "plan_confirmed", "plan_sent_back", "output_doc",
   "verifier_result", "failure", "terminal_reached",
 ]);
 
@@ -130,6 +137,10 @@ const SUBMIT_PLAIN: Record<string, string> = {
   submit_signal: "Said whether it wants to speak",
   submit_close: "Closed the meeting",
   ask_judge: "Asked you a question",
+  submit_plan: "Submitted the plan",
+  submit_plan_assessment: "Assessed the stories",
+  submit_final_plan: "Decided the final plan",
+  submit_documents: "Submitted the documents",
 };
 function refOf(e: StudioEvent): string | undefined {
   switch (e.type) {
@@ -164,6 +175,14 @@ export function narrate(e: StudioEvent): { text: string; path?: string; failure?
       return { text: `Decision draft ${e.payload.number} is ready for your review` };
     case "decision_approach_selected":
       return { text: "You chose an approach" };
+    case "plan_proposed":
+      return { text: `Plan ${e.payload.number} is ready for your review` };
+    case "plan_confirmed":
+      return { text: "You confirmed the plan" };
+    case "plan_sent_back":
+      return { text: `You sent the plan back to the meeting: ${e.payload.reason}` };
+    case "output_doc":
+      return { text: `Wrote ${OUTPUT_DOC_TITLES[e.payload.kind]} (Decision_Doc v${e.payload.decisionVersion})`, path: e.payload.ref };
     case "card_expired":
       return { text: `The question was closed without an answer after ${e.payload.waitedS} s; it is listed as an open question` };
     case "statement_submitted":
@@ -345,6 +364,18 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
       if (c) s.cards = { ...state.cards, [c.cardId]: { ...c, expired: true } };
       break;
     }
+    case "plan_proposed":
+      s.plan = { planId: e.payload.planId, number: e.payload.number, content: e.payload.content, status: "proposed", seq: e.seq };
+      break;
+    case "plan_confirmed":
+      if (state.plan?.planId === e.payload.planId) s.plan = { ...state.plan, status: "confirmed" };
+      break;
+    case "plan_sent_back":
+      if (state.plan?.planId === e.payload.planId) s.plan = { ...state.plan, status: "sent_back", reason: e.payload.reason };
+      break;
+    case "output_doc":
+      s.outputDocs = { ...state.outputDocs, [e.payload.kind]: { kind: e.payload.kind, decisionVersion: e.payload.decisionVersion, ref: e.payload.ref, content: e.payload.content, seq: e.seq } };
+      break;
     case "decision_doc_version":
       s.decisionDocs = [...state.decisionDocs, { version: e.payload.version, hash: e.payload.hash, frozen: false }];
       break;

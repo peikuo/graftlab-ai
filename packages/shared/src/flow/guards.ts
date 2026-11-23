@@ -61,6 +61,7 @@ export const demoCaseRetryLeft: Guard = (t) => (currentStory(t)?.demoCaseRejecti
 const POST_FREEZE: readonly NodeId[] = [
   "frozen",
   "planning",
+  "plan_review",
   "documenting",
   "adapter_branch_2",
   "target_check",
@@ -87,7 +88,8 @@ const AFTER_DOCS: readonly NodeId[] = ["adapter_branch_2", "target_check", "docs
 
 export function entryInvariant(target: NodeId, t: TaskState): string | null {
   if (POST_FREEZE.includes(target) && !isFrozen(t)) return "no frozen Decision_Doc version (R15.4, R15.5)";
-  if (target === "documenting" && !t.backlogValid) return "Product_Backlog not valid (R20)";
+  if ((target === "plan_review" || target === "documenting") && !t.backlogValid) return "Product_Backlog not valid (R20)";
+  if (target === "documenting" && !t.planConfirmed) return "the Judge has not confirmed the plan (R19.11)";
   if ((AFTER_DOCS.includes(target) || EXECUTION.includes(target)) && !t.docsComplete) return "Output_Docs incomplete (R19.4)";
   if (target === "target_check" && !isAdapted(t)) return "not an Adapted_Repo (R25)";
   if (EXECUTION.includes(target)) {

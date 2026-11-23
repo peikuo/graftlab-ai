@@ -5,17 +5,19 @@ import { useEffect, useRef, useState } from "react";
 import type { StudioEvent, UiState } from "@graftlab/shared";
 import { BriefView } from "./Brief.tsx";
 import { BoardView } from "./Board.tsx";
+import { DocsList, parsePlan, PlanStories } from "./Plan.tsx";
 
-type Tab = "found" | "app" | "decision";
+type Tab = "found" | "app" | "decision" | "plan";
 
 function tabOf(e: StudioEvent): Tab | null {
   if (e.type === "file_read" || e.type === "finding_recorded" || e.type === "evidence_summary" || e.type === "reading_planned" || e.type === "repo_brief" || e.type === "meeting_summary" || e.type === "board_updated") return "found";
   if (e.type === "browser_action" || e.type === "browser_observation") return "app";
   if (e.type === "decision_doc_version" || e.type === "decision_doc_frozen" || e.type === "artifact_updated") return "decision";
+  if (e.type === "plan_proposed" || e.type === "output_doc") return "plan";
   return null;
 }
 
-const LABEL: Record<Tab, string> = { found: "Findings", app: "App trial", decision: "Decision" };
+const LABEL: Record<Tab, string> = { found: "Findings", app: "App trial", decision: "Decision", plan: "Plan and documents" };
 
 /** File preview (R4.4): the latest file while reading, or a file the Judge picked. */
 function FilePreview({ path, load }: { path: string; load: (path: string) => Promise<string | null> }) {
@@ -71,9 +73,16 @@ export function ArtifactArea({ state, events, loadFile }: { state: UiState; even
   const unavailable = summary?.type === "evidence_summary" ? summary.payload.experienceUnavailable : undefined;
 
   // A tab exists only once it has content (R1.9); the app trial also when it was due but failed (R4.6).
-  const tabs = (["found", "app", "decision"] as const).filter((t) =>
-    t === "found" ? files.length + findings.length + events.filter((e) => e.type === "reading_planned" || e.type === "repo_brief").length > 0 : t === "app" ? browser.length > 0 || unavailable !== undefined : state.decisionDocs.length + docs.length > 0,
+  const tabs = (["found", "app", "decision", "plan"] as const).filter((t) =>
+    t === "found"
+      ? files.length + findings.length + events.filter((e) => e.type === "reading_planned" || e.type === "repo_brief").length > 0
+      : t === "app"
+        ? browser.length > 0 || unavailable !== undefined
+        : t === "plan"
+          ? !!state.plan || Object.keys(state.outputDocs).length > 0
+          : state.decisionDocs.length + docs.length > 0,
   );
+  const plan = parsePlan(state.plan?.content);
   const active: Tab | undefined = tabs.includes(tab) ? tab : tabs[0];
   if (!active) return null;
 
@@ -192,6 +201,25 @@ export function ArtifactArea({ state, events, loadFile }: { state: UiState; even
               )}
             </ul>
           )}
+        {active === "plan" && (
+          <>
+            {plan && (
+              <>
+                <h3>
+                  Plan {state.plan!.number}{" "}
+                  <span className={`badge ${state.plan!.status === "confirmed" ? "green" : state.plan!.status === "sent_back" ? "amber" : ""}`}>
+                    {state.plan!.status === "confirmed" ? "confirmed by you" : state.plan!.status === "sent_back" ? "sent back to the meeting" : "waiting for you"}
+                  </span>
+                </h3>
+                {state.plan!.reason && <p className="small">Your reason: {state.plan!.reason}</p>}
+                <PlanStories plan={plan} />
+              </>
+            )}
+            <h3>Documents</h3>
+            <DocsList state={state} />
+            {Object.keys(state.outputDocs).length === 0 && <p className="empty">The documents are written after you confirm the plan.</p>}
+          </>
+        )}
       </div>
       {tools.length > 0 && (
       <details className="engineering" open={engOpen} onToggle={(e) => setEngOpen((e.currentTarget as HTMLDetailsElement).open)}>

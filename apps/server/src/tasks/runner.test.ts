@@ -153,3 +153,63 @@ describe("TaskRunner", () => {
     expect(await closeInterruptedTask(store)).toBe(false);
   });
 });
+
+describe("document-first (tasks.md 13.7; R19.4, R19.6, R19.11, R19.12, R25.2)", () => {
+  // Handlers from frozen on: planning marks the backlog valid, documenting marks the docs complete.
+  const planned = (sendBackFirst: boolean, docs = true): Partial<Record<string, NodeHandler>> => {
+    let reviews = 0;
+    return {
+      frozen: async (ctx) => (ctx.patch({ backlogValid: false, planConfirmed: false }), "done"),
+      planning: async (ctx) => (ctx.patch({ backlogValid: true }), "done"),
+      plan_review: async (ctx) => {
+        reviews++;
+        const a = await ctx.askJudge({ kind: "confirm", title: "plan?", body: "", options: [{ id: "confirm", label: "ok" }, { id: "send_back", label: "back" }], allowFreeText: true });
+        if (a.optionId === "send_back") return (ctx.patch({ planSentBackReason: a.text ?? "", backlogValid: false }), "send_back");
+        return (ctx.patch({ planConfirmed: true }), "confirmed");
+      },
+      documenting: async (ctx) => (docs ? (ctx.patch({ docsComplete: true }), "done") : "done"),
+      adapter_branch_2: async () => "done",
+      // The meeting after a send back waits (the test only checks that the flow got there).
+      meeting: (ctx) => new Promise((res) => ctx.signal.addEventListener("abort", () => res(reviews > 0 ? "failed" : "failed"), { once: true })),
+      deciding: async () => "done",
+      awaiting_confirmation: async () => "confirmed",
+    };
+  };
+
+  it("an Other_Repo ends in docs_only after the Judge confirms the plan", async () => {
+    const { store, task } = await setup("other");
+    const runner = new TaskRunner({ store, task: { ...task, node: "frozen", frozenVersion: 1 }, handlers: planned(false) as Record<string, NodeHandler> });
+    const done = runner.start();
+    await until(() => runner.openCards().length === 1);
+    runner.answer(runner.openCards()[0]!, { optionId: "confirm" });
+    expect(await done).toBe("docs_only");
+    expect(nodes(store)).toEqual(["planning", "plan_review", "documenting", "adapter_branch_2", "docs_only"]);
+  });
+
+  it("a send back goes to the meeting; documents are never written before the confirmation", async () => {
+    const { store, task } = await setup("other");
+    const runner = new TaskRunner({ store, task: { ...task, node: "frozen", frozenVersion: 1 }, handlers: planned(true) as Record<string, NodeHandler> });
+    const done = runner.start();
+    await until(() => runner.openCards().length === 1);
+    runner.answer(runner.openCards()[0]!, { optionId: "send_back", text: "the stories are too big" });
+    await until(() => nodes(store).includes("meeting"));
+    runner.abort();
+    await done;
+    expect(nodes(store).slice(0, 3)).toEqual(["planning", "plan_review", "meeting"]);
+    expect(nodes(store)).not.toContain("documenting");
+  });
+
+  it("development cannot start while the documents are incomplete", async () => {
+    const { store, task } = await setup("adapted");
+    const runner = new TaskRunner({ store, task: { ...task, node: "frozen", frozenVersion: 1 }, handlers: planned(false, false) as Record<string, NodeHandler> });
+    const done = runner.start();
+    await until(() => runner.openCards().length === 1);
+    runner.answer(runner.openCards()[0]!, { optionId: "confirm" });
+    await until(() => store.events().some((e) => e.type === "transition_rejected"));
+    const rejected = store.events().find((e) => e.type === "transition_rejected");
+    expect(rejected?.payload).toMatchObject({ from: "documenting" });
+    runner.abort();
+    await done;
+    expect(nodes(store)).not.toContain("adapter_branch_2");
+  });
+});

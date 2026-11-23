@@ -698,7 +698,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 
 #### Acceptance Criteria
 
-1. WHEN a Decision_Doc is Frozen, THE Studio SHALL start the multi-role agile planning step.
+1. WHEN a Decision_Doc is Frozen, THE Studio SHALL start the multi-role agile planning step: the Planner drafts the Product_Backlog, the Sprint_Plan and the Definition_of_Done; Feasibility and Risk assess every story; the Facilitator decides the final plan (decided by the user 2026-11-23).
 2. THE Studio SHALL have the Agent_Roles draft requirements, design and tasks documents from the Frozen Decision_Doc version, SHALL validate each against its schema, and SHALL record that version number in each; the quality of the drafted content is best effort (Process Principle 5).
 3. WHEN splitting user stories and features, THE Studio SHALL attach to each feature a demonstration and confirmation point.
 4. WHILE the Output_Docs are incomplete, THE Studio SHALL block development from starting.
@@ -708,6 +708,8 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 8. IF an Agent_Role needs context outside its assigned story and referenced documents, THEN THE Agent_Role SHALL ask through the Facilitator or the Judge (Requirement 40); the Studio SHALL provide no tool that reads context outside the assigned story and its referenced documents.
 9. WHEN the Studio performs planning and document-first, THE Studio SHALL generate the Feature_Contract of each story from the Frozen Decision_Doc version and SHALL include it in the backlog documents (Requirement 40).
 10. THE Studio SHALL reference the Feature_Contract of each story in the Sprint_Plan entry of that story.
+11. WHEN the plan is valid, THE Studio SHALL show it to the Judge in feature terms (sprint goal, each story with what it does, its demo point and its effort) and SHALL write the documents and start development only after the Judge confirms the plan (decided by the user 2026-11-23).
+12. IF the Judge sends the plan back, THEN THE Studio SHALL require a reason and SHALL return to the meeting, where the roles discuss the reason with the current Frozen Decision_Doc; the meeting leads to a new decision draft, and a new Frozen version is required before planning runs again (decided by the user 2026-11-23).
 
 ### Requirement 20: Agile documents (layer C set)
 

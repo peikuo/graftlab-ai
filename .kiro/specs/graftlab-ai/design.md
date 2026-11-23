@@ -266,7 +266,9 @@ stateDiagram-v2
     awaiting_confirmation --> frozen: confirmed, exactly one approach
     awaiting_confirmation --> analysis_only: Other_Repo, Judge ends before freeze
     frozen --> planning: version, hash, who, when recorded
-    planning --> documenting: F7 backlog valid
+    planning --> plan_review: F7 plan valid
+    plan_review --> documenting: Judge confirms the plan
+    plan_review --> meeting: Judge sends the plan back with a reason
     documenting --> adapter_branch_2: F8 Output_Docs complete
     adapter_branch_2 --> docs_only: Other_Repo
     adapter_branch_2 --> target_check: Adapted_Repo
@@ -346,8 +348,9 @@ Node table:
 | deciding | agent_loop | `read_file`, `search_repo`, `ask_judge`, `submit_decision_draft` | 20 min | R15, R37 |
 | awaiting_confirmation | wait_user | none (Judge card only) | Task timeout only; no automatic confirmation | R15.3, R15.4 |
 | frozen | auto | none | 5 s | R15.3, R16 |
-| planning | agent_loop | `submit_backlog`, `submit_sprint_plan`, `submit_definition_of_done` | 15 min | R19, R20, R40.1 |
-| documenting | agent_loop | `submit_requirements_doc`, `submit_design_doc`, `submit_tasks_doc`, `submit_task_board` | 15 min | R19.2, R20 |
+| planning | agent_loop | Planner `read_file`, `search_repo`, `submit_plan`; Feasibility and Risk `submit_plan_assessment`; Facilitator `submit_final_plan` | 15 min | R19, R20, R40.1 |
+| plan_review | wait_user | none (Judge card: confirm, or send back with a reason) | Task timeout only; no automatic confirmation | R19.11, R19.12 |
+| documenting | agent_loop | Planner `read_file`, `search_repo`, `submit_documents`; the Task_Board is built by code | 15 min | R19.2, R20 |
 | adapter_branch_2 | auto | none | 5 s | R25 |
 | target_check | auto | none (Studio code: engine ping, baseline image present by digest; if an API-operation story remains, the Sandbox is started or reused, provisioned, reset and verified) | 3 min | R13.4, R25.8, R29.5 |
 | story_develop | agent_loop | Code_Agent's own tools inside the Development_Sandbox only | story budget | R38, R40 |
@@ -716,6 +719,10 @@ DeepSeek caches prompt prefixes on disk by default (api-docs.deepseek.com/guides
   | Speaking signals | off | only "do I want to speak" (measured 0.7 s) |
   | Decision draft | low | the structure of the options needs thought (measured: without thinking the options lost their variety) |
   | Decision assessments | off | the evidence is given; a judgment per option (measured 99 to 186 s to 12 to 20 s, similar content) |
+  | Planner plan draft | low | splits the chosen approach into stories with contracts |
+  | Plan assessments (Feasibility, Risk) | off | a judgment per story, as for the decision assessments |
+  | Facilitator final plan | low | weighs the assessments and decides |
+  | Planner documents | low | reads the target's files for the run environment |
 
 - Our own cache is separate and deterministic: the Repo_Map and the Repo_Memo are cached per commit (R10.9), so a repeated Task makes no memo calls at all.
 
@@ -797,8 +804,9 @@ DeepSeek caches prompt prefixes on disk by default (api-docs.deepseek.com/guides
 
 ### Planning and document-first (R19, R20, R40)
 
-- `planning`: the Planner produces the Product_Backlog (stories with priority, acceptance criteria, exactly one demo point and a Feature_Contract), the Sprint_Plan (goal, story ids, Feature_Contract references) and the Definition_of_Done. Each is validated by zod; a backlog with an incomplete story is rejected and the incomplete story is named (R20.1, R20.5-R20.9).
-- `documenting`: requirements, design and tasks documents and the Task_Board for the analyzed repository. The design document includes a `runEnvironment` section proposed by the Planner from the target's own files: build and start commands, app port, health path (R39.9). The Studio does not supply a fallback recipe (R39.10).
+- `planning` (multi-role, decided by the user 2026-11-23; R19.1): (1) the Planner drafts the plan with `submit_plan` (thinking low): sprint goal, 1 to 4 stories (priority, user story, acceptance criteria, exactly one demo point, the Decision_Doc sections it uses, and a Feature_Contract), and the Definition_of_Done; (2) Feasibility (effort small, medium or large, concerns) and Risk (risks and conditions) assess every story at the same time with `submit_plan_assessment` (thinking off, as in the decision step); (3) the Facilitator decides the final plan with `submit_final_plan` (thinking low): it may change, split, merge, drop or reorder stories and states in at most 80 words what it changed and why. Code validates every submission with zod; a plan with an incomplete story is rejected with the story named (R20.9), and the role gets one visible retry. Code derives the Sprint_Plan (goal, story ids, Feature_Contract references), fills `derivedFromDecisionVersion` and the default budgets (3 attempts, 10 minutes), and records the assessments with the label "LLM assessment, not a guarantee". A story assessed `large` carries the badge "Large change: engineering risk".
+- `plan_review` (R19.11, R19.12): a blocking card in feature terms: the sprint goal and per story its title, what it does, its demo point and its effort. Choices: "Start development" (Other_Repo: "Write the documents") or "Send back to the meeting" with a required reason. Confirming records `plan_confirmed` and leads to `documenting`. Sending back records `plan_sent_back` with the reason, clears `backlogValid`, and leads to `meeting`; the meeting opens with an agenda built by code (the Judge's reason and the current Frozen Decision_Doc), runs as usual, and leads to `deciding`; a new version must be frozen before `planning` runs again, and the old plan's documents are marked "based on an older version" (R20.10).
+- `documenting`: requirements, design and tasks documents for the analyzed repository, written by the Planner with `submit_documents` in one call; the Task_Board is built by code from the confirmed stories (every item `to_do`). The design document includes a `runEnvironment` section proposed by the Planner from the target's own files: build and start commands, app port, health path (R39.9). The Studio does not supply a fallback recipe (R39.10).
 - Every document records the Frozen Decision_Doc version (R19.2, R20.4, R20.11). Documents are stored as JSON plus rendered Markdown in `data/tasks/<id>/docs/` and shown in the Artifact_Area.
 - When a new version is frozen, documents referencing an older version are marked "based on an older version" (R20.10).
 

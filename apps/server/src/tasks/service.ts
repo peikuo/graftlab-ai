@@ -22,7 +22,10 @@ import { DecisionDesk, type Verdict } from "../decision/desk.ts";
 import { splitItems } from "../decision/items.ts";
 import { renderDecisionDoc } from "../decision/render.ts";
 import { mkdir, writeFile } from "node:fs/promises";
-import type { DecisionDocContent, Proposal, ReviewItemData } from "@graftlab/shared";
+import { initialTaskBoard, storyEffort, type DecisionDocContent, type OutputDocKind, type Plan, type Proposal, type ReviewItemData, type StoryProgress } from "@graftlab/shared";
+import { runPlanning } from "../planning/plan.ts";
+import { runDocuments } from "../planning/docs.ts";
+import { olderVersionNote, renderBacklog, renderDefinitionOfDone, renderDesign, renderRequirements, renderSprintPlan, renderTaskBoard, renderTasks } from "../planning/render.ts";
 import type { Lease } from "../queue/lease.ts";
 import { TaskRunner, closeInterruptedTask, type Clock, type JudgeAnswer, type NodeHandler } from "./runner.ts";
 
@@ -82,6 +85,8 @@ export class TaskService {
   #judgeSeen = 0;
   /** The decision step of the current Task (R15, R16). */
   #decision: { draft?: { draftId: string; number: number; content: DecisionDocContent; items: ReviewItemData[] }; verdicts: Map<string, Verdict>; selected?: string | null; rejections?: { itemId: string; title: string; reason: string }[]; desk?: DecisionDesk; frozen: number } = { verdicts: new Map(), frozen: 0 };
+  /** The planning step of the current Task (R19, R20): the current plan, and the Judge's reason after a send back. */
+  #plan: { current?: { planId: string; number: number; plan: Plan }; count: number; agenda?: string; docs: Map<OutputDocKind, { version: number; file: string }> } = { count: 0, docs: new Map() };
   /** What the reading step produced, for the meeting of the same Task. */
   #read: { memo: RepoMemoHandle; files: Map<string, string>; evidence: EvidenceFiles } | null = null;
 
@@ -151,6 +156,7 @@ export class TaskService {
     this.#startIndex = null;
     this.#judgeSeen = 0;
     this.#decision = { verdicts: new Map(), frozen: 0 };
+    this.#plan = { count: 0, docs: new Map() };
     this.#read = null;
     await this.#store?.close().catch(() => undefined);
     this.#store = store;
@@ -268,7 +274,9 @@ export class TaskService {
     const g = ctx.task.gathering;
     const summary = { findings: agentFindings, skipped, experienceNotes: [], screenshotRefs: [], ...(g.experienceUnavailable ? { experienceUnavailable: g.experienceUnavailable } : {}), partial: g.partial };
     await ctx.emit({ type: "evidence_summary", actor: { kind: "system" }, payload: summary });
-    const context = this.#contextFor(ctx, read);
+    // After the Judge sent the plan back (R19.12): the reason and the current Decision_Doc open the meeting.
+    const agenda = this.#plan.agenda;
+    const context = agenda ? `${this.#contextFor(ctx, read)}\n\n${agenda}` : this.#contextFor(ctx, read);
     // The background index pauses so it does not compete with the meeting for model calls.
     this.#index?.abort("paused");
     const r = await runMeeting({
@@ -401,6 +409,152 @@ export class TaskService {
     return desk.end();
   }
 
+  /** The current Frozen Decision_Doc: content, version and its Markdown. */
+  #frozenDecision(): { content: DecisionDocContent; version: number; markdown: string } | null {
+    const events = this.#store?.events() ?? [];
+    const f = events.findLast((x) => x.type === "decision_doc_frozen");
+    const v = events.findLast((x) => x.type === "decision_doc_version");
+    if (f?.type !== "decision_doc_frozen" || v?.type !== "decision_doc_version") return null;
+    const content = v.payload.content as DecisionDocContent;
+    return { content, version: v.payload.version, markdown: renderDecisionDoc(content, f.payload) };
+  }
+
+  /** Writes one document (Markdown plus JSON) and records it (R20.4). */
+  async #writeDoc(ctx: Parameters<NodeHandler>[0], kind: OutputDocKind, file: string, markdown: string, content: unknown, version: number): Promise<void> {
+    const dir = join(this.#o.dataDir, "tasks", ctx.task.taskId, "docs");
+    await mkdir(join(dir, "json"), { recursive: true });
+    await writeFile(join(dir, file), markdown);
+    await writeFile(join(dir, "json", `${kind}.json`), `${JSON.stringify(content, null, 2)}\n`);
+    this.#plan.docs.set(kind, { version, file: join(dir, file) });
+    await ctx.emit({ type: "output_doc", actor: { kind: "system" }, payload: { kind, decisionVersion: version, content, ref: `docs/${file}` } });
+  }
+
+  /** Planning (R19.1): Planner draft, Feasibility and Risk assessments, the Facilitator's final plan. */
+  async #planningStep(ctx: Parameters<NodeHandler>[0]): Promise<"done" | "failed"> {
+    const m = this.#o.meeting;
+    const read = this.#read;
+    const frozen = this.#frozenDecision();
+    if (!m || !read || !frozen) {
+      await ctx.fail("interface_call_failure", "llm", !m ? "the planning roles are not configured (no LLM profile)" : "planning has no Frozen Decision_Doc from this Task");
+      return "failed";
+    }
+    const number = this.#plan.count + 1;
+    const r = await runPlanning({
+      rules: m.rules,
+      context: this.#contextFor(ctx, read),
+      decisionMarkdown: frozen.markdown,
+      decision: frozen.content,
+      decisionVersion: frozen.version,
+      ...(ctx.task.adapterId ? { checkHints: await this.#checkHints(ctx.task.adapterId) } : {}),
+      files: read.files,
+      emit: ctx.emit,
+      runTurn: (t) => m.runTurn({ ...t, emit: ctx.emit }),
+      signal: ctx.signal,
+      idPrefix: `${ctx.task.taskId}-plan${number}`,
+    });
+    if (!r.ok) {
+      if (ctx.signal.aborted) return "failed";
+      await ctx.fail("llm_output_format_invalid", "llm", r.reason);
+      return "failed";
+    }
+    this.#plan.count = number;
+    this.#plan.current = { planId: `plan-${number}`, number, plan: r.plan };
+    await ctx.emit({ type: "plan_proposed", actor: { kind: "role", roleId: "facilitator" }, payload: { planId: `plan-${number}`, number, content: r.plan } });
+    ctx.patch({ backlogValid: true });
+    return "done";
+  }
+
+  /** The Judge confirms the plan or sends it back to the meeting with a reason (R19.11, R19.12). */
+  async #planReviewStep(ctx: Parameters<NodeHandler>[0]): Promise<"confirmed" | "send_back" | "failed"> {
+    const cur = this.#plan.current;
+    if (!cur) {
+      await ctx.fail("interface_call_failure", "persistence", "there is no plan to review");
+      return "failed";
+    }
+    const p = cur.plan;
+    const other = ctx.task.repoKind === "other";
+    const body = [
+      `Sprint goal: ${p.sprintPlan.goal}`,
+      ...p.backlog.stories.map((s) => {
+        const effort = storyEffort(p, s.id);
+        return `${s.priority}. ${s.title}: ${s.featureContract.feature}\n   You will see: ${s.demoPoint.description}\n   Effort: ${effort}${effort === "large" ? " (Large change: engineering risk)" : ""} (LLM assessment, not a guarantee)`;
+      }),
+      p.facilitatorNote ? `Facilitator: ${p.facilitatorNote}` : "",
+    ].filter(Boolean).join("\n\n");
+    const options = [
+      { id: "confirm", label: other ? "Write the documents" : "Start development" },
+      { id: "send_back", label: "Send back to the meeting" },
+    ];
+    let title = "Does this plan do what you want?";
+    for (;;) {
+      const a = await ctx.askJudge({ kind: "confirm", title, body, options, allowFreeText: true, textRequiredFor: ["send_back"] });
+      if (a.optionId === "confirm") {
+        await ctx.emit({ type: "plan_confirmed", actor: { kind: "judge" }, payload: { planId: cur.planId, decisionVersion: p.decisionVersion } });
+        const stories: StoryProgress[] = p.backlog.stories.map((s) => ({ storyId: s.id, kind: s.featureContract.executionKind, purpose: this.#frozenDecision()?.content.purpose ?? "B", attempts: 0, status: "pending", unconfirmed: false, demoCaseRejections: 0, suggestionConfirmed: false }));
+        ctx.patch({ planConfirmed: true, stories });
+        const v = p.decisionVersion;
+        await this.#writeDoc(ctx, "product_backlog", "PRODUCT_BACKLOG.md", renderBacklog(p.backlog, p), p.backlog, v);
+        await this.#writeDoc(ctx, "sprint_plan", "SPRINT_PLAN.md", renderSprintPlan(p.sprintPlan, p.backlog), p.sprintPlan, v);
+        await this.#writeDoc(ctx, "definition_of_done", "DEFINITION_OF_DONE.md", renderDefinitionOfDone(p.definitionOfDone), p.definitionOfDone, v);
+        return "confirmed";
+      }
+      const reason = (a.text ?? "").trim();
+      if (a.optionId === "send_back" && reason) {
+        await ctx.emit({ type: "plan_sent_back", actor: { kind: "judge" }, payload: { planId: cur.planId, reason } });
+        const frozen = this.#frozenDecision();
+        this.#plan.agenda = [
+          "## Agenda: the Judge sent the plan back",
+          `The Judge's reason: ${reason}`,
+          "Discuss what the reason means for the proposals and update the board. The meeting result leads to a new decision draft; the Judge freezes a new version before planning runs again.",
+          frozen ? `### The current Frozen Decision_Doc (version ${frozen.version})\n\n${frozen.markdown}` : "",
+        ].filter(Boolean).join("\n\n");
+        ctx.patch({ planSentBackReason: reason, backlogValid: false });
+        return "send_back";
+      }
+      // A send back without a reason is not accepted; the card asks again (R19.12).
+      title = a.optionId === "send_back" ? "Please write why the plan goes back, so the meeting can discuss it." : "Please choose: start, or send the plan back with a reason.";
+    }
+  }
+
+  /** Documents for the analyzed repository and the Task_Board (R19.2, R20.1, R20.8). */
+  async #documentingStep(ctx: Parameters<NodeHandler>[0]): Promise<"done" | "failed"> {
+    const m = this.#o.meeting;
+    const read = this.#read;
+    const frozen = this.#frozenDecision();
+    const cur = this.#plan.current;
+    if (!m || !read || !frozen || !cur) {
+      await ctx.fail("interface_call_failure", "llm", "documenting has no confirmed plan from this Task");
+      return "failed";
+    }
+    const p = cur.plan;
+    const r = await runDocuments({
+      rules: m.rules,
+      context: this.#contextFor(ctx, read),
+      decisionMarkdown: frozen.markdown,
+      plan: p,
+      needsRunEnvironment: ctx.task.repoKind === "adapted" && p.backlog.stories.some((s) => s.featureContract.executionKind === "source_change"),
+      files: read.files,
+      evidence: read.evidence,
+      emit: ctx.emit,
+      runTurn: (t) => m.runTurn({ ...t, emit: ctx.emit }),
+      signal: ctx.signal,
+      idPrefix: `${ctx.task.taskId}-plan${cur.number}`,
+    });
+    if (!r.ok) {
+      if (ctx.signal.aborted) return "failed";
+      await ctx.fail("llm_output_format_invalid", "llm", r.reason);
+      return "failed";
+    }
+    const v = p.decisionVersion;
+    await this.#writeDoc(ctx, "requirements", "REQUIREMENTS.md", renderRequirements(r.requirements), r.requirements, v);
+    await this.#writeDoc(ctx, "design", "DESIGN.md", renderDesign(r.design), r.design, v);
+    await this.#writeDoc(ctx, "tasks", "TASKS.md", renderTasks(r.tasks), r.tasks, v);
+    const board = initialTaskBoard(p.backlog);
+    await this.#writeDoc(ctx, "task_board", "TASK_BOARD.md", renderTaskBoard(board), board, v);
+    ctx.patch({ docsComplete: true });
+    return "done";
+  }
+
   async #checkHints(adapterId: string): Promise<string> {
     const a = JSON.parse(await readFile(join(this.#o.adaptersDir ?? "adapters", adapterId, "adapter.json"), "utf8")) as { api?: { read?: { method: string; path: string }[] }; testSelectionHint?: string };
     return [
@@ -493,9 +647,22 @@ export class TaskService {
           const dir = join(this.#o.dataDir, "tasks", ctx.task.taskId, "docs");
           await mkdir(dir, { recursive: true });
           await writeFile(join(dir, "DECISION_DOC.md"), renderDecisionDoc(v.payload.content as DecisionDocContent, e.payload));
+          // R20.10: documents of an earlier version stay, marked as based on an older version.
+          for (const [, d] of this.#plan.docs) {
+            if (d.version >= v.payload.version) continue;
+            const old = await readFile(d.file, "utf8").catch(() => null);
+            if (old !== null && !old.startsWith("> Based on an older version")) await writeFile(d.file, olderVersionNote(d.version, v.payload.version) + old);
+          }
         }
+        // A new version starts planning from scratch; the send-back reason has been discussed.
+        delete this.#plan.agenda;
+        ctx.patch({ backlogValid: false, planConfirmed: false, docsComplete: false, stories: [], planSentBackReason: undefined } as Partial<TaskState>);
         return "done";
       },
+      planning: (ctx) => this.#planningStep(ctx),
+      plan_review: (ctx) => this.#planReviewStep(ctx),
+      documenting: (ctx) => this.#documentingStep(ctx),
+      adapter_branch_2: async () => "done",
     };
   }
 }

@@ -540,9 +540,13 @@ Conventions:
     - **Property 15: Backlog validity**
     - **Validates: Requirements 20.5, 20.6, 20.9, 40.1, 40.3**
   - [ ] 13.3 Implement the planning node
-    - `submit_backlog`, `submit_sprint_plan`, `submit_definition_of_done`; rejection names the incomplete story; Feature_Contracts derived from the Frozen version and referenced in the Sprint_Plan
+    - Multi-role (R19.1): Planner `submit_plan`, Feasibility and Risk `submit_plan_assessment` in parallel, Facilitator `submit_final_plan`; rejection names the incomplete story; Feature_Contracts derived from the Frozen version and referenced in the Sprint_Plan; `runtime-rules/roles/planner.md`
     - Design: Planning and document-first
     - _Requirements: 19.1, 19.3, 19.9, 19.10, 20.1, 20.4, 20.11, 40.1_
+  - [ ] 13.9 Implement the plan review
+    - Node `plan_review` (wait_user) with edges to `documenting` (confirmed) and `meeting` (sent back with a reason); the card in feature terms; `plan_confirmed` and `plan_sent_back` events; the meeting agenda after a send back
+    - Design: Planning and document-first, Flow_Graph
+    - _Requirements: 19.11, 19.12, 20.10_
   - [ ] 13.4 Implement the documenting node
     - Requirements, design and tasks documents and the Task_Board for the analyzed repository; `runEnvironment` section proposed by the Planner; version recorded; JSON plus Markdown in `data/tasks/<id>/docs/`; Other_Repo ends as Docs only
     - Design: Planning and document-first

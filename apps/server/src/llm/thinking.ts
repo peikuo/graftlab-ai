@@ -13,4 +13,8 @@ export const THINKING = {
   speakingSignal: "off",
   decisionDraft: "low",
   decisionAssessment: "off",
+  planDraft: "low",
+  planAssessment: "off",
+  planFinal: "low",
+  documents: "low",
 } as const satisfies Record<string, Thinking>;

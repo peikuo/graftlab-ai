@@ -71,6 +71,10 @@ export interface TaskState {
   briefReady: boolean;
   review?: DecisionReview;
   backlogValid: boolean;
+  /** The Judge confirmed the current plan (R19.11). */
+  planConfirmed: boolean;
+  /** The Judge's reason when the plan was sent back to the meeting (R19.12); cleared at the next freeze. */
+  planSentBackReason?: string;
   docsComplete: boolean;
   stories: StoryProgress[];
   currentStoryId?: string;
@@ -107,6 +111,7 @@ export function initialTaskState(init: {
     frozenVersion: null,
     briefReady: false,
     backlogValid: false,
+    planConfirmed: false,
     docsComplete: false,
     stories: [],
     pendingUnconfirmed: [],

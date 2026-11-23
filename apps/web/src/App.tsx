@@ -12,6 +12,7 @@ import { DecisionReview } from "./components/DecisionReview.tsx";
 import { deriveDecision } from "./liveDecision.ts";
 import { PresenceColumn } from "./components/Presence.tsx";
 import { useStudio } from "./useStudio.ts";
+import { parsePlan, PlanStories } from "./components/Plan.tsx";
 import { FinalView } from "./components/FinalView.tsx";
 import { ReplayList } from "./replay/ReplayApp.tsx";
 
@@ -193,6 +194,12 @@ export function App() {
             events={events}
             buffers={live.buffers}
             onAnswer={answer}
+            cardExtra={(cardId) => {
+              // The plan review card (R19.11) shows the stories in feature words.
+              const opened = events.find((e) => e.type === "card_opened" && e.payload.cardId === cardId);
+              const plan = opened?.node === "plan_review" ? parsePlan(state.plan?.content) : null;
+              return plan ? <PlanStories plan={plan} /> : null;
+            }}
             inline={
               state.terminal ? (
                 <FinalView events={events} {...(taskId ? { replayHref: `/replay/${encodeURIComponent(taskId)}` } : {})} />

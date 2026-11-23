@@ -22,6 +22,7 @@ export function CardView({ event, answered, expired = false, events, onAnswer, e
   const [status, setStatus] = useState<{ kind: "idle" | "sending" | "received" | "failed"; detail?: string }>({ kind: "idle" });
   const w = ACTOR_LABEL[event.actor.kind === "role" ? event.actor.roleId : event.actor.kind] ?? { name: "Studio", avatar: "⚙" };
   const answer = events.find((e) => e.type === "card_answered" && e.payload.cardId === p.cardId);
+  const needsText = p.textRequiredFor ?? [];
 
   const send = async (a: { optionId?: string; text?: string }) => {
     setStatus({ kind: "sending" });
@@ -46,18 +47,27 @@ export function CardView({ event, answered, expired = false, events, onAnswer, e
         <p className="icard-body">{p.kind === "question" ? "Closed without an answer; it is listed as an open question." : "Closed without an answer: the Task ended first."}</p>
       ) : answered && answer?.type === "card_answered" ? (
         <p className="icard-answer">
-          <span aria-hidden="true">✓</span> You answered: {p.options.find((o) => o.id === answer.payload.optionId)?.label ?? answer.payload.text}
+          <span aria-hidden="true">✓</span> You answered: {[p.options.find((o) => o.id === answer.payload.optionId)?.label, answer.payload.text].filter(Boolean).join(": ")}
         </p>
       ) : (
         <>
+          {needsText.length > 0 && (
+            <>
+              <label className="small" htmlFor={`reason-${p.cardId}`}>Your reason (needed for: {p.options.filter((o) => needsText.includes(o.id)).map((o) => o.label).join(", ")})</label>
+              <textarea id={`reason-${p.cardId}`} className="icard-reason" rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="What should change, in your words" />
+            </>
+          )}
           <div className="icard-options">
-            {p.options.map((o, i) => (
-              <button key={o.id} type="button" className={i === 0 ? "btn primary" : "btn"} disabled={status.kind === "sending"} onClick={() => send({ optionId: o.id })}>
-                {o.label}
-              </button>
-            ))}
+            {p.options.map((o, i) => {
+              const withText = needsText.includes(o.id);
+              return (
+                <button key={o.id} type="button" className={i === 0 ? "btn primary" : "btn"} disabled={status.kind === "sending" || (withText && !text.trim())} onClick={() => send(withText ? { optionId: o.id, text: text.trim() } : { optionId: o.id })}>
+                  {o.label}
+                </button>
+              );
+            })}
           </div>
-          {p.allowFreeText && (
+          {p.allowFreeText && needsText.length === 0 && (
             <form
               className="icard-free"
               onSubmit={(e) => {
