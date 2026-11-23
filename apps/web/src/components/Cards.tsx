@@ -43,7 +43,7 @@ export function CardView({ event, answered, expired = false, events, onAnswer, e
       {p.body && <p className="icard-body">{p.body}</p>}
       {extra}
       {expired ? (
-        <p className="icard-body">Closed without an answer; it is listed as an open question.</p>
+        <p className="icard-body">{p.kind === "question" ? "Closed without an answer; it is listed as an open question." : "Closed without an answer: the Task ended first."}</p>
       ) : answered && answer?.type === "card_answered" ? (
         <p className="icard-answer">
           <span aria-hidden="true">✓</span> You answered: {p.options.find((o) => o.id === answer.payload.optionId)?.label ?? answer.payload.text}

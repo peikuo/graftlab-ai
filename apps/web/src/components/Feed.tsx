@@ -135,12 +135,14 @@ function Reasoning({ text, seconds, live }: { text: string | undefined; seconds:
  */
 const TYPE_MS = 3000;
 const TICK_MS = 50;
-function usePacing(rows: Row[], state: UiState): { visible: number; typing: { key: string; chars: number } | null } {
+function usePacing(rows: Row[], state: UiState, clock?: number): { visible: number; typing: { key: string; chars: number } | null } {
   const openedAt = useRef(Date.now());
   const shown = useRef(new Set<string>());
   const [typing, setTyping] = useState<{ key: string; chars: number; total: number } | null>(null);
   const textOf = (r: Row) => (r.kind === "message" && r.entry.ref ? stripIds(state.messages[r.entry.ref]?.text ?? "").text : "");
-  const paced = (r: Row) => r.kind === "message" && !!r.entry.ref && state.messages[r.entry.ref]?.purpose === "statement" && textOf(r).length > 0 && Date.parse(r.entry.ts) >= openedAt.current - 2000;
+  // Live: what completed since the page opened; Replay: what completed in the last 15 s before the playhead.
+  const recent = (ts: string) => (clock === undefined ? Date.parse(ts) >= openedAt.current - 2000 : Date.parse(ts) >= clock - 15_000);
+  const paced = (r: Row) => r.kind === "message" && !!r.entry.ref && state.messages[r.entry.ref]?.purpose === "statement" && textOf(r).length > 0 && recent(r.entry.ts);
   let cursor = 0;
   while (cursor < rows.length) {
     const r = rows[cursor]!;
@@ -397,9 +399,11 @@ interface FeedProps {
   cardExtra?: (cardId: string) => ReactNode;
   /** Extra content placed after the entries, for example the decision review. */
   inline?: ReactNode;
+  /** Replay: the playhead time, used for pacing and timers instead of the wall clock. */
+  clock?: number;
 }
 
-export function ActivityFeed({ state, events, buffers, onAnswer, cardExtra, inline }: FeedProps) {
+export function ActivityFeed({ state, events, buffers, onAnswer, cardExtra, inline, clock }: FeedProps) {
   const end = useRef<HTMLDivElement>(null);
   const open = Object.values(state.messages)
     // Background index calls are counted in their one row; their live bubbles would drown the meeting.
@@ -411,12 +415,12 @@ export function ActivityFeed({ state, events, buffers, onAnswer, cardExtra, inli
   });
   const rows = toRows(state.feed, events);
   const bySeq = new Map(events.map((e) => [e.seq, e]));
-  const pace = usePacing(rows, state);
+  const pace = usePacing(rows, state, clock);
   const shownRows = rows.slice(0, pace.visible + (pace.typing ? 1 : 0));
   const caughtUp = pace.visible >= rows.length && !pace.typing;
   // While one statement is being shown, the others that are still working have one line each.
   const liveFirst = caughtUp ? open.find((m) => m.purpose !== "signal") : undefined;
-  const now = Date.now();
+  const now = clock ?? Date.now();
   return (
     <section className="panel timeline" aria-label="Activity">
       <div
@@ -448,7 +452,7 @@ export function ActivityFeed({ state, events, buffers, onAnswer, cardExtra, inli
             case "card": {
               const opened = events.find((e) => e.seq === r.entry.seq);
               if (opened?.type !== "card_opened" || !r.entry.ref) return null;
-              return <CardView key={r.key} event={opened} answered={state.cards[r.entry.ref]?.answered ?? false} expired={state.cards[r.entry.ref]?.expired ?? false} events={events} onAnswer={onAnswer} extra={cardExtra?.(r.entry.ref)} />;
+              return <CardView key={r.key} event={opened} answered={state.cards[r.entry.ref]?.answered ?? false} expired={(state.cards[r.entry.ref]?.expired ?? false) || (!!state.terminal && !state.cards[r.entry.ref]?.answered)} events={events} onAnswer={onAnswer} extra={cardExtra?.(r.entry.ref)} />;
             }
             case "judge":
               return (

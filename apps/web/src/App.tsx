@@ -12,6 +12,8 @@ import { DecisionReview } from "./components/DecisionReview.tsx";
 import { deriveDecision } from "./liveDecision.ts";
 import { PresenceColumn } from "./components/Presence.tsx";
 import { useStudio } from "./useStudio.ts";
+import { FinalView } from "./components/FinalView.tsx";
+import { ReplayList } from "./replay/ReplayApp.tsx";
 
 function Home({ onCreated, status }: { onCreated: () => void; status: Awaited<ReturnType<typeof api.status>> }) {
   const [url, setUrl] = useState("");
@@ -58,6 +60,7 @@ function Home({ onCreated, status }: { onCreated: () => void; status: Awaited<Re
       {status && !status.liveExecution && (
         <p className="home-note">Live execution is not available on this server ({status.reason}). Reading and the meeting still work; building and checking need it.</p>
       )}
+      <ReplayList />
       <ol className="home-steps">
         <li>
           <span className="step-icon" aria-hidden="true">🔍</span>
@@ -191,7 +194,9 @@ export function App() {
             buffers={live.buffers}
             onAnswer={answer}
             inline={
-              decision.draft && (reviewing || state.node === "deciding") ? (
+              state.terminal ? (
+                <FinalView events={events} {...(taskId ? { replayHref: `/replay/${encodeURIComponent(taskId)}` } : {})} />
+              ) : decision.draft && (reviewing || state.node === "deciding") ? (
                 <DecisionReview
                   draft={decision.draft}
                   verdicts={decision.verdicts}

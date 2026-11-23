@@ -57,6 +57,7 @@ const tasks = new TaskService({
   }),
   adapters: await loadAdapters(join(root, "adapters")),
   adaptersDir: join(root, "adapters"),
+  replayPublicDir: join(root, "apps/web/public/replays"),
   runtimeRulesVersion,
   llm: { profile: llm.profile, model: llm.model },
   lease,
@@ -90,6 +91,7 @@ const closed = await tasks.closeInterrupted();
 
 const studio = createStudio({
   secrets,
+  dataDir,
   lease,
   tasks,
   liveExecution: () => pingDocker(),

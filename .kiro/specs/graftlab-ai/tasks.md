@@ -388,21 +388,26 @@ Conventions:
   - Demo to the user: linkding and one Other_Repo from URL to a frozen Decision_Doc (Other_Repo ending as Analysis only when the Judge ends before freeze).
 
 - [ ] 9. Replay_File export, Replay player and M1 polish (target 2026-11-26)
-  - [ ] 9.1 Implement the Replay exporter
+  - [x] 9.1 Implement the Replay exporter
+    - Done 2026-11-24: `apps/server/src/replay/export.ts`, export at the terminal, copy and index for the static host, `GET /replays/:file`
     - `apps/server/src/replay/`: Replay_File with header (schemaVersion, label "Replay"), second secret scan that refuses export and records a failure, `data/replays/<taskId>.json`, static `GET /replays/:taskId.json`
     - Design: Replay_File, Secret redactor
     - _Requirements: 26.6, 27.11, 27.12, 27.13_
-  - [ ] 9.2 Extend the redaction property test to the Replay_File
+  - [x] 9.2 Extend the redaction property test to the Replay_File
+    - Done 2026-11-24: `replay/export.property.test.ts`, 100 runs
     - **Property 12: Secret redaction** (same test as 3.7, now also over the exported Replay_File)
     - **Validates: Requirements 30.15, 27.12, 28.4, 30.5, 13.5**
-  - [ ] 9.3 Build the Replay player
+  - [x] 9.3 Build the Replay player
+    - Done 2026-11-24: `apps/web/src/replay/ReplayApp.tsx` at `/replay/<taskId>`, Replay list on the home page
     - Same Workspace with a Replay bar (play, pause, speed, seek), permanent "Replay" label, `now` at the playhead, typing animated from the stored Complete_Message with the note that typing speed is simulated
     - Design: Web app
     - _Requirements: 1.5, 7.4, 7.5, 26.2, 26.3, 26.4, 26.9, 27.2, 27.3, 27.8_
-  - [ ] 9.4 Write property test for live versus Replay equality
+  - [x] 9.4 Write property test for live versus Replay equality
+    - Done 2026-11-24: `replay.property.test.ts`, 200 runs
     - **Property 4: Live and Replay produce the same UI state**
     - **Validates: Requirements 26.7, 27.14, 7.5**
-  - [ ] 9.5 Build the final view
+  - [x] 9.5 Build the final view
+    - Done 2026-11-24: `components/FinalView.tsx`, live and Replay; the stepper marks only visited steps; open cards close at the terminal
     - Terminal summary from `terminal_reached`: Verifier results, counts per Failure_Class, Unconfirmed marks, Analysis only or Docs only label
     - Design: Error Handling, Web app
     - _Requirements: 23.3, 25.1, 25.2, 26.1, 26.5_
@@ -413,7 +418,8 @@ Conventions:
     - Acknowledgement timing, notifications without focus steal, indeterminate progress reasons, failure display that keeps the original failure visible across retries
     - Design: Web app, Error Handling
     - _Requirements: 4.3, 6.1, 7.2, 23.1, 23.5_
-  - [ ] 9.8 Demo and verify: Replay
+  - [x] 9.8 Demo and verify: Replay
+    - Done 2026-11-24: 2026-11-24 with the backend stopped: linkding and p-limit Replays played from the static host, label, seek and final view checked (`scripts/replay-walk.mjs`), recordings `data/ui-snaps/m9-replay-*.mp4`; second scan found no secret
     - Show the user the M1 Task replayed from its Replay_File with the backend stopped; check that the live and Replay final views match and that the Replay_File holds no key or token
     - _Requirements: 26.7, 27.12, 27.13_
 

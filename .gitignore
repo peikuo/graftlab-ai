@@ -24,3 +24,6 @@ spike/bench/results/
 
 # Throwaway experiments (not part of the product yet)
 spike/
+
+# Replay copies for the static host (generated, may hold analysis of third-party code)
+apps/web/public/replays/

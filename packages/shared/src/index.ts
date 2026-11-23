@@ -10,3 +10,4 @@ export * from "./flow/graph.ts";
 export * from "./flow/transition.ts";
 export * from "./text.ts";
 export * from "./decision.ts";
+export * from "./secretPatterns.ts";

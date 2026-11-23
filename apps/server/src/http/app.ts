@@ -1,6 +1,8 @@
 // Fastify app: routes of design.md "HTTP API" that milestone 3 needs. Every command endpoint checks the
 // same-origin request and the operator lease server-side (HTTP 403), regardless of what the UI shows (R28.6).
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import { RoleIdSchema, type SecretRegistry } from "@graftlab/shared";
@@ -22,6 +24,8 @@ export interface TaskApi {
 
 export interface StudioOptions {
   secrets: SecretRegistry;
+  /** Where Replay_Files are read from (data/replays). */
+  dataDir?: string;
   tasks?: TaskApi;
   /** Whether live execution is possible (a container engine answered), for the home page (R25.8). */
   liveExecution?: () => Promise<{ available: boolean; reason?: string }>;
@@ -221,6 +225,14 @@ export function createStudio(opts: StudioOptions): Studio {
     return { accepted: true };
   });
 
+  // Static Replay_Files (R27.13): read-only, no session needed; the id is checked before the path is built.
+  app.get<{ Params: { file: string } }>("/replays/:file", async (req, reply) => {
+    const m = /^([a-z0-9._-]{1,80})\.json$/.exec(req.params.file);
+    if (!m || m[1]!.includes("..")) return reply.code(400).send({ error: "invalid replay name" });
+    const text = await readFile(join(opts.dataDir ?? "data", "replays", `${m[1]}.json`), "utf8").catch(() => null);
+    if (text === null) return reply.code(404).send({ error: "no such replay" });
+    return reply.type("application/json").send(text);
+  });
   // Read-only: the text of a downloaded file of the current Task (R4.4). Viewers may see it too (public repositories).
   app.get<{ Params: { id: string }; Querystring: { path?: string } }>("/api/tasks/:id/files", async (req, reply) => {
     const path = req.query.path ?? "";

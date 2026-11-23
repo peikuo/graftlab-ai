@@ -1173,6 +1173,8 @@ The Adapter's data model is the contract in "Adapter contract"; the declarative 
 
 `{ header: { schemaVersion: 1, taskId, repo, runtimeRulesVersion, createdAt, label: "Replay" }, events: StudioEvent[] }`, optionally gzip-compressed. Exported at `terminal_reached` after the secret scan.
 
+Milestone 9 implementation (2026-11-24): `apps/server/src/replay/export.ts` writes `data/replays/<taskId>.json` and a copy into the web app's static folder `apps/web/public/replays/` (gitignored) together with `index.json` (taskId, repo, terminal, createdAt), so the Vite host plays a Replay while the backend is stopped (R27.13). The second scan uses the registered values and `SECRET_PATTERNS` from `packages/shared` (the same patterns as `scripts/secret-scan.mjs`); a hit refuses the export, writes no file and records a `failure` naming the pattern, never the value. The backend also serves `GET /replays/:taskId.json`. The player is `/replay/<taskId>`: the same Workspace components, a Replay bar (play, pause, speed 1x to 16x, seek), a permanent "Replay" label, `now` at the playhead, no command; statements whose time is within 15 s of the playhead are typed out with the note "typing speed is simulated". The home page lists the Replays from `index.json`.
+
 ### Data directory (R32.3)
 
 ```text

@@ -16,6 +16,7 @@ import type { Emit, TurnOptions, TurnResult } from "../runtime/pi.ts";
 import type { RuntimeRules } from "../roles/rules.ts";
 import { filesFrom, type EvidenceFiles } from "../evidence/check.ts";
 import { runMeeting } from "../meeting/meeting.ts";
+import { exportReplay } from "../replay/export.ts";
 import { runDecisionDraft } from "../decision/draft.ts";
 import { DecisionDesk, type Verdict } from "../decision/desk.ts";
 import { splitItems } from "../decision/items.ts";
@@ -58,6 +59,8 @@ export interface TaskServiceOptions {
   limits?: ReadLimits;
   clock?: Clock;
   taskTimeoutMs?: number;
+  /** Static folder of the web app where Replay copies and their index go (R27.13); optional. */
+  replayPublicDir?: string;
   /** Where the Adapters live (adapters/<id>/adapter.json). */
   adaptersDir?: string;
   /** The Reader's LLM side (R10.7); without it the reading step stops honestly after the download. */
@@ -175,6 +178,7 @@ export class TaskService {
       onTerminal: () => {
         this.#index?.abort();
         this.#o.lease.taskEnded();
+        void this.#exportReplay(store, `${meta.owner}/${meta.repo}`);
       },
     });
     void this.#runner.start();
@@ -299,6 +303,15 @@ export class TaskService {
     if (ctx.signal.aborted) return "failed";
     await ctx.fail("llm_output_format_invalid", "llm", r.reason);
     return "failed";
+  }
+
+  /** Replay_File at the terminal (R27.11-R27.13); a secret hit refuses the export and is recorded as a failure. */
+  async #exportReplay(store: EventStore, repo: string): Promise<void> {
+    const r = await exportReplay({ events: store.events(), repo, runtimeRulesVersion: this.#o.runtimeRulesVersion, registry: this.#o.secrets, dataDir: this.#o.dataDir, ...(this.#o.replayPublicDir ? { publicDir: this.#o.replayPublicDir } : {}) }).catch((e: unknown) => ({ ok: false as const, found: [`export error: ${(e as Error).message}`] }));
+    if (!r.ok)
+      await store
+        .append({ type: "failure", node: store.events().at(-1)?.node ?? "failed", actor: { kind: "system" }, payload: { failureClass: "rejected_by_safety_rule", source: "persistence", detail: `the Replay was not exported: ${r.found.join(", ")}` } })
+        .catch(() => undefined);
   }
 
   /** Drafting (R15.1, R15.2, R37): Facilitator draft, Feasibility and Risk assessments, merged by code. */

@@ -47,14 +47,17 @@ export function stepIndex(node: NodeId | null): number {
 export function Stepper({ state, unavailable = [] }: { state: UiState; unavailable?: string[] }) {
   // While the Judge decides after a failure, the stepper stays on the step that failed.
   const cur = stepIndex(state.node === "failure_review" ? state.previousNode : state.node);
+  // A step counts as done only when the Task was in one of its nodes (a failed Task ends in "Result" without them).
+  const visited = (i: number) => STEPS[i]!.nodes.some((n) => (state.visitedNodes as readonly string[]).includes(n));
   return (
     <nav className="stepper" aria-label="Progress">
       <ol>
         {STEPS.map((s, i) => (
-          <li key={s.id} className={i < cur ? (unavailable.includes(s.id) ? "done unavailable" : "done") : i === cur ? "current" : ""} aria-current={i === cur ? "step" : undefined}>
-            <span className="num">{i < cur ? (unavailable.includes(s.id) ? "–" : "✓") : i + 1}</span>
+          <li key={s.id} className={i < cur ? (unavailable.includes(s.id) ? "done unavailable" : visited(i) ? "done" : "passed") : i === cur ? "current" : ""} aria-current={i === cur ? "step" : undefined}>
+            <span className="num">{i < cur ? (unavailable.includes(s.id) ? "–" : visited(i) ? "✓" : i + 1) : i + 1}</span>
             {s.label}
             {i < cur && unavailable.includes(s.id) && <span className="step-note">unavailable</span>}
+            {i < cur && !unavailable.includes(s.id) && !visited(i) && <span className="step-note">not reached</span>}
           </li>
         ))}
       </ol>

@@ -387,3 +387,19 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .ropt .badge { justify-self: start; }
 .ropt-line { color: var(--muted); white-space: pre-wrap; }
 .waiting-line .step-text { color: var(--muted); }
+
+/* Final view (R26.1) */
+.final { margin: 12px 0; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--border); background: #fff; }
+.final h2 { font-size: 16px; margin: 0 0 6px; display: flex; gap: 8px; align-items: center; }
+.final-facts { gap: 4px; margin: 8px 0 10px; }
+.final-green { border-color: var(--working); }
+.final-amber { border-color: var(--waiting); }
+.final-red { border-color: var(--failure); }
+/* Replay bar (R26.2-R26.4) */
+.replay-bar { display: flex; gap: 10px; align-items: center; padding: 8px 14px; margin: 0 24px; border-radius: 12px; background: #eef2ff; border: 1px solid #c7d2fe; }
+.replay-label { font-weight: 700; letter-spacing: .08em; color: #4338ca; }
+.replay-bar input[type=range] { flex: 1; }
+.replay-bar select, .replay-bar button { font: inherit; }
+.replay-list { margin-top: 18px; text-align: left; }
+.stepper li.passed { color: var(--muted); }
+.stepper li.passed .num { opacity: 0.6; }
