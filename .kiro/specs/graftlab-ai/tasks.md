@@ -531,7 +531,7 @@ Conventions:
 - [ ] 12. Checkpoint: linkding from URL through evidence gathering and meeting to frozen Decision_Doc (target 2026-11-28)
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 13. F7-F8: planning and document-first (target 2026-11-29)
+- [x] 13. F7-F8: planning and document-first (target 2026-11-29)
   - [x] 13.1 Implement the planning schemas
     - Done 2026-11-23: `packages/shared/src/planning.ts` (strict Feature_Contract, backlog, Sprint_Plan, Task_Board, Definition_of_Done, Demo_Review_Note, Retrospective, documents, `buildPlan`)
     - Product_Backlog, Story, strict Feature_Contract (no path lists, `executionKind`), Sprint_Plan, Task_Board, Definition_of_Done, Demo_Review_Notes, Retrospective
@@ -570,7 +570,8 @@ Conventions:
     - Done 2026-11-23: `runner.test.ts`: Other_Repo ends in `docs_only` after confirmation; a send back goes to the meeting; development blocked while documents are incomplete
     - Development blocked while documents are incomplete; Other_Repo ends in `docs_only` with the label
     - _Requirements: 19.4, 19.6, 25.2_
-  - [ ] 13.8 Demo and verify: planning and documents
+  - [x] 13.8 Demo and verify: planning and documents
+    - Done 2026-11-23: shown to the user and accepted: live walk on DeepSeek (`scripts/live-walk-m13.mjs`, recording `data/ui-snaps/m13-linkding.mp4`): plan 1 with 4 stories sent back with a reason, new meeting and Decision_Doc v2, plan 2 with 2 stories confirmed, 7 documents at v2, rendered Markdown, in 346 s
     - Show the user the backlog with Feature_Contracts and the `runEnvironment` section generated from the M1 Decision_Doc, and an Other_Repo ending as Docs only; check every document records the Frozen version and that a story without a Feature_Contract is rejected
     - _Requirements: 20.4, 20.9, 25.2_
 
