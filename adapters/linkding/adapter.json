@@ -1,6 +1,9 @@
 {
   "id": "linkding",
-  "match": { "owner": "sissbruecker", "repo": "linkding" },
+  "match": {
+    "owner": "sissbruecker",
+    "repo": "linkding"
+  },
   "source": {
     "upstreamUrl": "https://github.com/sissbruecker/linkding",
     "releaseTag": "v1.47.0",
@@ -12,27 +15,67 @@
     "configDigest": "sha256:0f9a8582286a2efc50d51724869b48d845fed52032b8d0b45f02ee6ee649a9f3",
     "port": 9090,
     "healthPath": "/health",
-    "env": { "LD_DISABLE_BACKGROUND_TASKS": "True" },
-    "secretEnv": ["LD_SUPERUSER_NAME", "LD_SUPERUSER_PASSWORD"],
+    "env": {
+      "LD_DISABLE_BACKGROUND_TASKS": "True"
+    },
+    "secretEnv": [
+      "LD_SUPERUSER_NAME",
+      "LD_SUPERUSER_PASSWORD"
+    ],
     "dataVolumePath": "/etc/linkding/data",
     "readinessTimeoutS": 120
   },
   "api": {
     "read": [
-      { "method": "GET", "path": "/api/bookmarks/" },
-      { "method": "GET", "path": "/api/bookmarks/{id}/" },
-      { "method": "GET", "path": "/api/tags/" }
+      {
+        "method": "GET",
+        "path": "/api/bookmarks/"
+      },
+      {
+        "method": "GET",
+        "path": "/api/bookmarks/archived/"
+      },
+      {
+        "method": "GET",
+        "path": "/api/bookmarks/{id}/"
+      },
+      {
+        "method": "GET",
+        "path": "/api/tags/"
+      }
     ],
     "write": [
-      { "method": "POST", "path": "/api/bookmarks/", "op": "create", "query": { "disable_scraping": "" } },
-      { "method": "PATCH", "path": "/api/bookmarks/{id}/", "op": "update_tags" },
-      { "method": "POST", "path": "/api/bookmarks/{id}/archive/", "op": "archive" }
+      {
+        "method": "POST",
+        "path": "/api/bookmarks/",
+        "op": "create",
+        "query": {
+          "disable_scraping": ""
+        }
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/bookmarks/{id}/",
+        "op": "update_tags"
+      },
+      {
+        "method": "POST",
+        "path": "/api/bookmarks/{id}/archive/",
+        "op": "archive"
+      }
     ],
     "itemCap": 10
   },
   "devSandbox": {
     "baseImage": "ghcr.io/sissbruecker/linkding@sha256:e35cb50e0581178f245125ffaa909c565416c94c9f22ace305a7d234a4345522",
-    "preinstalled": ["git", "node 24", "uv 0.8.13", "dev dependency group (hash-checked)", "npm ci", "npm run build"]
+    "preinstalled": [
+      "git",
+      "node 24",
+      "uv 0.8.13",
+      "dev dependency group (hash-checked)",
+      "npm ci",
+      "npm run build"
+    ]
   },
   "testSelectionHint": "Name targeted test files under bookmarks/tests/; the full suite takes about 300 s.",
   "testData": "test-data.json",

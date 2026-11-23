@@ -31,18 +31,6 @@ export interface AdapterRef {
   match: { owner: string; repo: string };
 }
 
-export async function loadAdapters(adaptersDir: string): Promise<AdapterRef[]> {
-  const out: AdapterRef[] = [];
-  for (const id of await readdir(adaptersDir).catch(() => [] as string[])) {
-    try {
-      const a = JSON.parse(await readFile(join(adaptersDir, id, "adapter.json"), "utf8")) as AdapterRef;
-      if (a.id && a.match?.owner && a.match?.repo) out.push({ id: a.id, match: a.match });
-    } catch {
-      // not an adapter directory
-    }
-  }
-  return out;
-}
 
 export type CreateResult = { ok: true; taskId: string } | { ok: false; status: number; error: string };
 

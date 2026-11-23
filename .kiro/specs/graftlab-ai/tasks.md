@@ -428,7 +428,8 @@ Conventions:
     - `docker/dev-sandbox/Dockerfile`: the generic layer (git, Node 24 LTS tarball with its checksum verified at build time, the pi packages at pinned versions, the Code_Agent runner copied from `docker/dev-sandbox/runner/`, task 10.13) on top of the Adapter's base image, built as `graftlab/dev-sandbox-<adapterId>`; package sources as build arguments; for linkding the base is the digest-pinned official image plus uv, the hash-checked dev dependency group, `npm ci` and `npm run build` (prototype: `spike/dev-sandbox/Dockerfile`); settle how the preinstalled Node modules and build output relate to the Worktree at `/work`
     - Design: Images; reference-target-linkding.md (Development_Sandbox for linkding); reference-deployment.md (Network facts, Integrity rules)
     - _Requirements: 39.2, 25.6_
-  - [ ] 10.2 Implement the Verifier `api_readback` check
+  - [x] 10.2 Implement the Verifier `api_readback` check
+    - Done 2026-11-24: `apps/server/src/verifier/readback.ts` (all pages, comparator, pre-state, per-item results, a failing read is a failed check); tested against the in-memory model
     - `apps/server/src/verifier/readback.ts`: reads all pages of the Adapter's read endpoints, applies the Adapter comparator from 10.15 (key matching, field rules, a create whose key existed in the pre-state snapshot compared as an update), per-item results (also used for the reset equality check)
     - Design: Verifier, Adapter contract
     - _Requirements: 22.4, 22.5, 22.7, 22.9, 29.4_
@@ -436,7 +437,8 @@ Conventions:
     - `apps/server/src/containers/`: Docker Engine API wrapper, internal-only network, the port relay hosted by the LLM_Proxy container, memory limits (`GL_MEM_*_MB`, values per deployment), read-only root and tmpfs, mounts, engine ping at server start, `GL_EXECUTION_ENABLED`
     - Design: Containers, Network policy, Deployment model; reference-deployment.md (Docker Desktop facts, Docker Desktop and memory)
     - _Requirements: 38.2, 38.3, 38.4, 39.1, 39.6, 25.8_
-  - [ ] 10.4 Write property test for the Adapter comparator
+  - [x] 10.4 Write property test for the Adapter comparator
+    - Done 2026-11-24: `adapters/linkding/comparator.property.test.ts`, 200 runs
     - **Property 11: The Adapter comparator agrees with a model of the target's write semantics**
     - Lives in `adapters/linkding/`; in-memory linkding model with upsert by normalized URL that replaces title and tags, and generated auto-tag rules (reference-target-linkding.md, Write semantics for the comparator)
     - **Validates: Requirements 22.4, 22.5**
@@ -479,6 +481,7 @@ Conventions:
     - Show the user the runner inside the built dev-sandbox image completing a small story on the toy repository through the LLM_Proxy, a question raised by `ask_question` and answered in the same process, and an abort; check that only `/work` and `/tmp` were written and that no real key is in the container environment
     - _Requirements: 30.16, 40.11, 40.13_
   - [ ] 10.15 Implement the Adapter contract and the linkding Adapter
+    - Progress 2026-11-24 (Mac, no containers yet): contract types and strict schema (`packages/shared/src/adapter.ts`), registry validated at server start (`apps/server/src/adapters/registry.ts`), linkding hooks, comparator, test data, in-memory model, checklist; 17 tests. Open until 10.16: the hooks against the real image (provisioning, seed, reset) on the PC
     - `packages/shared/src/adapter.ts`: the Adapter contract types and a zod schema for `adapter.json` (no start-procedure field for the modified target); `apps/server/src/adapters/`: loader and registry validated at server start, case-insensitive match used by 5.1
     - `adapters/linkding/`: `adapter.json` with the real pins, the `api` allow-list (read and write endpoints, op ids, item cap, `itemFields` schema), the comparator (normalized-URL key, tag inclusion, same-URL create compared as an update that replaces title and tags, auto-tagging) with its tests, the provisioning hook (`bookmarks.ApiToken` in the management shell after `/health`, key registered with the redactor), `test-data.json` with seed, reset (fresh volume) and the equality check; `runtime-rules/adapters/linkding-checklist.md`
     - Design: Adapter contract, Sandbox and test data, Verifier; reference-target-linkding.md (all sections)

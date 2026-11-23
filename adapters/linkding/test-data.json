@@ -1,0 +1,14 @@
+{
+  "bookmarks": [
+    { "url": "https://example.com/recipes/sourdough", "title": "Sourdough starter guide", "tags": ["cooking", "bread"] },
+    { "url": "https://example.com/recipes/pasta", "title": "Fresh pasta by hand", "tags": ["cooking", "italian"] },
+    { "url": "https://example.org/travel/rome", "title": "Three days in Rome", "tags": ["travel", "italian"] },
+    { "url": "https://example.org/travel/lisbon", "title": "Lisbon on foot", "tags": ["travel"] },
+    { "url": "https://example.net/dev/postgres-docker", "title": "Running Postgres in Docker", "tags": ["dev", "docker"] },
+    { "url": "https://example.net/dev/redis-caching", "title": "Caching with Redis", "tags": ["dev", "performance"] },
+    { "url": "https://example.com/reading/slow-productivity", "title": "Notes on slow productivity", "tags": ["reading"] },
+    { "url": "https://example.org/garden/tomatoes", "title": "Growing tomatoes on a balcony", "tags": ["garden"] },
+    { "url": "https://example.net/dev/old-jquery-tips", "title": "Old jQuery tips", "tags": ["dev", "legacy"], "archived": true },
+    { "url": "https://example.com/news/2019-roundup", "title": "Tech news roundup 2019", "tags": ["news"], "archived": true }
+  ]
+}

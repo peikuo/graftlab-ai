@@ -59,7 +59,7 @@ Observed on the pinned image by spike 1.5 (all calls with the provisioned token)
 | `PATCH /api/bookmarks/{id}/` | 200 | write, op `update_tags` |
 | `POST /api/bookmarks/{id}/archive/` | 204 | write, op `archive` |
 | `GET /api/bookmarks/check/?url=` | 200 | no |
-| `GET /api/bookmarks/archived/` | 200 | no |
+| `GET /api/bookmarks/archived/` | 200 | read (added 2026-11-24: archived bookmarks are not in `GET /api/bookmarks/`, and the equality check and `archived` expectations must see them) |
 | `POST /api/bookmarks/{id}/unarchive/` | 204 | no |
 | `GET /api/bundles/` | 200 | no |
 
