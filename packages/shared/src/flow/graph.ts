@@ -118,9 +118,11 @@ export const EDGES: readonly FlowEdge[] = [
   e("experience_judge_end", "browser_experience", "meeting", outcomeIs("judge_end"), "Judge starts the meeting now, gatheringPartial"),
   // meeting and decision
   e("meeting_summary_valid", "meeting", "deciding", outcomeIs("done"), "F3 meeting summary valid"),
+  e("meeting_failed", "meeting", "failure_review", outcomeIs("failed"), "no proposal on the board, or the roles are not configured"),
   e("prototype_requested", "deciding", "prototype", (t) => t.flags.prototypeEnabled && t.outcome === "prototype_requested", "Stretch flag on and Prototype requested"),
   e("prototype_finished", "prototype", "deciding", outcomeIs("done", "failed"), "Prototype done or failed"),
   e("draft_valid", "deciding", "awaiting_confirmation", outcomeIs("done"), "F6 draft schema-valid"),
+  e("deciding_failed", "deciding", "failure_review", outcomeIs("failed"), "no valid decision draft"),
   e("send_back", "awaiting_confirmation", "deciding", and(outcomeIs("send_back"), reviewSendBack), "every item reviewed, at least one rejected"),
   e("freeze", "awaiting_confirmation", "frozen", and(outcomeIs("confirmed"), reviewAllAccepted, isFrozen), "every item accepted, exactly one approach"),
   e("end_before_freeze", "awaiting_confirmation", "analysis_only", and(isOther, outcomeIs("judge_end")), "Other_Repo, Judge ends before freeze"),

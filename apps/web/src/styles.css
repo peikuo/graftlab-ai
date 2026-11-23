@@ -386,3 +386,4 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .ropt { display: grid; gap: 2px; }
 .ropt .badge { justify-self: start; }
 .ropt-line { color: var(--muted); white-space: pre-wrap; }
+.waiting-line .step-text { color: var(--muted); }

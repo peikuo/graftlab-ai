@@ -192,9 +192,7 @@ export function narrate(e: StudioEvent): { text: string; path?: string; failure?
     case "tool_finished":
       if (e.payload.ok) return null;
       return SUBMIT_PLAIN[e.payload.tool]
-        ? /^Validation failed for tool/.test(e.payload.outputSummary)
-          ? { text: "The submission had a field in the wrong form; it is corrected and sent again (details in Engineering_Details)", failure: true }
-          : { text: `The submission was not accepted (${e.payload.outputSummary.replace(/\s*Submit again\.?$/, "").replace(/^Not accepted:\s*/, "").replace(/\.$/, "")}); it is corrected and sent again`, failure: true }
+        ? { text: "Its answer was not in the right form; it is putting it together again", failure: true }
         : { text: `${e.payload.tool} failed: ${e.payload.outputSummary}`, failure: true };
     case "judge_message":
       return { text: e.payload.status === "queued" && e.node !== "meeting" ? `${e.payload.text} (queued until the meeting starts)` : e.payload.text };

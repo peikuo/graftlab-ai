@@ -127,14 +127,79 @@ function Reasoning({ text, seconds, live }: { text: string | undefined; seconds:
   );
 }
 
-function MessageBubble({ m, live, events }: { m: MessageState; live?: LiveBuffer; events: StudioEvent[] }) {
+/**
+ * Timeline pacing (design.md, "Timeline pacing"): statements appear one after another. Rows up to the cursor are
+ * shown; a completed statement at the cursor is typed out over about 3 s, then the cursor moves on. Rows that were
+ * already complete when the page opened are shown at once. Only the timeline text is paced; presence cards, the now
+ * bar and the timers come straight from the events.
+ */
+const TYPE_MS = 3000;
+const TICK_MS = 50;
+function usePacing(rows: Row[], state: UiState): { visible: number; typing: { key: string; chars: number } | null } {
+  const openedAt = useRef(Date.now());
+  const shown = useRef(new Set<string>());
+  const [typing, setTyping] = useState<{ key: string; chars: number; total: number } | null>(null);
+  const textOf = (r: Row) => (r.kind === "message" && r.entry.ref ? stripIds(state.messages[r.entry.ref]?.text ?? "").text : "");
+  const paced = (r: Row) => r.kind === "message" && !!r.entry.ref && state.messages[r.entry.ref]?.purpose === "statement" && textOf(r).length > 0 && Date.parse(r.entry.ts) >= openedAt.current - 2000;
+  let cursor = 0;
+  while (cursor < rows.length) {
+    const r = rows[cursor]!;
+    if (shown.current.has(r.key)) {
+      cursor++;
+      continue;
+    }
+    if (!paced(r)) {
+      shown.current.add(r.key);
+      cursor++;
+      continue;
+    }
+    break;
+  }
+  const at = rows[cursor];
+  useEffect(() => {
+    if (!at || typing?.key === at.key) return;
+    setTyping({ key: at.key, chars: 0, total: textOf(at).length });
+  });
+  useEffect(() => {
+    if (!typing) return;
+    const step = Math.max(4, Math.ceil(typing.total / (TYPE_MS / TICK_MS)));
+    const t = setTimeout(() => {
+      if (typing.chars + step >= typing.total) {
+        shown.current.add(typing.key);
+        setTyping(null);
+      } else setTyping({ ...typing, chars: typing.chars + step });
+    }, TICK_MS);
+    return () => clearTimeout(t);
+  }, [typing]);
+  return { visible: cursor, typing: at && typing?.key === at.key ? { key: at.key, chars: typing.chars } : null };
+}
+
+/** A role that is still working while another one is shown: one line with its real timer (R2.9). */
+function WaitingLine({ m, now }: { m: MessageState; now: number }) {
+  const w = who(m.actor);
+  const s = Math.max(0, Math.round((now - Date.parse(m.startedTs)) / 1000));
+  return (
+    <div className="step waiting-line" title={time(m.startedTs)}>
+      <span className="step-avatar" aria-hidden="true">{w.avatar}</span>
+      <div className="step-main">
+        <span className="step-text">
+          <span className="step-who">{w.name}</span> is preparing · thinking {s} s
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function MessageBubble({ m, live, events, reveal }: { m: MessageState; live?: LiveBuffer; events: StudioEvent[]; reveal?: number }) {
   const w = who(m.actor);
   const endEvent = events.find((e) => (e.type === "message_completed" || e.type === "message_incomplete") && e.payload.messageId === m.messageId);
   const end = m.status === "open" ? Date.now() : Date.parse(endEvent?.ts ?? m.startedTs);
   const seconds = Math.max(0, Math.round((end - Date.parse(m.startedTs)) / 1000));
   // Statements are for the Judge: internal evidence ids are removed (R11.13).
   const raw = m.status === "open" ? (live?.text ?? "") : (m.text ?? "");
-  const text = m.purpose === "statement" ? stripIds(raw).text : raw;
+  const full = m.purpose === "statement" ? stripIds(raw).text : raw;
+  const typingNow = reveal !== undefined && reveal < full.length;
+  const text = typingNow ? full.slice(0, reveal) : full;
   const reasoning = m.status === "open" ? live?.reasoning : m.reasoning;
   // Speaking signals are shown as one line per round (signals_collected), not as messages.
   if (m.purpose === "signal") return null;
@@ -169,7 +234,7 @@ function MessageBubble({ m, live, events }: { m: MessageState; live?: LiveBuffer
           {text ? (
             <p>
               {text}
-              {m.status === "open" && <span className="caret" aria-hidden="true" />}
+              {(m.status === "open" || typingNow) && <span className="caret" aria-hidden="true" />}
             </p>
           ) : m.status === "open" ? (
             <p className="msg-wait">
@@ -270,6 +335,14 @@ function GroupRow({ row }: { row: Extract<Row, { kind: "group" }> }) {
   );
 }
 
+/** Failure details in plain words for the timeline (R11.13); the raw detail stays in the event and Engineering_Details. */
+function plainFailure(detail: string): string {
+  if (/ended the turn without a valid .*; one retry$/.test(detail) || /^the Reader ended without a valid/.test(detail)) return "Its answer was not complete; it is trying once more";
+  if (/'s (statement|submit_\w+) failed:/.test(detail)) return "Its answer failed twice; the team continues without it";
+  if (/^the Reader left out \d+ of \d+ files/.test(detail)) return detail.replace(/^the Reader left out/, "Left out").replace(/; retrying them once$/, "; summarizing them once more");
+  if (/speaking signal was not usable/.test(detail)) return "Its signal was unclear; counted as not wanting to speak";
+  return detail.charAt(0).toUpperCase() + detail.slice(1);
+}
 /** Plain names for Failure_Classes; the class itself stays visible as a small badge (R23.2). */
 const FAILURE_PLAIN: Record<string, string> = {
   interface_call_failure: "a call failed",
@@ -287,7 +360,7 @@ function LineRow({ entry, event }: { entry: FeedEntry; event: StudioEvent | unde
   let text = entry.text;
   let badge: string | null = null;
   if (event?.type === "failure") {
-    text = event.payload.detail.charAt(0).toUpperCase() + event.payload.detail.slice(1);
+    text = plainFailure(event.payload.detail);
     // A step that does not exist yet in this version is not a failed call; say so plainly.
     const notBuilt = /is not built yet in this version/.test(event.payload.detail);
     badge = notBuilt ? "not built yet" : `${FAILURE_PLAIN[event.payload.failureClass] ?? ""} · ${event.payload.failureClass}`;
@@ -338,6 +411,12 @@ export function ActivityFeed({ state, events, buffers, onAnswer, cardExtra, inli
   });
   const rows = toRows(state.feed, events);
   const bySeq = new Map(events.map((e) => [e.seq, e]));
+  const pace = usePacing(rows, state);
+  const shownRows = rows.slice(0, pace.visible + (pace.typing ? 1 : 0));
+  const caughtUp = pace.visible >= rows.length && !pace.typing;
+  // While one statement is being shown, the others that are still working have one line each.
+  const liveFirst = caughtUp ? open.find((m) => m.purpose !== "signal") : undefined;
+  const now = Date.now();
   return (
     <section className="panel timeline" aria-label="Activity">
       <div
@@ -348,7 +427,7 @@ export function ActivityFeed({ state, events, buffers, onAnswer, cardExtra, inli
         }}
       >
         {rows.length === 0 && <p className="empty">Nothing yet. When a Task starts, every step of the team shows up here.</p>}
-        {rows.map((r) => {
+        {shownRows.map((r) => {
           switch (r.kind) {
             case "divider":
               return (
@@ -364,7 +443,7 @@ export function ActivityFeed({ state, events, buffers, onAnswer, cardExtra, inli
               );
             case "message": {
               const m = r.entry.ref ? state.messages[r.entry.ref] : undefined;
-              return m ? <MessageBubble key={r.key} m={m} events={events} /> : <LineRow key={r.key} entry={r.entry} event={bySeq.get(r.entry.seq)} />;
+              return m ? <MessageBubble key={r.key} m={m} events={events} {...(pace.typing?.key === r.key ? { reveal: pace.typing.chars } : {})} /> : <LineRow key={r.key} entry={r.entry} event={bySeq.get(r.entry.seq)} />;
             }
             case "card": {
               const opened = events.find((e) => e.seq === r.entry.seq);
@@ -391,9 +470,13 @@ export function ActivityFeed({ state, events, buffers, onAnswer, cardExtra, inli
               return <LineRow key={r.key} entry={r.entry} event={bySeq.get(r.entry.seq)} />;
           }
         })}
-        {open.map((m) => (
-          <MessageBubble key={m.messageId} m={m} live={buffers[m.messageId]} events={events} />
-        ))}
+        {open.map((m) =>
+          m === liveFirst || m.purpose === "memo" ? (
+            <MessageBubble key={m.messageId} m={m} live={buffers[m.messageId]} events={events} />
+          ) : m.purpose === "signal" ? null : (
+            <WaitingLine key={m.messageId} m={m} now={now} />
+          ),
+        )}
         {inline}
         <div ref={end} />
       </div>

@@ -385,7 +385,7 @@ Implementation notes (task 2.8, 2026-11-22; `packages/shared/src/flow/`):
 Failure review, the user loop for unexpected failures (R36.6, decided by the user 2026-11-22):
 
 - Node `failure_review` (kind `wait_user`, no tools, no node timeout; only the Task timeout applies). Before it takes a failure edge, the runner records the `failure` event and sets `task.failure = { node, storyId?, failureClass, detail }` for the node that failed. The entry invariant requires `task.failure.node` to equal the node being left.
-- Edges into it: the work-failure edges `reading_failed`, `target_unavailable`, `develop_failed`, `run_failed`, `no_demo_case`, `demo_case_rejected_final`, `suggestion_failed`, `try_one_failed`, `batch_failed`, `read_back_failed`; the global `timeout` for a node timeout outside the gathering nodes; and the global `unrecoverable_error`. The gathering nodes keep their own edges to `meeting`.
+- Edges into it: the work-failure edges `reading_failed`, `meeting_failed`, `deciding_failed` (added 2026-11-24: a meeting whose model calls were all refused had no edge for "failed" and fell back to `unrecoverable_error` with an extra "no way forward" failure), `target_unavailable`, `develop_failed`, `run_failed`, `no_demo_case`, `demo_case_rejected_final`, `suggestion_failed`, `try_one_failed`, `batch_failed`, `read_back_failed`; the global `timeout` for a node timeout outside the gathering nodes; and the global `unrecoverable_error`. The gathering nodes keep their own edges to `meeting`.
 - Results are not unexpected failures and still go to `failed` directly: `verify_failed`, `verified_last_partial`, the unanswered and answered-at-limit edges with no story left, and the Judge rejections without a Demo_Case retry.
 - Edges out of it, chosen by the Judge on a failure card (`card_opened` kind `confirm` with the options below; outcome set from `card_answered`):
   - `retry_<node>`: back to the failed node, for every non-terminal node; guard `outcome = retry` and `task.failure.node = <node>`. The target's entry invariants still apply. The retry is a visible event (`node_entered` with that edge id); for story nodes it counts against the story's attempts and budget as before.
@@ -862,6 +862,11 @@ Plain TypeScript, no LLM (R22.9). Each Acceptance_Check produces a per-item resu
 - Halloween styling is optional and every avatar effect is bound to the derived Role_Status (R1.7, R2.9).
 
 ### UI design (R1-R8, R26; redesigned with the user 2026-11-22)
+
+Timeline pacing and failure wording (decided with the user 2026-11-24 after watching the M8 recordings):
+
+- One speaker at a time: work runs in parallel in the backend, but the timeline shows statements one after another. A completed statement is typed out over about 3 seconds; the rows after it (its board changes, the next statements) appear when it is done. While one statement is shown, the other roles that are still working have one line each ("Risk is preparing · thinking 12 s"), backed by their events. Presence cards, the now bar and the timers are never delayed; only the order of the timeline text is paced. A page that loads an existing Task (reload, Replay) shows what is already complete at once.
+- A refused submission or a retry is shown in plain words ("Risk's answer was not in the right form; it is putting it together again"), with the Failure_Class badge. Tool names, field names, validation messages and JSON appear only in Engineering_Details.
 
 The first dark mocks were replaced after the user tried the clickable demo: too dark, too dense, dated components. The reference is now the running demo at `/demo` (mock data) and its screenshots in `ui/` next to this document. They fix layout, components and wording rules; pixel details and copy may change. Example texts (file names, tags, times) are illustrative only.
 
