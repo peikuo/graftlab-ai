@@ -1,4 +1,4 @@
-// Runner unit tests with the sanitized pi event fixtures recorded on 2026-11-24 (real runner, real model through
+// Runner unit tests with the sanitized pi event fixtures recorded on 2026-11-23 (real runner, real model through
 // the LLM_Proxy, toy repository): fix (story completed), ask (two ask_question calls answered in the same
 // process), abort (abort after the first tool call).
 import { readFileSync } from "node:fs";

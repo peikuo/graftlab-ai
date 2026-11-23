@@ -1,4 +1,4 @@
-// The meeting (design.md, "Meeting"; R11, R5.3, R24; revised with the user 2026-11-24). Preparation: the three
+// The meeting (design.md, "Meeting"; R11, R5.3, R24; revised with the user 2026-11-23). Preparation: the three
 // Meeting_Perspectives work at the same time and submit positions into the Proposal_Board and the Evidence_Pool.
 // Discussion: after every statement or Judge input the perspectives signal whether they want to speak; code picks
 // the next speaker. Questions to the Judge do not block. Code ends the discussion and builds the summary.

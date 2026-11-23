@@ -254,7 +254,7 @@ Conventions:
 
 - [ ] 6. F3: PiRuntime, meeting after evidence gathering with streaming, thinking panel, interjection, question cards, evidence checker (target 2026-11-24)
   - [ ] 6.1 Implement LLM configuration
-    - `apps/server/src/llm/`: server default base address and `deepseek-flash` from environment, max_tokens 32768 (`GL_MAX_TOKENS`, raised from 16384 on 2026-11-24), finish reason check, Judge-supplied configuration behind `GL_ALLOW_JUDGE_LLM` (off)
+    - `apps/server/src/llm/`: server default base address and `deepseek-flash` from environment, max_tokens 32768 (`GL_MAX_TOKENS`, raised from 16384 on 2026-11-23), finish reason check, Judge-supplied configuration behind `GL_ALLOW_JUDGE_LLM` (off)
     - Design: LLM configuration and SSRF validation
     - _Requirements: 30.1, 30.2, 30.3, 30.5, 30.12, 30.14_
   - [ ] 6.2 Implement the Runtime_Rules loader and role prompts
@@ -262,7 +262,7 @@ Conventions:
     - Design: Repository layout, apps/server modules (`roles/`)
     - _Requirements: 35.2, 35.3, 35.4, 35.6, 35.10_
   - [x] 6.3 Implement the evidence checker
-    - Done 2026-11-24: `apps/server/src/evidence/check.ts`; live meeting on linkding: 40 of 40 findings passed
+    - Done 2026-11-23: `apps/server/src/evidence/check.ts`; live meeting on linkding: 40 of 40 findings passed
     - `apps/server/src/evidence/`: whitespace-normalized snippet match with at least 8 non-whitespace characters, reasons `file_missing`, `not_downloaded`, `snippet_absent`, `snippet_too_short`
     - Design: Evidence checker
     - _Requirements: 24.1, 24.2, 24.3, 24.5, 24.6_
@@ -286,18 +286,18 @@ Conventions:
     - Every read file covered by a memo or a map entry; every directory memo covers its children; root exists; cache hit on the same commit; a memo is never accepted as evidence; a missing file memo is marked, not invented (scripted fake model)
     - _Requirements: 10.7, 10.9, 24_
   - [x] 6.4d Implement the Repo_Brief (foreground reading)
-    - Progress 2026-11-23: `reader/brief.ts` (ranking, docs outline, plan check and fallback, brief schema, source check, coverage, rendering), writer submit tools, `reading_planned` event, rejected-tool-call cap, 7 tests. Live on linkding (300-file download): plan at 59 s, first memo at 81 s, brief at 157 s (first run with longer brief rules: 259 s); 8 model messages, 0 failures, 2 rejected submissions recovered by the model, 29 % cached input. Done 2026-11-24: cache per commit and prompt version, wired into `reading` with the `briefReady` guard, Workspace view (brief, plan, phase in the now bar). Live UI walk on linkding (421 files, download cached): plan at 7 s, brief at 122 s; a second Task on the same commit shows the brief from the cache at once (`scripts/live-walk-m6-brief.mjs`)
+    - Progress 2026-11-23: `reader/brief.ts` (ranking, docs outline, plan check and fallback, brief schema, source check, coverage, rendering), writer submit tools, `reading_planned` event, rejected-tool-call cap, 7 tests. Live on linkding (300-file download): plan at 59 s, first memo at 81 s, brief at 157 s (first run with longer brief rules: 259 s); 8 model messages, 0 failures, 2 rejected submissions recovered by the model, 29 % cached input. Done 2026-11-23: cache per commit and prompt version, wired into `reading` with the `briefReady` guard, Workspace view (brief, plan, phase in the now bar). Live UI walk on linkding (421 files, download cached): plan at 7 s, brief at 122 s; a second Task on the same commit shows the brief from the cache at once (`scripts/live-walk-m6-brief.mjs`)
     - Code ranking (README and manifests, entry points and routes, import in-degree) and docs outline; `submit_reading_plan` with caps enforced by code (30 files, 160 KB) and a labeled code-ranking fallback; planned file memos with `features[]`, one visible retry for left-out files in a batch of their own, a visible `failure` when a call ends without a valid submission; `submit_repo_brief` in the generic format with source paths checked against the map; coverage computed by code; cache per commit and prompt version
     - Tests with a scripted fake model: plan caps and unknown paths rejected, fallback labeled, left-out file retried once then marked, brief validates, unknown source paths dropped and counted, coverage matches the map
     - Live check on linkding: time to the first shown result, time to the brief, call count, cache hits, failures
     - Design: Repo_Memo
     - _Requirements: 10.7, 10.8, 10.9, 10.10, 10.11_
   - [x] 6.4e Implement the background Repo_Index
-    - Done 2026-11-24: starts after the brief, concurrency 2, stopped at Task end, abort or a new Task (`index_progress`); the meeting does not wait
+    - Done 2026-11-23: starts after the brief, concurrency 2, stopped at Task end, abort or a new Task (`index_progress`); the meeting does not wait
     - Remaining non-map-only files and directory rollups after the brief, concurrency 2, reuse of foreground memos, progress from `memo_written`, stop recorded at Task end or abort; the reading node does not wait for it
     - _Requirements: 10.8, 10.12_
   - [x]* 6.5 Write property test for evidence marks
-    - Done 2026-11-24: `check.property.test.ts`, 300 runs
+    - Done 2026-11-23: `check.property.test.ts`, 300 runs
     - **Property 9: Evidence check marks**
     - **Validates: Requirements 24.2, 24.3, 24.4, 24.5, 11.5, 11.6, 37.6**
   - [ ] 6.6 Implement structured output through submit tools
@@ -311,18 +311,18 @@ Conventions:
     - Stream break keeps partial text and records the failure; truncation is discarded; blocked tool recorded as rejected by a safety rule; reasoning persisted with the complete message
     - _Requirements: 3.9, 3.12, 23.7, 30.13_
   - [ ] 6.9 Implement the reading skim and the meeting
-    - Done before the revision (2026-11-24): fixed-order meeting, evidence checker in every finding, timed cards; live on linkding 18 min, 40/40 findings passed, little response between perspectives
-    - Revision (decided with the user 2026-11-24): parallel preparation into the Evidence_Pool and the Proposal_Board; discussion by speaking signals with code-picked speakers; non-blocking question cards; end condition and summary by code; prompt order with the role text after the transcript; thinking off for signals; background index paused during the meeting; plain-language display per design table (no ids or paths in statements, quotes behind a fold, board in the Details panel)
+    - Done before the revision (2026-11-23): fixed-order meeting, evidence checker in every finding, timed cards; live on linkding 18 min, 40/40 findings passed, little response between perspectives
+    - Revision (decided with the user 2026-11-23): parallel preparation into the Evidence_Pool and the Proposal_Board; discussion by speaking signals with code-picked speakers; non-blocking question cards; end condition and summary by code; prompt order with the role text after the transcript; thinking off for signals; background index paused during the meeting; plain-language display per design table (no ids or paths in statements, quotes behind a fold, board in the Details panel)
     - Tests with a scripted turn runner: speaker rules (addressed role, disagree first, never the previous speaker, missing stance named), board changes validated (unknown proposal, missing evidence), quotes checked into the pool, end condition and limits, non-blocking card answer delivered as Judge input, summary built from the board, ids removed from displayed text
     - Live on linkding: total time, statements, responses that name another statement, stances complete, cache hits
-    - Facilitator verdicts (decided by the user 2026-11-24): `submit_close` with merges and a verdict per proposal (recommend with rank and conditions, drop, park), `endDiscussion` in a steering turn, recommend refused without a passed quote, board text cleaned of ids; board view sorted by verdict
-    - Two kinds of proposals (decided by the user 2026-11-24): `kind: improve | new`, at least one new capability per perspective enforced by code, gap and attach-point evidence, two groups in the board view, Facilitator verdicts on both kinds; measure how many new capabilities appear and are recommended
-      - Live 2026-11-24 on linkding: 363 s; 2 of 3 proposals were new capabilities ("Ask your library a question" #2, "Answers and summaries from your archived page copies" #3), both recommended with quotes that show the gap and the attach point; 0 open questions; 1 refused discussion change (missing fields), corrected by the role
-    - Progress 2026-11-24: implemented (`meeting/board.ts`, `meeting/meeting.ts`, Board and Evidence views, signals on presence cards, non-blocking cards, index pause), 18 meeting tests. Live on linkding: run 1 (no readability limits) 507 s, 7 proposals, every discussion statement responded to someone, an interjection to Risk made Risk speak next, 0 ids in statements, statements 12.8 s on average, signals 0.7 s, 65 % cached input; run 2 (limits) 242 s, 4 proposals with all three views, ended by code, 0 failures, longest reason 146 characters. Open: one duplicate proposal pair was not merged; the Facilitator once talked about tool fields while correcting a refused merge (rule added, to be measured); little disagreement in run 2 (best effort, measured)
+    - Facilitator verdicts (decided by the user 2026-11-23): `submit_close` with merges and a verdict per proposal (recommend with rank and conditions, drop, park), `endDiscussion` in a steering turn, recommend refused without a passed quote, board text cleaned of ids; board view sorted by verdict
+    - Two kinds of proposals (decided by the user 2026-11-23): `kind: improve | new`, at least one new capability per perspective enforced by code, gap and attach-point evidence, two groups in the board view, Facilitator verdicts on both kinds; measure how many new capabilities appear and are recommended
+      - Live 2026-11-23 on linkding: 363 s; 2 of 3 proposals were new capabilities ("Ask your library a question" #2, "Answers and summaries from your archived page copies" #3), both recommended with quotes that show the gap and the attach point; 0 open questions; 1 refused discussion change (missing fields), corrected by the role
+    - Progress 2026-11-23: implemented (`meeting/board.ts`, `meeting/meeting.ts`, Board and Evidence views, signals on presence cards, non-blocking cards, index pause), 18 meeting tests. Live on linkding: run 1 (no readability limits) 507 s, 7 proposals, every discussion statement responded to someone, an interjection to Risk made Risk speak next, 0 ids in statements, statements 12.8 s on average, signals 0.7 s, 65 % cached input; run 2 (limits) 242 s, 4 proposals with all three views, ended by code, 0 failures, longest reason 146 characters. Open: one duplicate proposal pair was not merged; the Facilitator once talked about tool fields while correcting a refused merge (rule added, to be measured); little disagreement in run 2 (best effort, measured)
     - Design: Meeting
     - _Requirements: 10.2, 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 11.8, 11.9, 11.11, 11.12, 11.13, 5.3, 15.1, 18.1, 18.6_
   - [ ] 6.10 Implement interjection delivery
-    - In the meeting, a Judge message enters the transcript, triggers a speaking round, and the addressed role speaks next (revision 2026-11-24)
+    - In the meeting, a Judge message enters the transcript, triggers a speaking round, and the addressed role speaks next (revision 2026-11-23)
     - `POST /api/tasks/:id/messages` acknowledges within 1 s (`GL_ACK_BOUND_MS`); `steer()` to the current speaker or prepend to the addressee's next turn; `judge_message` with `deliveredTo`; delivery failure next to the input; `propose_new_version` card
     - During evidence gathering: the message is acknowledged and recorded with status `queued` ("received, delivered when the meeting starts"), and delivered at the meeting start with `judge_message_delivered`; no question card is opened during gathering
     - Design: Meeting, HTTP API, PiRuntime, Flow_Graph (rules)
@@ -342,72 +342,72 @@ Conventions:
     - Show the user a real meeting on linkding with `deepseek-flash`: the gathered-evidence summary at the start, a Judge message sent during reading and delivered at the meeting start, streaming text, reasoning panel, an interjection mid-stream, an answered question card, an Unverified mark on a missing snippet, and a reload mid-stream that shows the buffer; check `events.jsonl` has complete messages only and no chunks
     - _Requirements: 3.11, 11.6, 11.9, 12.2, 12.5, 27.7_
 
-- [ ] 7. F6: decision step, Decision_Doc schema, versions, hash and freeze (target 2026-11-25)
+- [x] 7. F6: decision step, Decision_Doc schema, versions, hash and freeze (target 2026-11-25)
   - [x] 7.1 Implement the Decision_Doc schema, canonical hash and versions
-    - Done 2026-11-24: `packages/shared/src/decision.ts`, `apps/server/src/decision/hash.ts`
+    - Done 2026-11-23: `packages/shared/src/decision.ts`, `apps/server/src/decision/hash.ts`
     - zod schema for every R15.2 section; canonical JSON (sorted keys, UTF-8) and sha256 over content only; immutable frozen versions; version n+1 on change
     - Design: Decision_Doc
     - _Requirements: 15.2, 15.6, 16.1, 16.4, 16.5_
   - [x]* 7.2 Write property test for hash recomputation
-    - Done 2026-11-24: `decision.property.test.ts`, 200 runs
+    - Done 2026-11-23: `decision.property.test.ts`, 200 runs
     - **Property 8: Decision_Doc hash recomputation**
     - **Validates: Requirements 16.5**
   - [x] 7.3 Implement the deciding node
-    - Done 2026-11-24: `decision/draft.ts`, 3 tests
-    - Plan (2026-11-24): Facilitator draft from the meeting summary, then Feasibility and Risk assessments in parallel, merged and checked by code; effort small | medium | large with large flagged as engineering risk (R37.9), also on the meeting board
+    - Done 2026-11-23: `decision/draft.ts`, 3 tests
+    - Plan (2026-11-23): Facilitator draft from the meeting summary, then Feasibility and Risk assessments in parallel, merged and checked by code; effort small | medium | large with large flagged as engineering risk (R37.9), also on the meeting board
     - Meeting_Perspectives propose Approach_Options; Feasibility and Risk add Assessments and the Facilitator adds the executable Acceptance_Checks labeled "LLM assessment, not a guarantee"; `submit_decision_draft`; `assessment.complete` computed by code; evidence check of claims and endpoints
     - Design: Decision step
     - _Requirements: 15.1, 15.2, 15.8, 15.9, 15.10, 24.4, 37.1, 37.2, 37.3, 37.5, 37.6, 37.7_
   - [x] 7.4 Implement confirmation and freeze
-    - Done 2026-11-24: `decision/desk.ts`, `decision/items.ts`, HTTP actions, 5 tests
+    - Done 2026-11-23: `decision/desk.ts`, `decision/items.ts`, HTTP actions, 5 tests
     - Item review per `ui/screen-4-decide.png`: draft split into review items by code, accept or reject with a reason (`decision_item_reviewed`), send back only when every item has a verdict, unchanged items keep their verdict by `itemHash`, freeze only when every item is accepted
     - Confirm card in feature words with exactly one selectable approach or combination; freeze records version, hash, session and time (`decision_doc_frozen`); request changes back to `deciding`; Other_Repo end before freeze to `analysis_only`; guards block planning while unconfirmed
     - Design: Decision step, Flow_Graph
     - _Requirements: 5.7, 15.3, 15.4, 15.5, 15.11, 16.2, 16.3, 25.1, 37.4_
   - [x]* 7.5 Write property test for confirmable options
-    - Done 2026-11-24: `decision.property.test.ts`, 100 runs
+    - Done 2026-11-23: `decision.property.test.ts`, 100 runs
     - **Property 10: Only complete approach options can be confirmed**
     - **Validates: Requirements 15.11, 37.4, 37.5**
   - [x] 7.6 Build the Decision_Doc view
-    - Done 2026-11-24: review in the timeline, confirmation record in the Decision tab, `DECISION_DOC.md`
+    - Done 2026-11-23: review in the timeline, confirmation record in the Decision tab, `DECISION_DOC.md`
     - Artifact_Area view with version number, Unverified marks, assessment labels, UI impact section and the version history with hashes and confirmation records
     - Design: Decision step, Web app
     - _Requirements: 4.5, 15.8, 15.9, 16.4, 37.3_
   - [x]* 7.7 Write unit tests for the decision step
-    - Done 2026-11-24: `desk.test.ts`, `draft.test.ts`
+    - Done 2026-11-23: `desk.test.ts`, `draft.test.ts`
     - Planning blocked while unconfirmed; in-place edit of a frozen version rejected; version chain after a change request
     - _Requirements: 15.4, 15.6, 16.1, 16.2_
   - [x] 7.8 Demo and verify: decision step
-    - Done 2026-11-24 on linkding (`scripts/live-walk-m7-decision.mjs`): meeting 315 s, draft 1 after 316 s with 3 options (medium, medium, large flagged as engineering risk), the Judge chose one, rejected the screen item with a reason and sent it back; draft 2 after 152 s kept 4 of 7 items unchanged (their verdicts carried over) and reworded the screen item as asked; freeze created version 1; the recomputed hash equals the recorded one; DECISION_DOC.md written. Found and fixed: the redactor stored shared objects as "[Circular]" (now only real cycles); a reject form stayed open on the next draft (row key now includes the item hash). Open: drafting takes 2.5 to 5 minutes
+    - Done 2026-11-23 on linkding (`scripts/live-walk-m7-decision.mjs`): meeting 315 s, draft 1 after 316 s with 3 options (medium, medium, large flagged as engineering risk), the Judge chose one, rejected the screen item with a reason and sent it back; draft 2 after 152 s kept 4 of 7 items unchanged (their verdicts carried over) and reworded the screen item as asked; freeze created version 1; the recomputed hash equals the recorded one; DECISION_DOC.md written. Found and fixed: the redactor stored shared objects as "[Circular]" (now only real cycles); a reject form stayed open on the next draft (row key now includes the item hash). Open: drafting takes 2.5 to 5 minutes
     - Show the user a real decision step on linkding ending in a frozen Decision_Doc, and a change request that creates version 2; check that the recomputed hash equals the recorded one and that an option without an Acceptance_Check cannot be selected
     - _Requirements: 15.3, 16.5, 37.5_
 
 - [x] 8. Checkpoint M1: any repository from URL to frozen Decision_Doc (target 2026-11-25)
-  - Done 2026-11-24 with screen recordings (`scripts/live-walk-m8.mjs`, `data/ui-snaps/m8-*.mp4`), thinking levels sent as reasoning_effort: p-limit (Other_Repo, first read) 298 s to Analysis only (reading 45 s, meeting 166 s, draft 84 s, 0 failures); linkding (brief cached) 220 s to a frozen version 1 (meeting 145 s, draft 53 s). All 164 tests pass. Found: a raw tool validation message was shown in the timeline (now plain words)
+  - Done 2026-11-23 with screen recordings (`scripts/live-walk-m8.mjs`, `data/ui-snaps/m8-*.mp4`), thinking levels sent as reasoning_effort: p-limit (Other_Repo, first read) 298 s to Analysis only (reading 45 s, meeting 166 s, draft 84 s, 0 failures); linkding (brief cached) 220 s to a frozen version 1 (meeting 145 s, draft 53 s). All 164 tests pass. Found: a raw tool validation message was shown in the timeline (now plain words)
   - Ensure all tests pass, ask the user if questions arise.
   - Demo to the user: linkding and one Other_Repo from URL to a frozen Decision_Doc (Other_Repo ending as Analysis only when the Judge ends before freeze).
 
 - [ ] 9. Replay_File export, Replay player and M1 polish (target 2026-11-26)
   - [x] 9.1 Implement the Replay exporter
-    - Done 2026-11-24: `apps/server/src/replay/export.ts`, export at the terminal, copy and index for the static host, `GET /replays/:file`
+    - Done 2026-11-23: `apps/server/src/replay/export.ts`, export at the terminal, copy and index for the static host, `GET /replays/:file`
     - `apps/server/src/replay/`: Replay_File with header (schemaVersion, label "Replay"), second secret scan that refuses export and records a failure, `data/replays/<taskId>.json`, static `GET /replays/:taskId.json`
     - Design: Replay_File, Secret redactor
     - _Requirements: 26.6, 27.11, 27.12, 27.13_
   - [x] 9.2 Extend the redaction property test to the Replay_File
-    - Done 2026-11-24: `replay/export.property.test.ts`, 100 runs
+    - Done 2026-11-23: `replay/export.property.test.ts`, 100 runs
     - **Property 12: Secret redaction** (same test as 3.7, now also over the exported Replay_File)
     - **Validates: Requirements 30.15, 27.12, 28.4, 30.5, 13.5**
   - [x] 9.3 Build the Replay player
-    - Done 2026-11-24: `apps/web/src/replay/ReplayApp.tsx` at `/replay/<taskId>`, Replay list on the home page
+    - Done 2026-11-23: `apps/web/src/replay/ReplayApp.tsx` at `/replay/<taskId>`, Replay list on the home page
     - Same Workspace with a Replay bar (play, pause, speed, seek), permanent "Replay" label, `now` at the playhead, typing animated from the stored Complete_Message with the note that typing speed is simulated
     - Design: Web app
     - _Requirements: 1.5, 7.4, 7.5, 26.2, 26.3, 26.4, 26.9, 27.2, 27.3, 27.8_
   - [x] 9.4 Write property test for live versus Replay equality
-    - Done 2026-11-24: `replay.property.test.ts`, 200 runs
+    - Done 2026-11-23: `replay.property.test.ts`, 200 runs
     - **Property 4: Live and Replay produce the same UI state**
     - **Validates: Requirements 26.7, 27.14, 7.5**
   - [x] 9.5 Build the final view
-    - Done 2026-11-24: `components/FinalView.tsx`, live and Replay; the stepper marks only visited steps; open cards close at the terminal
+    - Done 2026-11-23: `components/FinalView.tsx`, live and Replay; the stepper marks only visited steps; open cards close at the terminal
     - Terminal summary from `terminal_reached`: Verifier results, counts per Failure_Class, Unconfirmed marks, Analysis only or Docs only label
     - Design: Error Handling, Web app
     - _Requirements: 23.3, 25.1, 25.2, 26.1, 26.5_
@@ -419,7 +419,7 @@ Conventions:
     - Design: Web app, Error Handling
     - _Requirements: 4.3, 6.1, 7.2, 23.1, 23.5_
   - [x] 9.8 Demo and verify: Replay
-    - Done 2026-11-24: 2026-11-24 with the backend stopped: linkding and p-limit Replays played from the static host, label, seek and final view checked (`scripts/replay-walk.mjs`), recordings `data/ui-snaps/m9-replay-*.mp4`; second scan found no secret
+    - Done 2026-11-23: 2026-11-23 with the backend stopped: linkding and p-limit Replays played from the static host, label, seek and final view checked (`scripts/replay-walk.mjs`), recordings `data/ui-snaps/m9-replay-*.mp4`; second scan found no secret
     - Show the user the M1 Task replayed from its Replay_File with the backend stopped; check that the live and Replay final views match and that the Replay_File holds no key or token
     - _Requirements: 26.7, 27.12, 27.13_
 
@@ -429,7 +429,7 @@ Conventions:
     - Design: Images; reference-target-linkding.md (Development_Sandbox for linkding); reference-deployment.md (Network facts, Integrity rules)
     - _Requirements: 39.2, 25.6_
   - [x] 10.2 Implement the Verifier `api_readback` check
-    - Done 2026-11-24: `apps/server/src/verifier/readback.ts` (all pages, comparator, pre-state, per-item results, a failing read is a failed check); tested against the in-memory model
+    - Done 2026-11-23: `apps/server/src/verifier/readback.ts` (all pages, comparator, pre-state, per-item results, a failing read is a failed check); tested against the in-memory model
     - `apps/server/src/verifier/readback.ts`: reads all pages of the Adapter's read endpoints, applies the Adapter comparator from 10.15 (key matching, field rules, a create whose key existed in the pre-state snapshot compared as an update), per-item results (also used for the reset equality check)
     - Design: Verifier, Adapter contract
     - _Requirements: 22.4, 22.5, 22.7, 22.9, 29.4_
@@ -438,22 +438,22 @@ Conventions:
     - Design: Containers, Network policy, Deployment model; reference-deployment.md (Docker Desktop facts, Docker Desktop and memory)
     - _Requirements: 38.2, 38.3, 38.4, 39.1, 39.6, 25.8_
   - [x] 10.4 Write property test for the Adapter comparator
-    - Done 2026-11-24: `adapters/linkding/comparator.property.test.ts`, 200 runs
+    - Done 2026-11-23: `adapters/linkding/comparator.property.test.ts`, 200 runs
     - **Property 11: The Adapter comparator agrees with a model of the target's write semantics**
     - Lives in `adapters/linkding/`; in-memory linkding model with upsert by normalized URL that replaces title and tags, and generated auto-tag rules (reference-target-linkding.md, Write semantics for the comparator)
     - **Validates: Requirements 22.4, 22.5**
   - [ ] 10.5 Implement the LLM_Proxy
-    - Progress 2026-11-24 (Mac): `apps/server/src/proxy/{proxy,main,credential}.ts`, bundled with `npm run build:proxy -w apps/server` to `dist/llm-proxy.mjs`; accepts `/chat/completions` (POST) and `/models` (GET), with or without a `/v1` prefix; per-Task credential `glp_…` registered with the redactor as `proxy_credential`; tests cover 10.7 against a fake upstream; the Code_Agent runner ran through it against the real model. Open: running it in its container (10.3) and the port relay
+    - Progress 2026-11-23 (Mac): `apps/server/src/proxy/{proxy,main,credential}.ts`, bundled with `npm run build:proxy -w apps/server` to `dist/llm-proxy.mjs`; accepts `/chat/completions` (POST) and `/models` (GET), with or without a `/v1` prefix; per-Task credential `glp_…` registered with the redactor as `proxy_credential`; tests cover 10.7 against a fake upstream; the Code_Agent runner ran through it against the real model. Open: running it in its container (10.3) and the port relay
     - `apps/server/src/proxy/` bundled to one file, run on the dev-sandbox image: per-Task bearer credential, allow-listed paths, real key swapped in, streaming passthrough, logs method, path and status only; credential registered with the redactor
     - Design: LLM_Proxy
     - _Requirements: 30.5, 30.16_
   - [x] 10.6 Implement the Worktree manager
-    - Done 2026-11-24: `apps/server/src/worktree/worktree.ts` (mirror, clone, branch, config, diff and snapshot with a temporary index, snapshot commits under `refs/graftlab/snapshots/`, Patch_Artifact); 7 tests on a local upstream
+    - Done 2026-11-23: `apps/server/src/worktree/worktree.ts` (mirror, clone, branch, config, diff and snapshot with a temporary index, snapshot commits under `refs/graftlab/snapshots/`, Patch_Artifact); 7 tests on a local upstream
     - `apps/server/src/worktree/`: one bare mirror per Adapter (`data/mirror/<adapterId>.git`), `git clone --no-hardlinks`, branch `graftlab/<taskId>`, `core.fileMode=false` and `core.autocrlf=false` on every clone, snapshots, diff with a temporary index, Patch_Artifact; created only for Adapted_Repo when first needed; no linked git worktrees
     - Design: Worktree manager; reference-deployment.md (Docker Desktop facts)
     - _Requirements: 25.6, 38.1, 38.5, 38.6, 38.9_
   - [x]* 10.7 Write integration tests for the LLM_Proxy
-    - Done 2026-11-24: `apps/server/src/proxy/proxy.test.ts` (fake upstream, streaming passthrough, log lines)
+    - Done 2026-11-23: `apps/server/src/proxy/proxy.test.ts` (fake upstream, streaming passthrough, log lines)
     - Wrong credential rejected; allowed path forwarded to a fake upstream with the real key; other paths refused
     - _Requirements: 30.16_
   - [ ] 10.8 Implement Sandbox start with test data and reset
@@ -476,7 +476,7 @@ Conventions:
     - _Requirements: 29.4, 38.2, 38.8_
 
   - [ ] 10.13 Write the Code_Agent runner (`docker/dev-sandbox/runner`) with the protocol, normalized events and unit tests with recorded event fixtures
-    - Progress 2026-11-24 (Mac): protocol and mapper in `packages/shared/src/runner.ts` (the mapper is not yet used by `PiRuntime`), runner workspace `docker/dev-sandbox/runner/` (`controller.ts`, `main.ts`, bundle `npm run build -w docker/dev-sandbox/runner`), rules in `runtime-rules/roles/code_agent.md` read from `/context/rules.md`; fixtures recorded on the Mac with the real model through the LLM_Proxy (fix completed in 43 s; ask: two `ask_question` calls answered in the same process; abort after the first tool call); 10 tests. Open: the runner inside the image (10.1, 10.14)
+    - Progress 2026-11-23 (Mac): protocol and mapper in `packages/shared/src/runner.ts` (the mapper is not yet used by `PiRuntime`), runner workspace `docker/dev-sandbox/runner/` (`controller.ts`, `main.ts`, bundle `npm run build -w docker/dev-sandbox/runner`), rules in `runtime-rules/roles/code_agent.md` read from `/context/rules.md`; fixtures recorded on the Mac with the real model through the LLM_Proxy (fix completed in 43 s; ask: two `ask_question` calls answered in the same process; abort after the first tool call); 10 tests. Open: the runner inside the image (10.1, 10.14)
     - `docker/dev-sandbox/runner/`: embeds `createAgentSession()` with an allow-listed tool set, `SessionManager.inMemory()`, thinking level low, custom provider pointing at the LLM_Proxy; custom `ask_question` tool (zod-validated arguments `kind`, `text`, optional `options`; ends the turn); stdin commands `prompt`, `answer`, `steer`, `abort` validated by zod; stdout normalized JSON-line events using the shared pi event mapping module from 6.4; one long-lived process per story attempt; `dispose()` on exit; shape follows the 1.7 and 1.8 results (embedded runner by default, pi RPC mode if the spike says so)
     - Unit tests with vitest using the sanitized recorded event fixtures from 1.7 and 1.8: every fixture line maps to the expected `RuntimeEvent`, invalid commands are rejected, an `ask_question` call produces a `question` event and the turn ends, `answer` resumes
     - Design: PiCodeRuntime, Repository layout
@@ -485,7 +485,7 @@ Conventions:
     - Show the user the runner inside the built dev-sandbox image completing a small story on the toy repository through the LLM_Proxy, a question raised by `ask_question` and answered in the same process, and an abort; check that only `/work` and `/tmp` were written and that no real key is in the container environment
     - _Requirements: 30.16, 40.11, 40.13_
   - [ ] 10.15 Implement the Adapter contract and the linkding Adapter
-    - Progress 2026-11-24 (Mac, no containers yet): contract types and strict schema (`packages/shared/src/adapter.ts`), registry validated at server start (`apps/server/src/adapters/registry.ts`), linkding hooks, comparator, test data, in-memory model, checklist; 17 tests. Open until 10.16: the hooks against the real image (provisioning, seed, reset) on the PC
+    - Progress 2026-11-23 (Mac, no containers yet): contract types and strict schema (`packages/shared/src/adapter.ts`), registry validated at server start (`apps/server/src/adapters/registry.ts`), linkding hooks, comparator, test data, in-memory model, checklist; 17 tests. Open until 10.16: the hooks against the real image (provisioning, seed, reset) on the PC
     - `packages/shared/src/adapter.ts`: the Adapter contract types and a zod schema for `adapter.json` (no start-procedure field for the modified target); `apps/server/src/adapters/`: loader and registry validated at server start, case-insensitive match used by 5.1
     - `adapters/linkding/`: `adapter.json` with the real pins, the `api` allow-list (read and write endpoints, op ids, item cap, `itemFields` schema), the comparator (normalized-URL key, tag inclusion, same-URL create compared as an update that replaces title and tags, auto-tagging) with its tests, the provisioning hook (`bookmarks.ApiToken` in the management shell after `/health`, key registered with the redactor), `test-data.json` with seed, reset (fresh volume) and the equality check; `runtime-rules/adapters/linkding-checklist.md`
     - Design: Adapter contract, Sandbox and test data, Verifier; reference-target-linkding.md (all sections)

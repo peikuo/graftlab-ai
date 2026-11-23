@@ -59,7 +59,7 @@ export class SecretRegistry {
    * Walks every string (values and object keys) of a JSON-like value and redacts it. Returns a new value.
    * Only plain objects and arrays are walked (events are plain JSON); other objects are returned unchanged,
    * and only a real cycle (an object inside itself) becomes "[Circular]", so the walk always terminates. A
-   * shared reference (the same object in two places, not a cycle) is walked again: found 2026-11-24, when a
+   * shared reference (the same object in two places, not a cycle) is walked again: found 2026-11-23, when a
    * decision draft's items shared evidence objects with its content and were stored as "[Circular]".
    */
   redact<T>(value: T): RedactResult<T> {

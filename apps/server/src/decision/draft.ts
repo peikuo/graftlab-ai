@@ -98,7 +98,7 @@ export async function runDecisionDraft(o: DraftOptions): Promise<DraftResult> {
   const meeting = renderMeeting(o);
   let turnNo = 0;
   async function turn(roleId: RoleId, ask: string, tool: AgentTool<any>, accepted: () => boolean): Promise<boolean> {
-    // Measured 2026-11-24 on linkding: assessments with thinking took 99 to 186 s each (over 90 % reasoning tokens)
+    // Measured 2026-11-23 on linkding: assessments with thinking took 99 to 186 s each (over 90 % reasoning tokens)
     // and 12 to 20 s without, of similar quality; the draft keeps low thinking for a better option structure.
     const thinkingLevel = roleId === "facilitator" ? (o.thinking?.draft ?? THINKING.decisionDraft) : (o.thinking?.assess ?? THINKING.decisionAssessment);
     if (o.signal.aborted) return false;
