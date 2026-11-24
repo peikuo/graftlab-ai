@@ -45,6 +45,8 @@ export const AdapterJsonSchema = z
         dependencySetup: text.regex(/^[A-Za-z0-9._/-]+\.sh$/).refine((p) => !p.split("/").includes(".."), "inside the Adapter directory"),
         /** Directories put in front of PATH in the image. */
         path: z.array(text.regex(/^\/[A-Za-z0-9._/-]*$/)),
+        /** Toolchain environment in the development, test and run containers (for example: use the preinstalled venv, no package sync). */
+        env: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string()).default({}),
         /** Gitignored dependency and build output copied from /opt/target-src into the Worktree at sandbox start. */
         prebuilt: z.array(text.regex(/^[A-Za-z0-9._-][A-Za-z0-9._/-]*$/).refine((p) => !p.split("/").includes(".."), "relative, inside the source")),
       })

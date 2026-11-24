@@ -503,6 +503,7 @@ export interface Adapter {
     dependencySetup: string;                    // shell file next to adapter.json, run at image build in the pinned UNMODIFIED source
     path: string[];                             // directories put in front of PATH in the image (for linkding the venv)
     prebuilt: string[];                         // gitignored dependency and build output copied into the Worktree at sandbox start
+    env: Record<string, string>;                // toolchain environment in the dev, test and run containers (linkding: use the preinstalled venv, no package sync, offline)
   };
   testSelectionHint: string;                    // guidance for test_suite checks (which tests to name)
   runtimeRulesChecklist: string;                // runtime-rules/adapters/<id>-checklist.md (layer B)

@@ -24,7 +24,7 @@ export interface DevStageOptions {
   manager: ContainerManager;
   secrets: SecretRegistry;
   devImage: string;
-  adapter: { id: string; source: { upstreamUrl: string; commit: string }; devSandbox: { prebuilt: string[] } };
+  adapter: { id: string; source: { upstreamUrl: string; commit: string }; devSandbox: { prebuilt: string[]; env?: Record<string, string> } };
   /** The real LLM settings; only the LLM_Proxy container receives the key. */
   llm: { baseUrl: string; apiKey: string; model: string; reasoningParam: string; reasoningEffort: string };
   rules: RuntimeRules;
@@ -37,7 +37,11 @@ export interface DevStageOptions {
 
 const text = (t: string, isError = false) => ({ content: [{ type: "text" as const, text: t }], details: {}, ...(isError ? { isError: true } : {}) });
 const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
-const shellCommand = (argv: string[]) => argv.map(shq).join(" ");
+/**
+ * A command as an argument list; a single element with spaces ("python manage.py test x") is split into words, as
+ * models often write it that way (found 2026-11-24: the whole command was taken as one program name).
+ */
+export const shellCommand = (argv: string[]) => (argv.length === 1 && /\s/.test(argv[0]!.trim()) ? argv[0]!.trim().split(/\s+/) : argv).map(shq).join(" ");
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}\n… (${s.length - n} more characters)` : s);
 
 export class DevStage {
@@ -88,7 +92,7 @@ export class DevStage {
       await step("Starting the Development_Sandbox", async () => {
         const contextDir = join(this.o.dataDir, "tasks", ctx.task.taskId, "context");
         await mkdir(contextDir, { recursive: true });
-        this.#dev = (await m.startDevSandbox(ctx.task.taskId, { image: this.o.devImage, workDir: this.#wt!.path, contextDir, prebuilt: this.o.adapter.devSandbox.prebuilt })).name;
+        this.#dev = (await m.startDevSandbox(ctx.task.taskId, { image: this.o.devImage, workDir: this.#wt!.path, contextDir, prebuilt: this.o.adapter.devSandbox.prebuilt, env: this.o.adapter.devSandbox.env ?? {} })).name;
       });
       ctx.patch({ targetCheckPassed: true });
       return "done";
@@ -270,7 +274,7 @@ export class DevStage {
     await ctx.emit({ type: "artifact_updated", actor: { kind: "system" }, payload: { artifactKind: "worktree_handoff", ref: snap.commit, title: `Snapshot of ${f.id} for the app run` } });
     const m = this.o.manager;
     await m.docker.stopContainer(this.#dev!, 5).catch(() => undefined); // memory: the Development_Sandbox pauses
-    const { name } = await m.startRunEnvironment(ctx.task.taskId, { image: this.o.devImage, snapshotDir: snap.path, prebuilt: this.o.adapter.devSandbox.prebuilt, commands: [...re.buildCommands, ...re.startCommands].join(" && ") });
+    const { name } = await m.startRunEnvironment(ctx.task.taskId, { image: this.o.devImage, snapshotDir: snap.path, prebuilt: this.o.adapter.devSandbox.prebuilt, commands: [...re.buildCommands, ...re.startCommands].join(" && "), env: this.o.adapter.devSandbox.env ?? {} });
     const url = `http://127.0.0.1:${this.#relayPort}${re.healthPath}`;
     const end = Date.now() + 230_000;
     while (Date.now() < end && !ctx.signal.aborted) {
@@ -331,7 +335,7 @@ export class DevStage {
       }
     let pass = true;
     for (const c of checks) {
-      const r = await this.o.manager.runTests(ctx.task.taskId, { image: this.o.devImage, snapshotDir: snap.path, prebuilt: this.o.adapter.devSandbox.prebuilt, command: shellCommand(c.command), timeoutS: c.timeoutS });
+      const r = await this.o.manager.runTests(ctx.task.taskId, { image: this.o.devImage, snapshotDir: snap.path, prebuilt: this.o.adapter.devSandbox.prebuilt, command: shellCommand(c.command), timeoutS: c.timeoutS, env: this.o.adapter.devSandbox.env ?? {} });
       const summary = r.output.trim().split("\n").filter(Boolean).slice(-3).join(" | ").slice(0, 300);
       const ok = r.code === 0;
       pass &&= ok;

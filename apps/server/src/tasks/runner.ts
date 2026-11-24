@@ -333,7 +333,7 @@ export class TaskRunner {
       actor: SYSTEM,
       payload: {
         terminal,
-        summary: { verifierPassed: 0, verifierFailed: 0, failuresByClass: this.#task.failuresByClass, unconfirmed: this.#task.pendingUnconfirmed, label: terminalLabel(this.#task, terminal) },
+        summary: { verifierPassed: this.#store.events().filter((e) => e.type === "verifier_result" && e.payload.pass).length, verifierFailed: this.#store.events().filter((e) => e.type === "verifier_result" && !e.payload.pass).length, failuresByClass: this.#task.failuresByClass, unconfirmed: this.#task.pendingUnconfirmed, label: terminalLabel(this.#task, terminal) },
       },
     });
     this.#onTerminal?.(terminal);

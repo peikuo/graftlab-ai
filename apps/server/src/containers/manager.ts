@@ -58,6 +58,8 @@ export interface DevSandboxStart {
   contextDir?: string;
   /** The Adapter's devSandbox.prebuilt paths, copied from /opt/target-src into /work after the start. */
   prebuilt: string[];
+  /** The Adapter's toolchain environment (devSandbox.env). */
+  env?: Record<string, string>;
 }
 
 export interface BaselineStart {
@@ -152,7 +154,7 @@ export class ContainerManager {
       Entrypoint: ["sleep", "infinity"],
       Cmd: [],
       WorkingDir: "/work",
-      Env: ["HOME=/tmp/home", "RUNNER_HOME=/tmp/runner-home", "npm_config_cache=/tmp/npm", "PYTHONDONTWRITEBYTECODE=1"],
+      Env: ["HOME=/tmp/home", "RUNNER_HOME=/tmp/runner-home", "npm_config_cache=/tmp/npm", "PYTHONDONTWRITEBYTECODE=1", ...Object.entries(o.env ?? {}).map(([k, v]) => `${k}=${v}`)],
       Labels: this.labels(taskId, "dev"),
       HostConfig: {
         Memory: this.mem.dev * MB,
@@ -218,13 +220,13 @@ export class ContainerManager {
    */
   static prepareScript = 'set -e; rm -rf /tmp/app; cp -a /src /tmp/app; for p in $GL_PREBUILT; do mkdir -p "$(dirname "/tmp/app/$p")"; rm -rf "/tmp/app/$p"; cp -a "/opt/target-src/$p" "/tmp/app/$p"; done; cd /tmp/app; eval "$GL_RUN"';
 
-  #appContainer(taskId: string, kind: "run" | "test", o: { image: string; snapshotDir: string; prebuilt: string[]; run: string; alias?: string }) {
+  #appContainer(taskId: string, kind: "run" | "test", o: { image: string; snapshotDir: string; prebuilt: string[]; run: string; env?: Record<string, string> }) {
     return {
       Image: o.image,
       Entrypoint: ["sh", "-c", ContainerManager.prepareScript],
       Cmd: [],
       WorkingDir: "/tmp",
-      Env: ["HOME=/tmp/home", "npm_config_cache=/tmp/npm", "PYTHONDONTWRITEBYTECODE=1", `GL_PREBUILT=${o.prebuilt.join(" ")}`, `GL_RUN=${o.run}`],
+      Env: ["HOME=/tmp/home", "npm_config_cache=/tmp/npm", "PYTHONDONTWRITEBYTECODE=1", ...Object.entries(o.env ?? {}).map(([k, v]) => `${k}=${v}`), `GL_PREBUILT=${o.prebuilt.join(" ")}`, `GL_RUN=${o.run}`],
       Labels: this.labels(taskId, kind),
       HostConfig: {
         Memory: this.mem[kind] * MB,
@@ -239,7 +241,7 @@ export class ContainerManager {
   }
 
   /** Verifier test container (R22.2): fresh, the snapshot read-only, internal network only; the exit code decides. */
-  async runTests(taskId: string, o: { image: string; snapshotDir: string; prebuilt: string[]; command: string; timeoutS: number }): Promise<{ code: number; output: string; timedOut: boolean }> {
+  async runTests(taskId: string, o: { image: string; snapshotDir: string; prebuilt: string[]; command: string; timeoutS: number; env?: Record<string, string> }): Promise<{ code: number; output: string; timedOut: boolean }> {
     await this.ensureInternalNetwork(taskId);
     const name = resourceName(taskId, "test");
     await this.#replace(name);
@@ -264,7 +266,7 @@ export class ContainerManager {
   }
 
   /** Run_Environment (R39.3-R39.5): a fresh container per attempt running the changed app, alias `app`. */
-  async startRunEnvironment(taskId: string, o: { image: string; snapshotDir: string; prebuilt: string[]; commands: string }): Promise<{ name: string }> {
+  async startRunEnvironment(taskId: string, o: { image: string; snapshotDir: string; prebuilt: string[]; commands: string; env?: Record<string, string> }): Promise<{ name: string }> {
     const network = await this.ensureInternalNetwork(taskId);
     const name = resourceName(taskId, "run");
     await this.#replace(name);

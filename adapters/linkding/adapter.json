@@ -92,7 +92,12 @@
       "bookmarks/static/theme-light.css",
       "bookmarks/static/theme-dark.css",
       "data"
-    ]
+    ],
+    "env": {
+      "UV_PROJECT_ENVIRONMENT": "/etc/linkding/.venv",
+      "UV_NO_SYNC": "1",
+      "UV_OFFLINE": "1"
+    }
   },
   "testSelectionHint": "Name targeted test files under bookmarks/tests/; the full suite takes about 300 s.",
   "testData": "test-data.json",
