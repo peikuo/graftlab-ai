@@ -591,6 +591,12 @@ Conventions:
   - [ ] 14.24 Feature branches and merge into main
     - Worktree `main` at the pinned commit, `feature/<id>` per Feature, `--no-ff` merge after review and Verifier, unmerged branch on failure, diff against the Feature's base, unplanned-change list for the Reviewer
     - _Requirements: 38.5, 38.6, 38.10_
+  - [ ] 14.25 AI runtime in the meeting and the Decision_Doc
+    - `runtime-rules/skills/ai-runtime.md`; `aiRuntime` in the draft schema and the review items; environment facts from the Adapter for Feasibility; the question card; `GL_AI_*` for the Run_Environment and the test container; egress for those two containers with consent (R38.4)
+    - _Requirements: 15.12, 38.4_
+  - [ ] 14.26 Focus pack and Code_Agent rules
+    - Focus pack built by code at Feature start (planned files with memo summaries and outlines, one-hop neighbors, an example test, design quotes, outdated marks), delivered as pi's project context file; `grep`, `find`, `ls` enabled; coding rules (assumptions, simplicity, surgical changes, test-driven completion) in `code_agent.md`; reads and changes measured against the pack
+    - _Requirements: 40.19_
   - [x] 14.1 Implement the context builder and the development rules
     - Done 2026-11-23: `apps/server/src/dev/context.ts` (one Feature, its story and contract, the architecture, summaries of the Features it builds on); `runtime-rules/roles/code_agent.md` updated
     - `apps/server/src/dev/context.ts` writes only the story, its Feature_Contract and the referenced documents; Runtime_Rules rules "small scope per Agent" and "no decision power, stop and ask, reviewed by the Reviewer"
