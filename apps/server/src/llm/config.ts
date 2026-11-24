@@ -58,3 +58,21 @@ export function resolveLlmConfig(env: Record<string, string | undefined>): LlmCo
   if (re !== "send" && re !== "omit") throw new LlmConfigError(`${v.effort} must be send or omit`);
   return { profile, baseUrl: baseUrl.replace(/\/$/, ""), model, apiKey, ...(apiKey ? {} : { missingKey: v.key }), allKeys, keyVar: v.key, reasoningParam: rp, reasoningEffort: re };
 }
+
+/** Prices for the cost estimate (R30.19): `LLM_PRICE_CURRENCY` and the three per-million-token prices; all or none. */
+export interface LlmPrice {
+  currency: string;
+  inputPerMTok: number;
+  cachedInputPerMTok: number;
+  outputPerMTok: number;
+}
+export function resolveLlmPrice(env: Record<string, string | undefined>): LlmPrice | undefined {
+  const names = ["LLM_PRICE_INPUT_PER_MTOK", "LLM_PRICE_CACHED_INPUT_PER_MTOK", "LLM_PRICE_OUTPUT_PER_MTOK"] as const;
+  const currency = env.LLM_PRICE_CURRENCY?.trim();
+  const set = names.filter((n) => (env[n] ?? "").trim() !== "");
+  if (!currency && set.length === 0) return undefined;
+  if (!currency || set.length !== names.length) throw new Error(`set LLM_PRICE_CURRENCY and ${names.join(", ")} together, or none of them`);
+  const v = names.map((n) => Number(env[n]));
+  if (v.some((x) => !Number.isFinite(x) || x < 0)) throw new Error("LLM prices must be non-negative numbers");
+  return { currency, inputPerMTok: v[0]!, cachedInputPerMTok: v[1]!, outputPerMTok: v[2]! };
+}

@@ -278,7 +278,7 @@ stateDiagram-v2
     target_check --> failed: target baseline cannot start, not executed
     story_develop --> story_test: the Feature has no tests yet (test first)
     story_test --> story_develop: tests written and red before the code
-    story_test --> failed: no valid tests after one visible retry
+    story_test --> failure_review: no valid red tests after one visible retry
     story_develop --> story_review: F10 attempt finished, change recorded
     story_develop --> story_ask: question, or retry limit reached
     story_develop --> failed: story budget exceeded or Code_Agent failure
@@ -513,7 +513,7 @@ export interface Adapter {
     env: Record<string, string>;                // toolchain environment in the dev, test and run containers (linkding: use the preinstalled venv, no package sync, offline)
   };
   testSelectionHint: string;                    // guidance for test_suite checks (which tests to name)
-  regression?: { command: string[]; format: "django"; timeoutS: number }; // the whole suite for the Regression_Check (R22.10)
+  regression?: { suite: string[]; format: "django"; timeoutS: number }; // the test argv of the whole suite for the Regression_Check (R22.10)
   runtimeRulesChecklist: string;                // runtime-rules/adapters/<id>-checklist.md (layer B)
 }
 // Deliberately absent: any build or start procedure for the MODIFIED target (R39.10).
@@ -874,7 +874,7 @@ Plain TypeScript, no LLM (R22.9). Each Acceptance_Check produces a per-item resu
 | `test_suite` | Runs the test selection named in the check (from the Frozen Decision_Doc or the Feature_Contract; targeted test files by default, guided by the Adapter's test-selection hint, because a full suite can take minutes; the first target's full suite took about 300 s, see reference-target-linkding.md, "Tests") inside a fresh test container from the dev-sandbox image with the Worktree snapshot read-only; the exit code decides; a parsed summary (passed, failed, errors) is shown when the output format is recognized | R22.2 |
 | `browser_check` | Scripted Playwright steps from a schema: `goto(path)`, `expectRole(role, name)`, `expectText(text)`, `click(role, name)`, `fill(role, name, value)`; each step is an item. With the Studio's model service, the LLM_Proxy's request log for the app credential is read before and after the steps; the app's calls in between (count, status codes, tokens) are one more item, which must show a successful call when the check sets `needsAi` | R22.2, R14.11, R22.11 |
 | red check | The Test_Agent's test command on the Feature branch before the code; passes when the command fails | R22.12 |
-| Regression_Check | The Adapter's `regression.command` (linkding: the whole `bookmarks.tests` suite) in a fresh test container on `main`, and on the pinned commit (started in the background at `target_check`, cached in `data/cache/regression/<adapter>-<commit>-<image>.json`). The Adapter's `regression.format` parser reads the run count and the failing test ids (linkding: Django's `FAIL:` and `ERROR:` headers and `Ran N tests`). A test failing on `main` and not at the pinned commit is a regression when its module exists at the pinned commit, otherwise a failing new test; both fail the check | R22.10 |
+| Regression_Check | The Adapter's `regression.suite` (linkding: the whole `bookmarks.tests` suite) in a fresh test container on `main`, and on the pinned commit (started in the background at `target_check`, cached in `data/cache/regression/<adapter>-<commit>-<image>.json`). The Adapter's `regression.format` parser reads the run count and the failing test ids (linkding: Django's `FAIL:` and `ERROR:` headers and `Ran N tests`). A test failing on `main` and not at the pinned commit is a regression when its module exists at the pinned commit, otherwise a failing new test; both fail the check | R22.10 |
 
 - The pre-state snapshot for `api_readback` is taken by the Verifier before the first write of the story.
 - For API-operation stories the `api_readback` expectations are derived by code from the expected outcome of the validated Demo_Case (`deriveChecks`), one expectation per expected-outcome entry; no LLM and no second designed case is involved (R18.12).

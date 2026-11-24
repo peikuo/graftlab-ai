@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { pingDocker } from "./containers/engine.ts";
 import { ContainerManager, executionEnabled } from "./containers/manager.ts";
 import { SandboxService } from "./containers/sandboxService.ts";
-import { resolveLlmConfig } from "./llm/config.ts";
+import { resolveLlmConfig, resolveLlmPrice } from "./llm/config.ts";
 import { buildStudioModel } from "./llm/model.ts";
 import { piMemoWriter } from "./reader/memoWriter.ts";
 import { loadRuntimeRules } from "./roles/rules.ts";
@@ -27,6 +27,7 @@ const envFile = process.env.GL_ENV_FILE ?? ".env";
 if (existsSync(envFile)) process.loadEnvFile(envFile);
 
 const llm = resolveLlmConfig(process.env);
+const llmPrice = resolveLlmPrice(process.env);
 const secrets = new SecretRegistry();
 // Every LLM key of every profile is registered, so none can leak even if the profile is switched later.
 for (const k of llm.allKeys) secrets.register(k.name, k.value);
@@ -42,7 +43,7 @@ const port = Number(process.env.GL_PORT ?? 8080);
 const host = process.env.GL_HOST ?? "127.0.0.1";
 
 const runtimeRulesVersion = (await readFile(join(root, "runtime-rules/VERSION"), "utf8")).trim();
-const rules = await loadRuntimeRules(join(root, "runtime-rules"), ["reader", "facilitator", "user_value", "feasibility", "risk", "planner", "reviewer", "code_agent"]);
+const rules = await loadRuntimeRules(join(root, "runtime-rules"), ["reader", "facilitator", "user_value", "feasibility", "risk", "planner", "reviewer", "code_agent", "test_agent"]);
 // The Reader needs a key; without one the reading step stops honestly after the download.
 const model = llm.apiKey ? buildStudioModel(llm, process.env.GL_MAX_TOKENS ? { maxTokens: Number(process.env.GL_MAX_TOKENS) } : {}) : null;
 const envInt = (name: string) => (process.env[name] ? Number(process.env[name]) : undefined);
@@ -69,7 +70,7 @@ const tasks = new TaskService({
   adaptersDir: join(root, "adapters"),
   replayPublicDir: join(root, "apps/web/public/replays"),
   runtimeRulesVersion,
-  llm: { profile: llm.profile, model: llm.model },
+  llm: { profile: llm.profile, model: llm.model, ...(llmPrice ? { price: llmPrice } : {}) },
   lease,
   onStore: (store) => setCurrent(store),
   limits: {

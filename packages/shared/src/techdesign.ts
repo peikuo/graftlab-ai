@@ -137,6 +137,18 @@ export function unplannedChanges(feature: Pick<Feature, "scope" | "tests">, chan
   return changed.filter((p) => !planned.has(p));
 }
 
+/**
+ * A file the Test_Agent may write (R40.20): a test file named in the Feature, or a path whose name or directory marks
+ * it as a test (`test_*`, `*_test.*`, `*.test.*`, `*.spec.*`, `conftest.py`, a `tests/` or `test/` directory).
+ */
+export function isTestPath(feature: Pick<Feature, "tests">, path: string): boolean {
+  if (feature.tests.files.includes(path)) return true;
+  const parts = path.split("/");
+  const name = parts.at(-1) ?? "";
+  if (parts.slice(0, -1).some((d) => d === "tests" || d === "test" || d === "__tests__")) return true;
+  return /^test_.+\.\w+$/.test(name) || /_test\.\w+$/.test(name) || /\.(test|spec)\.\w+$/.test(name) || name === "conftest.py";
+}
+
 // ---- acceptance checks against the code (R19.16) ----
 
 export const RefinedChecksSchema = z.array(z.object({ storyId: text, checks: z.array(AcceptanceCheckSchema).max(6), reason: soft(400) }).strict());

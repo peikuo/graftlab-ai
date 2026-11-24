@@ -21,6 +21,8 @@ export interface CodeAttemptOptions {
   /** Time between abort and kill when the runner does not end by itself. */
   killAfterMs?: number;
   setTimer?: (fn: () => void, ms: number) => () => void;
+  /** Which in-container agent runs: the Code_Agent (default) or the Test_Agent (R40.20). */
+  agent?: "code_agent" | "test_agent";
 }
 
 export interface CodeAttemptResult {
@@ -41,7 +43,7 @@ export async function runCodeAttempt(o: CodeAttemptOptions): Promise<CodeAttempt
     const t = setTimeout(fn, ms);
     return () => clearTimeout(t);
   });
-  const actor = { kind: "code_agent" as const };
+  const actor = { kind: o.agent ?? ("code_agent" as const) };
   const res: CodeAttemptResult = { outcome: "error", questions: 0, toolCalls: 0, unknownLines: 0, confinementHits: [], finalText: "" };
   const x = await o.start();
   const send = (c: object) => x.stdin.write(`${JSON.stringify(c)}\n`);
@@ -103,7 +105,7 @@ export async function runCodeAttempt(o: CodeAttemptOptions): Promise<CodeAttempt
         return;
       }
       case "notice":
-        await o.emit({ type: "finding_recorded", actor, payload: { kind: "note", text: `Code_Agent runtime: ${e.piType}${e.detail ? ` (${e.detail})` : ""}`, evidence: [], evidenceStatus: "none" } });
+        await o.emit({ type: "finding_recorded", actor, payload: { kind: "note", text: `${o.agent === "test_agent" ? "Test_Agent" : "Code_Agent"} runtime: ${e.piType}${e.detail ? ` (${e.detail})` : ""}`, evidence: [], evidenceStatus: "none" } });
         return;
       case "final":
         if (e.outcome !== "question") {

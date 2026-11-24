@@ -79,10 +79,11 @@ export class DemoEngine {
 
   #msg = 0;
   /** A streamed statement: waiting for the model, optional reasoning, then text, then the complete message. */
-  async say(roleId: Extract<Actor, { kind: "role" }>["roleId"] | "code_agent", text: string, reasoning = ""): Promise<void> {
+  async say(roleId: Extract<Actor, { kind: "role" }>["roleId"] | "code_agent" | "test_agent", text: string, reasoning = ""): Promise<void> {
     const id = `m${++this.#msg}`;
-    const actor: Actor = roleId === "code_agent" ? { kind: "code_agent" } : { kind: "role", roleId };
-    this.emit("message_started", { messageId: id, ...(roleId === "code_agent" ? {} : { roleId }), purpose: roleId === "code_agent" ? "code_agent_step" : "statement" }, actor);
+    const agent = roleId === "code_agent" || roleId === "test_agent";
+    const actor: Actor = roleId === "code_agent" ? { kind: "code_agent" } : roleId === "test_agent" ? { kind: "test_agent" } : { kind: "role", roleId };
+    this.emit("message_started", { messageId: id, ...(agent ? {} : { roleId }), purpose: agent ? "code_agent_step" : "statement" }, actor);
     await this.sleep(900);
     if (reasoning) {
       this.emit("message_progress", { messageId: id, phase: "thinking", textChars: 0, reasoningChars: 0 }, actor);

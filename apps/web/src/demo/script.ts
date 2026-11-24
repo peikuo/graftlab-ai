@@ -3,6 +3,7 @@
 import type { Draft, ReviewItem } from "../components/DecisionReview.tsx";
 import type { DecisionDesk } from "./decision.ts";
 import type { DemoEngine } from "./engine.ts";
+import type { FeaturePhase } from "@graftlab/shared";
 
 const role = (roleId: "reader" | "explorer" | "facilitator" | "planner" | "reviewer" | "user_value" | "feasibility" | "risk") => ({ kind: "role" as const, roleId });
 const hash = (s: string) => {
@@ -176,6 +177,16 @@ export async function runDemo(e: DemoEngine, desk: DecisionDesk, url: string): P
 
   // F10: build story S1
   e.enter("story_develop", "check_passed_source");
+  const fs = (status: FeaturePhase, attempt: number) => e.emit("feature_status", { featureId: "S1", storyId: "S1", status, attempt });
+  fs("todo", 0);
+  e.enter("story_test", "tests_needed");
+  fs("testing", 0);
+  const ta = { kind: "test_agent" as const };
+  await e.say("test_agent", "I write the tests first: suggestions come only from your own tags, nothing shows while AI is off.");
+  e.emit("code_change", { storyId: "S1", attempt: 1, changedFiles: ["bookmarks/tests/test_tag_suggestions.py"], diffRef: "tests-1", by: "test_agent", files: [{ path: "bookmarks/tests/test_tag_suggestions.py", status: "added", added: 64, removed: 0, planned: true }], patch: "+def test_suggests_only_own_tags(self):\n+    ..." }, ta);
+  e.emit("verifier_result", { storyId: "S1", checkId: "S1-red", items: [{ item: "Tests fail before the code exists (red)", pass: true, expected: "a non-zero exit code", actual: "exit code 1" }], pass: true }, { kind: "verifier" });
+  e.enter("story_develop", "tests_red");
+  fs("building", 1);
   const ca = { kind: "code_agent" as const };
   e.emit("tool_started", { callId: "c1", tool: "read", inputSummary: "bookmarks/services/tags.py" }, ca);
   await e.sleep(900);
@@ -195,6 +206,7 @@ export async function runDemo(e: DemoEngine, desk: DecisionDesk, url: string): P
   }
   e.emit("code_change", { storyId: "S1", attempt: 1, changedFiles: ["bookmarks/services/tags.py", "bookmarks/views/bookmarks.py", "bookmarks/templates/bookmarks/form.html", "bookmarks/settings.py"], diffRef: "diff-1" }, ca);
   e.enter("story_review", "attempt_finished");
+  fs("reviewing", 1);
   await e.say("reviewer", "The change to settings is not part of this story's contract. Please remove it and keep the rest.");
   e.emit("review_verdict", { storyId: "S1", attempt: 1, verdict: "request_changes", reasons: ["settings changed outside the contract"], label: "reviewed by Reviewer (LLM judgment)" }, role("reviewer"));
   e.enter("story_develop", "request_changes");
@@ -206,12 +218,14 @@ export async function runDemo(e: DemoEngine, desk: DecisionDesk, url: string): P
   await e.say("reviewer", "Now the change stays inside the contract. Approved. This is my judgment only; the Verifier decides success.");
   e.emit("review_verdict", { storyId: "S1", attempt: 2, verdict: "approve", reasons: [], label: "reviewed by Reviewer (LLM judgment)" }, role("reviewer"));
   e.enter("story_run", "approve");
+  fs("running", 2);
   e.emit("tool_started", { callId: "run", tool: "start changed app", inputSummary: "" });
   await e.sleep(2200);
   e.emit("tool_finished", { callId: "run", tool: "start changed app", ok: true, outputSummary: "healthy" });
 
   for (let round = 1; ; round++) {
     e.enter("story_checkpoint", round === 1 ? "run_healthy" : "run_healthy");
+    fs("demo", 2);
     const c = await e.ask(
       `c${round}`,
       { kind: "checkpoint", title: "S1 Suggest tags on the add form", body: "This is the changed app. Click “Suggest tags” to see your own tags. Is this what you wanted?", options: [{ id: "ok", label: "Yes, this is right" }, { id: "no", label: "Not right" }], allowFreeText: true },
@@ -229,10 +243,16 @@ export async function runDemo(e: DemoEngine, desk: DecisionDesk, url: string): P
   }
 
   e.enter("verifying", "checkpoint_done");
+  fs("verifying", 2);
   await e.sleep(1500);
   e.emit("verifier_result", { storyId: "S1", checkId: "browser-1", items: [{ item: "add form shows Suggest tags", pass: true, expected: "visible", actual: "visible" }, { item: "click shows your tags", pass: true, expected: "python, django", actual: "python, django" }, { item: "no other user's tags", pass: true, expected: "none", actual: "none" }], pass: true }, { kind: "verifier" });
   await e.sleep(1200);
   e.emit("verifier_result", { storyId: "S1", checkId: "tests-1", items: [{ item: "bookmarks/tests/test_tag_suggestions.py", pass: true, expected: "pass", actual: "6 passed" }], pass: true }, { kind: "verifier" });
-  e.enter("success", "verified_last");
+  fs("merged", 2);
+  e.enter("regression_check", "verified_last");
+  await e.sleep(1500);
+  e.emit("regression_result", { baseline: { ran: 1380, failed: [] }, main: { ran: 1386, failed: [] }, newTests: 6, regressions: [], newFailing: [], cached: true, pass: true }, { kind: "verifier" });
+  e.emit("verifier_result", { storyId: "TASK", checkId: "regression", items: [{ item: "no test that passed before fails now", pass: true, expected: "0 regressions", actual: "0" }], pass: true }, { kind: "verifier" });
+  e.enter("success", "regression_passed");
   e.emit("terminal_reached", { terminal: "success", summary: { verifierPassed: 4, verifierFailed: 0, failuresByClass: { interface_call_failure: 1 }, unconfirmed: [], label: "Demo: story S1 only (mock data)" } });
 }

@@ -15,6 +15,8 @@ export interface FeatureContextInput {
   requirements?: RequirementsDoc;
   /** Review reasons or Judge feedback from the previous attempt of this Feature, if any. */
   previousFeedback?: string[];
+  /** The Test_Agent's tests, written before the code (R40.21); absent for the Test_Agent itself. */
+  protectedTests?: string[];
 }
 
 const list = (xs: string[]) => (xs.length ? xs.map((x) => `- ${x}`).join("\n") : "- none");
@@ -34,7 +36,9 @@ export function featureContext(i: FeatureContextInput): string {
     `## The Feature (size ${f.size})\n${f.summary}`,
     `### Scope\n- Modules: ${f.scope.modules.join(", ")}\n- Files expected to change:\n${list(f.scope.files.map((x) => `\`${x}\``))}\n- Must not touch:\n${list(f.scope.notTouch)}\n\nChanging a file outside this list needs a reason the Reviewer accepts.`,
     `### Interfaces\n${list(f.interfaces)}`,
-    `### Tests\n- Add or change: ${f.tests.files.map((x) => `\`${x}\``).join(", ")}\n- Run them with: \`${f.tests.command.join(" ")}\`\n\nThe Verifier runs exactly this command after your attempt. Do not edit other tests.`,
+    i.protectedTests
+      ? `### Tests (written first by the Test_Agent, protected)\n${list(i.protectedTests.map((x) => `\`${x}\``))}\n- Run them with: \`${f.tests.command.join(" ")}\`\n\nMake these tests pass without changing or deleting them; Studio code rejects an attempt that does. You may add tests in new files. The Verifier runs exactly this command after your attempt.`
+      : `### Tests\n- Add or change: ${f.tests.files.map((x) => `\`${x}\``).join(", ")}\n- Run them with: \`${f.tests.command.join(" ")}\`\n\nThe Verifier runs exactly this command after your attempt. Do not edit other tests.`,
     before.length ? `### Already built before this Feature\n${list(before.map((b) => `${b.id} ${b.title}: ${b.summary}`))}` : "",
     `## The story: ${story.title}\n${story.userStory}\n\n**Acceptance criteria**\n${list(story.acceptanceCriteria)}\n\n**Demo point:** ${story.demoPoint.description}`,
     `## Feature_Contract of the story\n${fc.feature}\n\nShould do:\n${list(fc.shouldDo)}\n\nShould not do:\n${list(fc.shouldNotDo)}`,
@@ -48,10 +52,10 @@ export function featureContext(i: FeatureContextInput): string {
 }
 
 /** Writes the context directory of one attempt: story.md and rules.md. Returns its path. */
-export async function writeFeatureContext(dataDir: string, taskId: string, input: FeatureContextInput, rules: string): Promise<string> {
+export async function writeFeatureContext(dataDir: string, taskId: string, input: FeatureContextInput, rules: string, rulesFile = "rules.md"): Promise<string> {
   const dir = join(dataDir, "tasks", taskId, "context", input.featureId);
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, "story.md"), featureContext(input));
-  await writeFile(join(dir, "rules.md"), `${rules.trim()}\n`);
+  await writeFile(join(dir, rulesFile), `${rules.trim()}\n`);
   return dir;
 }

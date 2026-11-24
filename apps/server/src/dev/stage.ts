@@ -6,16 +6,18 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { arr, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
-import { currentStory, describeCheck, nextPendingStory, unplannedChanges, type Adapter, type AiRuntime, type BaselineHandle, type Feature, type TargetItem, type Plan, type RequirementsDoc, type SecretRegistry, type StoryProgress, type TechDesign } from "@graftlab/shared";
+import { currentStory, describeCheck, isTestPath, nextPendingStory, PATCH_MAX, unplannedChanges, type FeaturePhase, type Adapter, type AiRuntime, type BaselineHandle, type Feature, type TargetItem, type Plan, type RequirementsDoc, type SecretRegistry, type StoryProgress, type TechDesign } from "@graftlab/shared";
 import { z } from "zod";
 import type { ContainerManager } from "../containers/manager.ts";
-import { issueProxyCredential } from "../proxy/credential.ts";
+import { issueProxyCredential, PROXY_APP_SECRET_NAME } from "../proxy/credential.ts";
+import { appCallsSince, lastCallNumber, parseProxyLog } from "../proxy/usageLog.ts";
+import { compareRuns, parseDjango, type SuiteRun } from "../verifier/regression.ts";
 import type { RuntimeRules } from "../roles/rules.ts";
 import { roleText, sharedSystemPrompt } from "../roles/rules.ts";
 import type { TurnOptions, TurnResult } from "../runtime/pi.ts";
 import { runCodeAttempt } from "../runtime/pi-code.ts";
 import type { NodeHandler } from "../tasks/runner.ts";
-import { abandonFeature, changedOnMain, createWorktree, pathsOnMain, diffWorktree, mergeFeature, mirrorSourceFromEnv, notIgnored, snapshotWorktree, startFeature, writePatchArtifact, type FeatureBranch, type Worktree } from "../worktree/worktree.ts";
+import { abandonFeature, changedOnMain, commitFeature, createWorktree, discardPaths, mainSummary, pathsAt, pathsOnMain, diffWorktree, mergeFeature, type LineStat, mirrorSourceFromEnv, notIgnored, snapshotWorktree, startFeature, writePatchArtifact, type FeatureBranch, type Worktree } from "../worktree/worktree.ts";
 import { writeFeatureContext } from "./context.ts";
 import { buildFocusPack, readPaths } from "./focus.ts";
 import type { MemoTree } from "../reader/memo.ts";
@@ -53,14 +55,29 @@ const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
  */
 export const shellCommand = (argv: string[]) => (argv.length === 1 && /\s/.test(argv[0]!.trim()) ? argv[0]!.trim().split(/\s+/) : argv).map(shq).join(" ");
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}\n… (${s.length - n} more characters)` : s);
+/** The line counts of a diff with the planned marks of a Feature (R4.9). */
+const fileRows = (f: Feature, changed: { status: string; path: string }[], stats: LineStat[]) =>
+  changed.map((c) => {
+    const st = stats.find((x) => x.path === c.path);
+    return { path: c.path, status: c.status, added: st?.added ?? 0, removed: st?.removed ?? 0, planned: [...f.scope.files, ...f.tests.files].includes(c.path) || isTestPath(f, c.path) };
+  });
+const patchPayload = (patch: string) => (patch.length > PATCH_MAX ? { patch: patch.slice(0, PATCH_MAX), patchTruncated: true } : { patch });
 
 export class DevStage {
   #wt: Worktree | null = null;
   #dev: string | null = null;
   #credential: string | null = null;
+  /** The changed app's own proxy credential, so its calls are counted apart from the agents' (R22.11). */
+  #appCredential: string | null = null;
+  /** The Test_Agent's commit and files per Feature (R40.20, R40.21). */
+  #tests = new Map<string, { commit: string; files: string[]; patch: string }>();
+  /** Protected test files a Code_Agent attempt changed; the review sends the attempt back by code (R40.21). */
+  #protectedHit: string[] = [];
+  /** The whole suite at the pinned commit, started at target_check (R22.10). */
+  #baseline: Promise<{ run: SuiteRun; cached: boolean } | null> | null = null;
   #relayPort: number | null = null;
   #branch: FeatureBranch | null = null;
-  #lastDiff: { files: string[]; patch: string } | null = null;
+  #lastDiff: { files: string[]; patch: string; testFiles: string[]; testsPatch: string } | null = null;
   #feedback = new Map<string, string[]>();
   #pendingQuestion: string | null = null;
   /** The provisioned Run_Environment of the current story: generated secrets, credentials, state after the seed. */
@@ -77,7 +94,7 @@ export class DevStage {
   #aiAccess(): { env: Record<string, string>; egress: boolean } {
     const ai = this.o.aiRuntime();
     if (!ai || ai.source === "local") return { env: {}, egress: false };
-    if (ai.source === "studio_service") return { env: { GL_AI_BASE_URL: "http://llm-proxy:8787/v1", GL_AI_API_KEY: this.#credential ?? "", GL_AI_MODEL: this.o.llm.model }, egress: true };
+    if (ai.source === "studio_service") return { env: { GL_AI_BASE_URL: "http://llm-proxy:8787/v1", GL_AI_API_KEY: this.#appCredential ?? "", GL_AI_MODEL: this.o.llm.model }, egress: true };
     return { env: { GL_AI_BASE_URL: ai.endpoint ?? "", GL_AI_API_KEY: "", GL_AI_MODEL: "" }, egress: true };
   }
 
@@ -86,6 +103,12 @@ export class DevStage {
     const f = this.o.design().breakdown.features.find((x) => x.id === id);
     if (!f) throw new Error(`no Feature ${id ?? "(none)"} in the technical design`);
     return f;
+  }
+
+  /** One phase change on the development whiteboard (R1.10), written by code. */
+  async #status(ctx: Ctx, f: Pick<Feature, "id" | "storyId">, status: FeaturePhase, reason?: string): Promise<void> {
+    const attempt = ctx.task.stories.find((s) => s.storyId === f.id)?.attempts ?? 0;
+    await ctx.emit({ type: "feature_status", actor: { kind: "system" }, payload: { featureId: f.id, storyId: f.storyId, status, attempt, ...(reason ? { reason: reason.slice(0, 300) } : {}) } });
   }
 
   #setStory(ctx: Ctx, id: string, p: Partial<StoryProgress>): void {
@@ -111,7 +134,8 @@ export class DevStage {
       const port = this.o.design().architecture.runEnvironment?.port;
       await step("Starting the LLM_Proxy (the only holder of the model key)", async () => {
         this.#credential = issueProxyCredential(this.o.secrets);
-        const p = await m.startProxy(ctx.task.taskId, { image: this.o.devImage, credential: this.#credential, upstreamUrl: this.o.llm.baseUrl, upstreamKey: this.o.llm.apiKey, ...(port ? { relayTarget: `app:${port}` } : {}) });
+        this.#appCredential = issueProxyCredential(this.o.secrets, PROXY_APP_SECRET_NAME);
+        const p = await m.startProxy(ctx.task.taskId, { image: this.o.devImage, credential: this.#credential, appCredential: this.#appCredential, upstreamUrl: this.o.llm.baseUrl, upstreamKey: this.o.llm.apiKey, ...(port ? { relayTarget: `app:${port}` } : {}) });
         this.#relayPort = p.relayHostPort;
       });
       await step("Starting the Development_Sandbox", async () => {
@@ -120,6 +144,12 @@ export class DevStage {
         this.#dev = (await m.startDevSandbox(ctx.task.taskId, { image: this.o.devImage, workDir: this.#wt!.path, contextDir, prebuilt: this.o.adapter.devSandbox.prebuilt, env: this.o.adapter.devSandbox.env ?? {} })).name;
       });
       ctx.patch({ targetCheckPassed: true });
+      if (this.o.adapter.regression) {
+        // The pinned commit is copied now, before any Feature changes the Worktree; the suite runs in the background.
+        const snap = await snapshotWorktree(this.o.dataDir, this.#wt!, `regression-base-${Date.now()}`);
+        this.#baseline = this.#runBaseline(ctx, snap.path).catch(() => null);
+      }
+      for (const f of this.o.design().breakdown.features) await this.#status(ctx, f, "todo");
       return "done";
     } catch (e) {
       await ctx.fail("interface_call_failure", "docker", `the development environment could not start: ${(e as Error).message}`);
@@ -128,7 +158,7 @@ export class DevStage {
   }
 
   /** story_develop: one Code_Agent attempt on the Feature's branch, then the change is recorded (R38.5, R40.5). */
-  async develop(ctx: Ctx): Promise<"done" | "failed" | "question" | "retry_limit"> {
+  async develop(ctx: Ctx): Promise<"done" | "failed" | "question" | "retry_limit" | "needs_tests"> {
     const cur = currentStory(ctx.task);
     if (!cur || cur.status !== "in_progress") {
       const next = cur && cur.status === "pending" ? cur : nextPendingStory(ctx.task) ?? ctx.task.stories.find((s) => s.status === "pending");
@@ -140,15 +170,117 @@ export class DevStage {
       this.#setStory(ctx, next.storyId, { status: "in_progress" });
     }
     const f = this.#feature(ctx);
+    const wt = this.#wt!;
+    // Test first (R40.20): a Feature without the Test_Agent's tests goes to story_test before any code is written.
+    if (!this.#tests.has(f.id)) {
+      this.#branch = await startFeature(wt, f.id);
+      return "needs_tests";
+    }
     const progress = currentStory(ctx.task)!;
     if (progress.attempts >= ctx.task.limits.storyAttempts) return "retry_limit";
     const attempt = progress.attempts + 1;
     this.#setStory(ctx, f.id, { attempts: attempt });
+    this.#branch = await startFeature(wt, f.id);
+    const tests = this.#tests.get(f.id)!;
+    await this.#status(ctx, f, "building");
+    const story = this.o.plan().backlog.stories.find((s) => s.id === f.storyId)!;
+    const contextDir = await writeFeatureContext(this.o.dataDir, ctx.task.taskId, { featureId: f.id, plan: this.o.plan(), design: this.o.design(), protectedTests: tests.files, ...(this.o.requirements() ? { requirements: this.o.requirements()! } : {}), ...(this.#feedback.get(f.id) ? { previousFeedback: this.#feedback.get(f.id)! } : {}) }, roleText(this.o.rules, "code_agent"));
+    const focus = await this.#focus(f, contextDir);
+    await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Feature ${f.id} "${f.title}", attempt ${attempt}: the Code_Agent starts on its own branch`, evidence: [], evidenceStatus: "none" } });
+    const tools: { tool: string; inputSummary: string }[] = [];
+    const r = await this.#runAgent(ctx, f, { agent: "code_agent", rulesFile: "rules.md", prompt: `Read /context/${f.id}/story.md and build the Feature it describes.`, tools, idPrefix: `${ctx.task.taskId}-${f.id}-a${attempt}`, budgetMs: this.o.plan().backlog.stories.find((s) => s.id === f.storyId)!.featureContract.budgets.maxCodeAgentMinutes * 60_000 });
+    if (r.outcome !== "completed") {
+      if (ctx.signal.aborted) return "failed";
+      await this.#status(ctx, f, "failed", r.detail ?? r.outcome);
+      await ctx.fail(r.outcome === "budget_exceeded" ? "budget_exceeded" : "interface_call_failure", "code_agent", `Feature ${f.id}, attempt ${attempt}: ${r.detail ?? r.outcome}`);
+      return "failed";
+    }
+    // Record the change of this attempt against the Test_Agent's commit; the review sees tests and code (R38.5, R40.22).
+    const diff = await diffWorktree(wt, tests.commit);
+    const changed = diff.changedFiles.map((c) => c.path);
+    this.#protectedHit = changed.filter((p) => tests.files.includes(p));
+    this.#lastDiff = { files: changed, patch: diff.patch, testFiles: tests.files, testsPatch: tests.patch };
+    const dir = join(this.o.dataDir, "tasks", ctx.task.taskId, "docs", "patches");
+    await mkdir(dir, { recursive: true });
+    const ref = `docs/patches/${f.id}-attempt${attempt}.diff`;
+    await writeFile(join(this.o.dataDir, "tasks", ctx.task.taskId, ref), diff.patch);
+    await ctx.emit({ type: "code_change", actor: { kind: "code_agent" }, payload: { storyId: f.id, attempt, changedFiles: changed, diffRef: ref, by: "code_agent", files: fileRows(f, diff.changedFiles, diff.stats), ...patchPayload(diff.patch) } });
+    // Focus measurement (R40.19): how much of what the Code_Agent read and changed the pack pointed at.
+    const inPack = new Set(focus.files);
+    const reads = readPaths(tools).filter((p) => !p.startsWith("/context/"));
+    const planned = new Set([...f.scope.files, ...f.tests.files]);
+    await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Focus of ${f.id}, attempt ${attempt}: read ${reads.length} files, ${reads.filter((p) => inPack.has(p)).length} of them in the focus pack; changed ${changed.length} files, ${changed.filter((p) => planned.has(p)).length} of them planned`, evidence: [], evidenceStatus: "none" } });
+    if (changed.length === 0) {
+      await this.#status(ctx, f, "failed", "the Code_Agent changed no file");
+      await ctx.fail("interface_call_failure", "code_agent", `Feature ${f.id}, attempt ${attempt}: the Code_Agent changed no file`);
+      return "failed";
+    }
+    return "done";
+  }
+
+  /**
+   * story_test (R40.20, R22.12): the Test_Agent writes the Feature's tests before the code. Studio code refuses
+   * non-test files, commits the tests on the Feature branch and runs the red check; one visible retry.
+   */
+  async testFirst(ctx: Ctx): Promise<"done" | "failed"> {
+    const f = this.#feature(ctx);
     const wt = this.#wt!;
     this.#branch = await startFeature(wt, f.id);
+    const base = this.#branch.base;
     const story = this.o.plan().backlog.stories.find((s) => s.id === f.storyId)!;
-    const contextDir = await writeFeatureContext(this.o.dataDir, ctx.task.taskId, { featureId: f.id, plan: this.o.plan(), design: this.o.design(), ...(this.o.requirements() ? { requirements: this.o.requirements()! } : {}), ...(this.#feedback.get(f.id) ? { previousFeedback: this.#feedback.get(f.id)! } : {}) }, roleText(this.o.rules, "code_agent"));
-    // The focus pack (R40.19): a map of where to look, built now from the summaries and the current main.
+    let reason: string | null = null;
+    for (let tryNo = 1; tryNo <= 2; tryNo++) {
+      await this.#status(ctx, f, "testing", tryNo > 1 ? `second try: ${reason}` : undefined);
+      const contextDir = await writeFeatureContext(this.o.dataDir, ctx.task.taskId, { featureId: f.id, plan: this.o.plan(), design: this.o.design(), ...(this.o.requirements() ? { requirements: this.o.requirements()! } : {}), ...(reason ? { previousFeedback: [reason] } : {}) }, roleText(this.o.rules, "test_agent"), "rules-test.md");
+      await this.#focus(f, contextDir);
+      await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Feature ${f.id} "${f.title}": the Test_Agent writes the tests first${tryNo > 1 ? " (second try)" : ""}`, evidence: [], evidenceStatus: "none" } });
+      const r = await this.#runAgent(ctx, f, { agent: "test_agent", rulesFile: "rules-test.md", prompt: `Read /context/${f.id}/story.md and write the tests of the Feature it describes. Write only test files; the code does not exist yet.`, tools: [], idPrefix: `${ctx.task.taskId}-${f.id}-t${tryNo}`, budgetMs: Math.min(15, story.featureContract.budgets.maxCodeAgentMinutes) * 60_000 });
+      if (r.outcome !== "completed") {
+        if (ctx.signal.aborted) return "failed";
+        await this.#status(ctx, f, "failed", r.detail ?? r.outcome);
+        await ctx.fail(r.outcome === "budget_exceeded" ? "budget_exceeded" : "interface_call_failure", "code_agent", `Feature ${f.id}, Test_Agent: ${r.detail ?? r.outcome}`);
+        return "failed";
+      }
+      const diff = await diffWorktree(wt, base);
+      const refused = diff.changedFiles.map((c) => c.path).filter((p) => !isTestPath(f, p));
+      if (refused.length) {
+        // The refused files are put back, so the Code_Agent starts from tests only (R40.20).
+        await discardPaths(wt, base, refused);
+        await ctx.emit({ type: "failure", actor: { kind: "system" }, payload: { failureClass: "rejected_by_safety_rule", source: "code_agent", detail: `the Test_Agent may change only test files; refused and put back: ${refused.join(", ").slice(0, 300)}` } });
+      }
+      const kept = await diffWorktree(wt, base);
+      const files = kept.changedFiles.map((c) => c.path);
+      if (files.length === 0) {
+        reason = "no test file was written; write the Feature's tests";
+        await ctx.emit({ type: "failure", actor: { kind: "system" }, payload: { failureClass: "llm_output_format_invalid", source: "code_agent", detail: `Feature ${f.id}: the Test_Agent wrote no test file${tryNo < 2 ? "; one visible retry" : ""}` } });
+        continue;
+      }
+      const commit = await commitFeature(wt, this.#branch, `${f.id}: tests (Test_Agent)${tryNo > 1 ? ", second try" : ""}`);
+      const dir = join(this.o.dataDir, "tasks", ctx.task.taskId, "docs", "patches");
+      await mkdir(dir, { recursive: true });
+      const ref = `docs/patches/${f.id}-tests${tryNo}.diff`;
+      await writeFile(join(this.o.dataDir, "tasks", ctx.task.taskId, ref), kept.patch);
+      await ctx.emit({ type: "code_change", actor: { kind: "test_agent" }, payload: { storyId: f.id, attempt: tryNo, changedFiles: files, diffRef: ref, by: "test_agent", files: fileRows(f, kept.changedFiles, kept.stats), ...patchPayload(kept.patch) } });
+      // The red check: the tests must fail before the code exists (R22.12), in a fresh test container.
+      const snap = await snapshotWorktree(this.o.dataDir, wt, `${f.id}-red${tryNo}-${Date.now()}`);
+      const t = await this.o.manager.runTests(ctx.task.taskId, { image: this.o.devImage, snapshotDir: snap.path, prebuilt: this.o.adapter.devSandbox.prebuilt, command: shellCommand(f.tests.command), timeoutS: 600, env: { ...(this.o.adapter.devSandbox.env ?? {}) } });
+      const summary = t.output.trim().split("\n").filter(Boolean).slice(-3).join(" | ").slice(0, 300);
+      const red = !t.timedOut && t.code !== 0;
+      await ctx.emit({ type: "verifier_result", actor: { kind: "verifier" }, payload: { storyId: f.id, checkId: `${f.id}-red${tryNo > 1 ? "-2" : ""}`, pass: red, items: [{ item: `Tests fail before the code exists (red): ${f.tests.command.join(" ")}`, pass: red, expected: "a non-zero exit code", actual: t.timedOut ? "timed out after 600 s" : `exit code ${t.code}${summary ? `: ${summary}` : ""}` }] } });
+      if (red && commit) {
+        this.#tests.set(f.id, { commit, files, patch: kept.patch });
+        return "done";
+      }
+      reason = t.timedOut ? "the tests did not finish within 600 s" : "the tests already pass without the Feature, so they test nothing new; test the Feature's new behavior";
+    }
+    await this.#status(ctx, f, "failed", reason ?? "no valid tests");
+    await ctx.fail("llm_output_format_invalid", "code_agent", `Feature ${f.id}: no valid red tests after one visible retry (${reason})`);
+    return "failed";
+  }
+
+  /** The focus pack (R40.19): a map of where to look, built now from the summaries and the current main. */
+  async #focus(f: Feature, contextDir: string): Promise<{ files: string[] }> {
+    const wt = this.#wt!;
     const focus = buildFocusPack({
       feature: f,
       design: this.o.design(),
@@ -164,9 +296,13 @@ export class DevStage {
       changedSincePinned: await changedOnMain(wt),
     });
     await writeFile(join(contextDir, "focus.md"), focus.text);
-    await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Feature ${f.id} "${f.title}", attempt ${attempt}: the Code_Agent starts on its own branch`, evidence: [], evidenceStatus: "none" } });
-    const tools: { tool: string; inputSummary: string }[] = [];
-    const r = await runCodeAttempt({
+    return focus;
+  }
+
+  /** One run of an in-container agent (Code_Agent or Test_Agent) with the same runner and the proxy (R40.20). */
+  #runAgent(ctx: Ctx, f: Feature, o: { agent: "code_agent" | "test_agent"; rulesFile: string; prompt: string; tools: { tool: string; inputSummary: string }[]; idPrefix: string; budgetMs: number }) {
+    return runCodeAttempt({
+      agent: o.agent,
       start: () =>
         this.o.manager.docker.execAttach(this.#dev!, ["node", "/opt/runner/runner.mjs"], {
           workdir: "/work",
@@ -176,56 +312,33 @@ export class DevStage {
             GL_MODEL_ID: this.o.llm.model,
             GL_REASONING_PARAM: this.o.llm.reasoningParam,
             GL_REASONING_EFFORT: this.o.llm.reasoningEffort,
-            GL_RULES_FILE: `/context/${f.id}/rules.md`,
+            GL_RULES_FILE: `/context/${f.id}/${o.rulesFile}`,
             GL_CONTEXT_FILES: `/context/${f.id}/focus.md`,
             WORK_DIR: "/work",
           },
         }),
-      prompt: `Read /context/${f.id}/story.md and build the Feature it describes.`,
+      prompt: o.prompt,
       emit: async (e) => {
-        if (e.type === "tool_started") tools.push(e.payload as { tool: string; inputSummary: string });
+        if (e.type === "tool_started") o.tools.push(e.payload as { tool: string; inputSummary: string });
         await ctx.emit(e);
       },
-      onQuestion: (q) => this.#answer(ctx, f, q),
-      budgetMs: story.featureContract.budgets.maxCodeAgentMinutes * 60_000,
+      onQuestion: (q) => this.#answer(ctx, f, q, o.agent),
+      budgetMs: o.budgetMs,
       signal: ctx.signal,
-      idPrefix: `${ctx.task.taskId}-${f.id}-a${attempt}`,
+      idPrefix: o.idPrefix,
     });
-    if (r.outcome !== "completed") {
-      if (ctx.signal.aborted) return "failed";
-      await ctx.fail(r.outcome === "budget_exceeded" ? "budget_exceeded" : "interface_call_failure", "code_agent", `Feature ${f.id}, attempt ${attempt}: ${r.detail ?? r.outcome}`);
-      return "failed";
-    }
-    // Record the change of this attempt against the Feature's base on main (R38.5).
-    const diff = await diffWorktree(wt, this.#branch.base);
-    const changed = diff.changedFiles.map((c) => c.path);
-    this.#lastDiff = { files: changed, patch: diff.patch };
-    const dir = join(this.o.dataDir, "tasks", ctx.task.taskId, "docs", "patches");
-    await mkdir(dir, { recursive: true });
-    const ref = `docs/patches/${f.id}-attempt${attempt}.diff`;
-    await writeFile(join(this.o.dataDir, "tasks", ctx.task.taskId, ref), diff.patch);
-    await ctx.emit({ type: "code_change", actor: { kind: "code_agent" }, payload: { storyId: f.id, attempt, changedFiles: changed, diffRef: ref } });
-    // Focus measurement (R40.19): how much of what the Code_Agent read and changed the pack pointed at.
-    const inPack = new Set(focus.files);
-    const reads = readPaths(tools).filter((p) => !p.startsWith("/context/"));
-    const planned = new Set([...f.scope.files, ...f.tests.files]);
-    await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Focus of ${f.id}, attempt ${attempt}: read ${reads.length} files, ${reads.filter((p) => inPack.has(p)).length} of them in the focus pack; changed ${changed.length} files, ${changed.filter((p) => planned.has(p)).length} of them planned`, evidence: [], evidenceStatus: "none" } });
-    if (changed.length === 0) {
-      await ctx.fail("interface_call_failure", "code_agent", `Feature ${f.id}, attempt ${attempt}: the Code_Agent changed no file`);
-      return "failed";
-    }
-    return "done";
   }
 
-  /** A question from the running Code_Agent: technical to the Reviewer, feature to the Judge (R40.8, R40.13). */
-  async #answer(ctx: Ctx, f: Feature, q: { questionId: string; kind: "technical" | "feature"; text: string; options?: string[] }): Promise<string> {
+  /** A question from the running Code_Agent or Test_Agent: technical to the Reviewer, feature to the Judge (R40.8, R40.13). */
+  async #answer(ctx: Ctx, f: Feature, q: { questionId: string; kind: "technical" | "feature"; text: string; options?: string[] }, from: "code_agent" | "test_agent" = "code_agent"): Promise<string> {
     const askedParty = q.kind === "technical" ? "reviewer" : "judge";
-    await ctx.emit({ type: "question_opened", actor: { kind: "code_agent" }, payload: { questionId: q.questionId, from: "code_agent", askedParty, kind: q.kind, text: q.text } });
+    const who = from === "test_agent" ? "Test_Agent writing the tests of" : "Code_Agent building";
+    await ctx.emit({ type: "question_opened", actor: { kind: from }, payload: { questionId: q.questionId, from, askedParty, kind: q.kind, text: q.text } });
     let answer: string;
     if (q.kind === "technical") {
       let got = "";
-      const tool: AgentTool<any> = { name: "answer_question", label: "answer_question", description: "Answer the Code_Agent's technical question.", parameters: obj({ answer: str() }), execute: async (_i, a: { answer: string }) => ((got = String(a.answer ?? "").trim()), { ...text(got ? "Sent." : "Empty answer."), terminate: !!got }) };
-      await this.o.runTurn({ roleId: "reviewer", purpose: "review", systemPrompt: sharedSystemPrompt(this.o.rules, this.o.context()), prompt: `# Your role\n\n${roleText(this.o.rules, "reviewer")}\n\n---\n\nThe Code_Agent building Feature ${f.id} "${f.title}" (${f.summary}) asks a technical question:\n\n${q.text}${q.options?.length ? `\n\nOptions: ${q.options.join("; ")}` : ""}\n\nAnswer it in at most 120 words with answer_question, staying inside the Feature's scope and the technical design.`, tools: [tool], signal: ctx.signal, idPrefix: `${ctx.task.taskId}-${f.id}-q`, thinkingLevel: "low", emit: ctx.emit });
+      const tool: AgentTool<any> = { name: "answer_question", label: "answer_question", description: "Answer the agent's technical question.", parameters: obj({ answer: str() }), execute: async (_i, a: { answer: string }) => ((got = String(a.answer ?? "").trim()), { ...text(got ? "Sent." : "Empty answer."), terminate: !!got }) };
+      await this.o.runTurn({ roleId: "reviewer", purpose: "review", systemPrompt: sharedSystemPrompt(this.o.rules, this.o.context()), prompt: `# Your role\n\n${roleText(this.o.rules, "reviewer")}\n\n---\n\nThe ${who} Feature ${f.id} "${f.title}" (${f.summary}) asks a technical question:\n\n${q.text}${q.options?.length ? `\n\nOptions: ${q.options.join("; ")}` : ""}\n\nAnswer it in at most 120 words with answer_question, staying inside the Feature's scope and the technical design.`, tools: [tool], signal: ctx.signal, idPrefix: `${ctx.task.taskId}-${f.id}-q`, thinkingLevel: "low", emit: ctx.emit });
       answer = got || "No technical answer was given; follow the technical design and keep the change inside the Feature.";
     } else {
       const a = await ctx.askJudgeFor({ kind: "question", title: "The developer has a question about the feature", body: q.text, options: (q.options ?? []).slice(0, 4).map((o, i) => ({ id: `o${i + 1}`, label: o })), allowFreeText: true }, 300_000);
@@ -244,19 +357,30 @@ export class DevStage {
       return "failed";
     }
     const attempt = currentStory(ctx.task)!.attempts;
+    // R40.21: a change to a Test_Agent test is refused by code before any review.
+    if (this.#protectedHit.length) {
+      const hit = this.#protectedHit;
+      this.#protectedHit = [];
+      const why = `The tests written by the Test_Agent must not change; this attempt changed ${hit.join(", ")}. Put them back and make them pass; if a test is wrong, ask.`;
+      await ctx.emit({ type: "failure", actor: { kind: "system" }, payload: { failureClass: "rejected_by_safety_rule", source: "code_agent", detail: `Feature ${f.id}, attempt ${attempt}: a protected test was changed (${hit.join(", ").slice(0, 200)}); sent back to the Code_Agent` } });
+      this.#feedback.set(f.id, [why]);
+      await discardPaths(this.#wt!, this.#tests.get(f.id)!.commit, hit);
+      return "request_changes";
+    }
+    await this.#status(ctx, f, "reviewing");
     const unplanned = unplannedChanges(f, d.files);
     const story = this.o.plan().backlog.stories.find((s) => s.id === f.storyId)!;
     let verdict: { verdict: "approve" | "request_changes" | "escalate"; reasons: string[] } | null = null;
     const Verdict = z.object({ verdict: z.enum(["approve", "request_changes", "escalate"]), reasons: z.array(z.string()).default([]), justified: z.array(z.object({ file: z.string(), reason: z.string() })).default([]) });
     const tools: AgentTool<any>[] = [
-      { name: "read_diff", label: "read_diff", description: "The full diff of this attempt.", parameters: obj({}), execute: async () => text(cut(d.patch, 60_000)) },
+      { name: "read_diff", label: "read_diff", description: "The full diff of this attempt: the Test_Agent's tests first, then the Code_Agent's change.", parameters: obj({}), execute: async () => text(`# Tests written first by the Test_Agent\n${cut(d.testsPatch, 30_000)}\n\n# The Code_Agent's change\n${cut(d.patch, 60_000)}`) },
       {
         name: "read_changed_file",
         label: "read_changed_file",
         description: "A changed file as it is now.",
         parameters: obj({ path: str() }),
         execute: async (_i, a: { path: string }) => {
-          if (!d.files.includes(a.path)) return text(`${a.path} is not a changed file`, true);
+          if (!d.files.includes(a.path) && !d.testFiles.includes(a.path)) return text(`${a.path} is not a changed file`, true);
           return text(cut(await readFile(join(this.#wt!.path, a.path), "utf8").catch(() => "(deleted)"), 40_000));
         },
       },
@@ -280,7 +404,7 @@ export class DevStage {
       `# Your role\n\n${roleText(this.o.rules, "reviewer")}`,
       `# Feature ${f.id}: ${f.title} (story ${story.id} "${story.title}")\n${f.summary}\n\nPlanned files: ${f.scope.files.join(", ")}\nTests: ${f.tests.files.join(", ")} — command: ${f.tests.command.join(" ")}\nMust not touch: ${f.scope.notTouch.join("; ") || "nothing named"}\nInterfaces: ${f.interfaces.join("; ") || "none named"}`,
       `# Feature_Contract\n${story.featureContract.feature}\nShould do: ${story.featureContract.shouldDo.join("; ")}\nShould not do: ${story.featureContract.shouldNotDo.join("; ")}`,
-      `# This attempt (${attempt})\nChanged files: ${d.files.join(", ")}\nUnplanned changes found by Studio code: ${unplanned.length ? unplanned.join(", ") : "none"}`,
+      `# This attempt (${attempt})\nTests written first by the Test_Agent (review them too): ${d.testFiles.join(", ")}\nChanged by the Code_Agent: ${d.files.join(", ")}\nUnplanned changes found by Studio code: ${unplanned.length ? unplanned.join(", ") : "none"}`,
       "Read the diff, then submit_review_verdict. Tell the Judge in at most 60 words what you decided.",
     ].join("\n\n---\n\n");
     const r = await this.o.runTurn({ roleId: "reviewer", purpose: "review", systemPrompt: sharedSystemPrompt(this.o.rules, this.o.context()), prompt, tools, signal: ctx.signal, idPrefix: `${ctx.task.taskId}-${f.id}-r${attempt}`, thinkingLevel: "low", emit: ctx.emit });
@@ -307,6 +431,7 @@ export class DevStage {
       return "answered";
     }
     this.#setStory(ctx, f.id, { status: "blocked" });
+    await this.#status(ctx, f, "blocked", "no answer from you; the next Feature starts");
     if (this.#branch) await abandonFeature(this.#wt!, this.#branch);
     return "unanswered";
   }
@@ -320,6 +445,7 @@ export class DevStage {
       return "failed";
     }
     const attempt = currentStory(ctx.task)!.attempts;
+    await this.#status(ctx, f, "running");
     const snap = await snapshotWorktree(this.o.dataDir, this.#wt!, `${f.id}-${attempt}-run`);
     await ctx.emit({ type: "artifact_updated", actor: { kind: "system" }, payload: { artifactKind: "worktree_handoff", ref: snap.commit, title: `Snapshot of ${f.id} for the app run` } });
     const m = this.o.manager;
@@ -379,6 +505,7 @@ export class DevStage {
     const f = this.#feature(ctx);
     const story = this.o.plan().backlog.stories.find((s) => s.id === f.storyId)!;
     const built = this.o.design().breakdown.features.filter((x) => x.storyId === story.id).map((x) => `- ${x.title}`).join("\n");
+    await this.#status(ctx, f, "demo");
     const a = await ctx.askJudgeFor({ kind: "checkpoint", title: `"${story.title}" is running`, body: `What you should see: ${story.demoPoint.description}\n\nBuilt in this story:\n${built}\n\nThe changed app runs in its own container; the Verifier checks it next.`, options: [{ id: "confirm", label: "Looks right" }, { id: "feedback", label: "Something is off" }], allowFreeText: false, textRequiredFor: ["feedback"] }, 110_000);
     if (!a) {
       ctx.patch({ pendingUnconfirmed: [...ctx.task.pendingUnconfirmed, story.title] });
@@ -405,6 +532,7 @@ export class DevStage {
     const story = this.o.plan().backlog.stories.find((s) => s.id === f.storyId)!;
     const last = !ctx.task.stories.some((s) => s.storyId !== f.id && s.parent === f.storyId && (s.status === "pending" || s.status === "in_progress"));
     const attempt = currentStory(ctx.task)!.attempts;
+    await this.#status(ctx, f, "verifying");
     const snap = await snapshotWorktree(this.o.dataDir, this.#wt!, `${f.id}-${attempt}-test`);
     const checks: { id: string; command: string[]; timeoutS: number; label: string }[] = [{ id: `${f.id}-tests`, command: f.tests.command, timeoutS: 600, label: `Feature tests: ${f.tests.command.join(" ")}` }];
     const notRun: string[] = [];
@@ -430,7 +558,17 @@ export class DevStage {
       if (c.kind === "browser_check") {
         const l = this.o.adapter.browserLogin;
         const shot = join(this.o.dataDir, "tasks", ctx.task.taskId, "artifacts", "shots", `${f.id}-${c.id}.jpg`);
+        const counting = this.o.aiRuntime()?.source === "studio_service";
+        const before = counting ? lastCallNumber(parseProxyLog(await this.o.manager.proxyLog(ctx.task.taskId).catch(() => ""))) : 0;
         const r = await runBrowserCheck({ baseUrl, check: c, screenshot: shot, ...(l ? { login: { path: l.path, usernameLabel: l.usernameLabel, passwordLabel: l.passwordLabel, submitLabel: l.submitLabel, username: app.secretEnv[l.usernameEnv] ?? "", password: app.secretEnv[l.passwordEnv] ?? "" } } : {}) }).catch((e: unknown) => ({ items: [{ item: "start the browser", pass: false, expected: "browser runs", actual: (e as Error).message.split("\n")[0]!.slice(0, 200) }], screenshot: null }));
+        if (counting) {
+          // R22.11: the app's own model calls during the steps, counted by the LLM_Proxy (code, not the page text).
+          await new Promise((res) => setTimeout(res, 500));
+          const u = appCallsSince(parseProxyLog(await this.o.manager.proxyLog(ctx.task.taskId).catch(() => "")), before);
+          await ctx.emit({ type: "ai_usage", actor: { kind: "verifier" }, payload: { caller: "app", checkId: c.id, calls: u.calls, statuses: u.statuses, inputTokens: u.inputTokens, cachedTokens: u.cachedTokens, outputTokens: u.outputTokens } });
+          const need = c.needsAi === true;
+          r.items.push({ item: "the app called the AI service (counted by the LLM_Proxy)", pass: !need || u.ok > 0, expected: need ? "at least one successful call" : "counted", actual: `${u.calls} ${u.calls === 1 ? "call" : "calls"}${u.calls ? ` (status ${u.statuses.join(", ")})` : ""}, ${u.inputTokens} input and ${u.outputTokens} output tokens` });
+        }
         const ok = r.items.every((i) => i.pass);
         pass &&= ok;
         if (r.screenshot) await ctx.emit({ type: "artifact_updated", actor: { kind: "verifier" }, payload: { artifactKind: "screenshot", ref: `artifacts/shots/${f.id}-${c.id}.jpg`, title: `Browser check ${c.id}` } });
@@ -447,6 +585,7 @@ export class DevStage {
     }
     if (!pass) {
       this.#setStory(ctx, f.id, { status: "failed" });
+      await this.#status(ctx, f, "failed", "a Verifier check failed");
       if (this.#branch) await abandonFeature(this.#wt!, this.#branch);
       return "failed";
     }
@@ -454,14 +593,66 @@ export class DevStage {
     if (!merged.ok) {
       await ctx.fail("interface_call_failure", "persistence", merged.reason);
       this.#setStory(ctx, f.id, { status: "failed" });
+      await this.#status(ctx, f, "failed", "the merge into main failed");
       return "failed";
     }
+    await this.#status(ctx, f, "merged");
     await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Feature ${f.id} "${f.title}" merged into main`, evidence: [], evidenceStatus: "none" } });
     await writePatchArtifact(this.o.dataDir, this.#wt!, "TASK");
     this.#setStory(ctx, f.id, { status: "verified" });
     this.#lastDiff = null;
     if (last) await this.#restartDev(ctx);
     return "passed";
+  }
+
+  /** The whole suite at the pinned commit, cached per Adapter, commit and image (R22.10). */
+  async #runBaseline(ctx: Ctx, snapshotDir: string): Promise<{ run: SuiteRun; cached: boolean } | null> {
+    const reg = this.o.adapter.regression!;
+    const img = (await this.o.manager.docker.imageInspect(this.o.devImage))?.Id ?? "unknown";
+    const key = `${this.o.adapter.id}-${this.o.adapter.source.commit.slice(0, 12)}-${img.replace(/^sha256:/, "").slice(0, 12)}`;
+    const file = join(this.o.dataDir, "cache", "regression", `${key}.json`);
+    const hit = await readFile(file, "utf8").then((t) => JSON.parse(t) as SuiteRun, () => null);
+    if (hit) return { run: hit, cached: true };
+    const t = await this.o.manager.runTests(ctx.task.taskId, { image: this.o.devImage, snapshotDir, prebuilt: this.o.adapter.devSandbox.prebuilt, command: shellCommand(reg.suite), timeoutS: reg.timeoutS, env: { ...(this.o.adapter.devSandbox.env ?? {}) }, logTail: 200_000, suffix: "base" });
+    const run = parseDjango(t.output, t.timedOut ? -1 : t.code);
+    if (run.ran !== null && !t.timedOut) {
+      await mkdir(join(this.o.dataDir, "cache", "regression"), { recursive: true });
+      await writeFile(file, JSON.stringify(run));
+    }
+    return { run, cached: false };
+  }
+
+  /** regression_check (R22.10): the whole suite on main against the pinned commit, test by test; code only. */
+  async regression(ctx: Ctx): Promise<"passed" | "failed"> {
+    const wt = this.#wt!;
+    const sum = await mainSummary(wt);
+    await ctx.emit({ type: "change_summary", actor: { kind: "system" }, payload: { base: sum.base, head: sum.head, files: sum.files.map((x) => ({ path: x.path, status: x.status, added: x.added, removed: x.removed })), added: sum.files.reduce((a, x) => a + x.added, 0), removed: sum.files.reduce((a, x) => a + x.removed, 0) } });
+    await writePatchArtifact(this.o.dataDir, wt, "TASK");
+    const reg = this.o.adapter.regression;
+    if (!reg) {
+      await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: "The Adapter names no whole test suite, so no Regression_Check ran", evidence: [], evidenceStatus: "none" } });
+      return "passed";
+    }
+    await ctx.emit({ type: "finding_recorded", actor: { kind: "verifier" }, payload: { kind: "note", text: "Running the whole test suite on the changed code and comparing it with the pinned commit", evidence: [], evidenceStatus: "none" } });
+    const snap = await snapshotWorktree(this.o.dataDir, wt, `regression-main-${Date.now()}`);
+    const t = await this.o.manager.runTests(ctx.task.taskId, { image: this.o.devImage, snapshotDir: snap.path, prebuilt: this.o.adapter.devSandbox.prebuilt, command: shellCommand(reg.suite), timeoutS: reg.timeoutS, env: { ...(this.o.adapter.devSandbox.env ?? {}), ...this.#aiAccess().env }, egress: this.#aiAccess().egress, logTail: 200_000 });
+    const main = parseDjango(t.output, t.timedOut ? -1 : t.code);
+    const base = (await this.#baseline) ?? null;
+    const items: { item: string; pass: boolean; expected: string; actual: string }[] = [];
+    if (!base || base.run.ran === null) {
+      items.push({ item: "the whole suite at the pinned commit", pass: false, expected: "a test summary", actual: "the suite did not run at the pinned commit, so nothing can be compared" });
+      await ctx.emit({ type: "verifier_result", actor: { kind: "verifier" }, payload: { storyId: "TASK", checkId: "regression", pass: false, items } });
+      return "failed";
+    }
+    const pinned = new Set(await pathsAt(wt, wt.base));
+    const r = compareRuns(base.run, main, (p) => pinned.has(p), base.cached);
+    await ctx.emit({ type: "regression_result", actor: { kind: "verifier" }, payload: r });
+    items.push({ item: `whole suite at the pinned commit${base.cached ? " (cached)" : ""}`, pass: true, expected: "a test summary", actual: `${r.baseline.ran} tests, ${r.baseline.failed.length} failing before the change` });
+    items.push({ item: "whole suite on the changed code", pass: main.ran !== null, expected: "a test summary", actual: main.ran === null ? (t.timedOut ? `timed out after ${reg.timeoutS} s` : `no summary (exit ${t.code})`) : `${r.main.ran} tests (${r.newTests >= 0 ? "+" : ""}${r.newTests} new), ${r.main.failed.length} failing` });
+    items.push({ item: "no test that passed before fails now", pass: r.regressions.length === 0, expected: "0 regressions", actual: r.regressions.length ? `${r.regressions.length}: ${r.regressions.slice(0, 5).join(", ")}` : "0" });
+    items.push({ item: "no new test fails", pass: r.newFailing.length === 0, expected: "0 failing new tests", actual: r.newFailing.length ? `${r.newFailing.length}: ${r.newFailing.slice(0, 5).join(", ")}` : "0" });
+    await ctx.emit({ type: "verifier_result", actor: { kind: "verifier" }, payload: { storyId: "TASK", checkId: "regression", pass: r.pass, items } });
+    return r.pass ? "passed" : "failed";
   }
 
   /** Task end: every container of the Task is removed and the proxy credential is no longer accepted anywhere. */

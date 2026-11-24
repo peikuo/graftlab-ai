@@ -1,6 +1,8 @@
 // Final view (R23.3, R25.1, R25.2, R26.1, R26.5): the Task's result from `terminal_reached`, the same in Live and
 // Replay. Success comes only from the Verifier; failures are counted per Failure_Class; labels stay visible.
-import type { StudioEvent } from "@graftlab/shared";
+import { useMemo } from "react";
+import { foldEvents, type StudioEvent } from "@graftlab/shared";
+import { UsageView } from "./Changes.tsx";
 
 const RESULT: Record<string, { title: string; cls: string; text: string }> = {
   success: { title: "Success", cls: "green", text: "The Verifier (code, no AI) confirmed every check." },
@@ -12,6 +14,7 @@ const RESULT: Record<string, { title: string; cls: string; text: string }> = {
 
 export function FinalView({ events, replayHref }: { events: StudioEvent[]; replayHref?: string }) {
   const t = events.findLast((e) => e.type === "terminal_reached");
+  const state = useMemo(() => foldEvents(events), [events]);
   if (t?.type !== "terminal_reached") return null;
   const r = RESULT[t.payload.terminal] ?? { title: t.payload.terminal, cls: "slate", text: "" };
   const s = t.payload.summary;
@@ -38,7 +41,10 @@ export function FinalView({ events, replayHref }: { events: StudioEvent[]; repla
         {recommended.length > 0 && <li>Recommended by the meeting: {recommended.map((p) => p.title).join(" · ")}</li>}
         {failures.length > 0 && <li>Problems on the way: {failures.map(([k, n]) => `${n} × ${k}`).join(", ")}</li>}
         {s.unconfirmed.length > 0 && <li className="failure-text">Not confirmed: {s.unconfirmed.join(", ")}</li>}
+        {state.regression && <li>Whole test suite: {state.regression.pass ? `no regression (${state.regression.main.ran} tests, ${state.regression.newTests} new)` : `${state.regression.regressions.length + state.regression.newFailing.length} tests fail on the changed code`}</li>}
+        {state.changeSummary && <li>Change of main: {state.changeSummary.files.length} files, +{state.changeSummary.added} −{state.changeSummary.removed}</li>}
       </ul>
+      <UsageView state={state} />
       {replayHref && (
         <a className="btn" href={replayHref}>
           ▶ Watch the Replay

@@ -15,7 +15,7 @@ const BrowserStepSchema = z.discriminatedUnion("op", [
 export const AcceptanceCheckSchema = z.discriminatedUnion("kind", [
   z.object({ id: text, kind: z.literal("api_readback"), target: z.enum(["sandbox", "run_environment"]), expect: z.array(ExpectationSchema).min(1) }),
   z.object({ id: text, kind: z.literal("test_suite"), command: z.array(text).min(1), workdir: z.string().optional(), timeoutS: z.number().int().positive().max(1800) }),
-  z.object({ id: text, kind: z.literal("browser_check"), target: z.enum(["run_environment", "sandbox"]), steps: z.array(BrowserStepSchema).min(1).max(20) }),
+  z.object({ id: text, kind: z.literal("browser_check"), target: z.enum(["run_environment", "sandbox"]), steps: z.array(BrowserStepSchema).min(1).max(20), /** The steps use a model-powered feature: the app must call the model at least once (R22.11). */ needsAi: z.boolean().optional() }),
 ]);
 export type AcceptanceCheckSpec = z.infer<typeof AcceptanceCheckSchema>;
 export const AI_SOURCES = ["studio_service", "judge_endpoint", "local"] as const;

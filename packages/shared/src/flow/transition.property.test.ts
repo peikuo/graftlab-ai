@@ -9,16 +9,17 @@ import { transition } from "./transition.ts";
 
 const POST_FREEZE: NodeId[] = [
   "frozen", "planning", "plan_review", "documenting", "tech_design", "adapter_branch_2", "target_check", "docs_only",
-  "story_develop", "story_review", "story_ask", "story_run", "story_checkpoint", "verifying",
+  "story_test", "story_develop", "story_review", "story_ask", "story_run", "story_checkpoint", "verifying", "regression_check",
   "api_read", "api_plan", "api_suggest", "api_confirm", "api_try_one", "api_write_batch", "api_read_back",
 ];
-const EXECUTION = POST_FREEZE.filter((n) => n.startsWith("story_") || n.startsWith("api_") || n === "verifying");
+const EXECUTION = POST_FREEZE.filter((n) => n.startsWith("story_") || n.startsWith("api_") || n === "verifying" || n === "regression_check");
 const SAME_STORY_BACK_EDGES = ["request_changes", "answered", "checkpoint_feedback"];
 // Results, not unexpected failures, plus the Task timeout (design.md, "Failure review").
 const RESULT_EDGES_TO_FAILED = [
   "task_timeout",
   "verify_failed",
   "verified_last_partial",
+  "regression_failed",
   "unanswered_last",
   "answered_at_limit_last",
   "confirm_unanswered_last",

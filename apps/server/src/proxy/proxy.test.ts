@@ -3,10 +3,11 @@ import type { AddressInfo } from "node:net";
 import { SecretRegistry } from "@graftlab/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { issueProxyCredential, PROXY_SECRET_NAME } from "./credential.js";
-import { createProxyServer, routePath } from "./proxy.js";
+import { createProxyServer, parseUsage, routePath } from "./proxy.js";
 
 const CREDENTIAL = "glp_test-credential-0123456789";
 const REAL_KEY = "test-upstream-key-abcdef123";
+const APP_CREDENTIAL = "glp_app-credential-0123456789";
 
 let upstream: Server;
 let proxy: Server;
@@ -30,7 +31,7 @@ beforeEach(async () => {
         // A streamed answer in three chunks, sent with a delay between them.
         res.writeHead(200, { "content-type": "text/event-stream", "set-cookie": "x=1" });
         res.write("data: one\n\n");
-        setTimeout(() => res.write("data: two\n\n"), 20);
+        setTimeout(() => res.write('data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":100}}}\n\n'), 20);
         setTimeout(() => res.end("data: [DONE]\n\n"), 40);
       } else {
         res.writeHead(200, { "content-type": "application/json" });
@@ -41,6 +42,7 @@ beforeEach(async () => {
   const up = await listen(upstream);
   proxy = createProxyServer({
     credential: CREDENTIAL,
+    appCredential: APP_CREDENTIAL,
     upstreamBaseUrl: `http://127.0.0.1:${up}/api/v4/`,
     upstreamKey: REAL_KEY,
     maxBodyBytes: 1024,
@@ -76,7 +78,7 @@ describe("LLM_Proxy", () => {
       if (done) break;
       chunks.push(new TextDecoder().decode(value));
     }
-    expect(chunks.join("")).toBe("data: one\n\ndata: two\n\ndata: [DONE]\n\n");
+    expect(chunks.join("")).toBe('data: one\n\ndata: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":100}}}\n\ndata: [DONE]\n\n');
     expect(chunks.length).toBeGreaterThan(1);
     expect(seen).toHaveLength(1);
     expect(seen[0]!.url).toBe("/api/v4/chat/completions");
@@ -100,7 +102,7 @@ describe("LLM_Proxy", () => {
   it("logs method, path and status only", async () => {
     await chat(`Bearer ${CREDENTIAL}`).then((r) => r.text());
     await chat("Bearer nope-nope-nope-nope", "/secret/path/abc");
-    expect(logs).toEqual(["POST /chat/completions 200", "POST (other) 401"]);
+    expect(logs).toEqual(["POST /chat/completions 200 #1 agents in=120 cached=100 out=7", "POST (other) 401"]);
     expect(logs.join("\n")).not.toContain(REAL_KEY);
     expect(logs.join("\n")).not.toContain(CREDENTIAL);
   });
@@ -124,5 +126,15 @@ describe("LLM_Proxy", () => {
     const c = issueProxyCredential(secrets);
     expect(secrets.names).toContain(PROXY_SECRET_NAME);
     expect(secrets.redactText(`token ${c}`).value).toBe(`token [REDACTED:${PROXY_SECRET_NAME}]`);
+  });
+  it("tells the app's calls apart from the agents' calls by credential", async () => {
+    await chat(`Bearer ${APP_CREDENTIAL}`).then((r) => r.text());
+    expect(logs).toEqual(["POST /chat/completions 200 #1 app in=120 cached=100 out=7"]);
+    expect(logs.join("\n")).not.toContain(APP_CREDENTIAL);
+  });
+  it("reads usage from a JSON answer and from the last streamed chunk that has it", () => {
+    expect(parseUsage('{"usage":{"prompt_tokens":10,"completion_tokens":3,"prompt_cache_hit_tokens":4}}', "application/json")).toEqual({ input: 10, cached: 4, output: 3 });
+    expect(parseUsage('data: {"usage":null}\n\ndata: {"usage":{"prompt_tokens":5,"completion_tokens":2}}\n\ndata: [DONE]\n', "text/event-stream")).toEqual({ input: 5, cached: 0, output: 2 });
+    expect(parseUsage("not json", "application/json")).toBeNull();
   });
 });

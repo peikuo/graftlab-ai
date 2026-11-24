@@ -11,7 +11,7 @@ import {
   type StudioEvent,
 } from "../events.ts";
 import { NODE_IDS, TERMINAL_IDS } from "../flow/ids.ts";
-import { OUTPUT_DOC_KINDS } from "../events.ts";
+import { FEATURE_PHASES, OUTPUT_DOC_KINDS } from "../events.ts";
 
 const str = fc.string({ maxLength: 40 });
 const ne = fc.string({ minLength: 1, maxLength: 30 }).filter((s) => s.length > 0);
@@ -185,7 +185,31 @@ const P: { [K in EventType]: fc.Arbitrary<PayloadOf<K>> } = {
   output_doc: fc.record({ kind: fc.constantFrom(...OUTPUT_DOC_KINDS), decisionVersion: pos, content: fc.constant({}), ref: ne, markdown: str }),
   browser_action: fc.record({ action: ne, target: str, ok: fc.boolean() }),
   browser_observation: fc.record({ snapshotSummary: str, screenshotRef: opt(str) }),
-  code_change: fc.record({ storyId: idA, attempt: pos, changedFiles: fc.array(path, { maxLength: 4 }), diffRef: ne }),
+  code_change: fc.record(
+    {
+      storyId: idA,
+      attempt: pos,
+      changedFiles: fc.array(path, { maxLength: 4 }),
+      diffRef: ne,
+      by: fc.constantFrom("code_agent" as const, "test_agent" as const),
+      files: fc.array(fc.record({ path, status: fc.constantFrom("A", "M", "D"), added: nat, removed: nat, planned: fc.boolean() }), { maxLength: 3 }),
+      patch: str,
+      patchTruncated: fc.boolean(),
+    },
+    { requiredKeys: ["storyId", "attempt", "changedFiles", "diffRef"] },
+  ),
+  feature_status: fc.record({ featureId: idA, storyId: idA, status: fc.constantFrom(...FEATURE_PHASES), attempt: nat, reason: opt(str) }, { requiredKeys: ["featureId", "storyId", "status", "attempt"] }),
+  ai_usage: fc.record({ caller: fc.constant("app" as const), checkId: idA, calls: nat, statuses: fc.array(fc.constantFrom(200, 401, 500), { maxLength: 3 }), inputTokens: nat, cachedTokens: nat, outputTokens: nat }),
+  change_summary: fc.record({ base: ne, head: ne, files: fc.array(fc.record({ path, status: fc.constantFrom("A", "M", "D"), added: nat, removed: nat }), { maxLength: 3 }), added: nat, removed: nat }),
+  regression_result: fc.record({
+    baseline: fc.record({ ran: nat, failed: fc.array(ne, { maxLength: 2 }) }),
+    main: fc.record({ ran: nat, failed: fc.array(ne, { maxLength: 2 }) }),
+    newTests: fc.integer({ min: -5, max: 100 }),
+    regressions: fc.array(ne, { maxLength: 2 }),
+    newFailing: fc.array(ne, { maxLength: 2 }),
+    cached: fc.boolean(),
+    pass: fc.boolean(),
+  }),
   review_verdict: fc.record({
     storyId: idA,
     attempt: pos,
@@ -195,7 +219,7 @@ const P: { [K in EventType]: fc.Arbitrary<PayloadOf<K>> } = {
   }),
   question_opened: fc.record({
     questionId: idA,
-    from: fc.oneof(fc.constant("code_agent" as const), role),
+    from: fc.oneof(fc.constant("code_agent" as const), fc.constant("test_agent" as const), role),
     askedParty: fc.constantFrom("reviewer" as const, "judge" as const),
     kind: fc.constantFrom("technical" as const, "feature" as const),
     text: ne,
@@ -244,7 +268,7 @@ const P: { [K in EventType]: fc.Arbitrary<PayloadOf<K>> } = {
 
 export const actorArb: fc.Arbitrary<Actor> = fc.oneof(
   role.map((roleId) => ({ kind: "role" as const, roleId })),
-  fc.constantFrom<Actor>({ kind: "judge" }, { kind: "system" }, { kind: "verifier" }, { kind: "code_agent" }),
+  fc.constantFrom<Actor>({ kind: "judge" }, { kind: "system" }, { kind: "verifier" }, { kind: "code_agent" }, { kind: "test_agent" }),
 );
 
 export const eventTypeArb = fc.constantFrom(...EVENT_TYPES);

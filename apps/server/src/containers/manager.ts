@@ -44,6 +44,8 @@ const MB = 1024 * 1024;
 export interface ProxyStart {
   image: string;
   credential: string;
+  /** The changed app's own credential (R22.11). */
+  appCredential?: string;
   upstreamUrl: string;
   upstreamKey: string;
   /** host:port on the internal network the relay forwards to (for example app:8000). */
@@ -116,6 +118,7 @@ export class ContainerManager {
       User: "65534:65534",
       Env: [
         `GL_PROXY_CREDENTIAL=${o.credential}`,
+        ...(o.appCredential ? [`GL_PROXY_APP_CREDENTIAL=${o.appCredential}`] : []),
         `GL_PROXY_UPSTREAM_URL=${o.upstreamUrl}`,
         `GL_PROXY_UPSTREAM_KEY=${o.upstreamKey}`,
         `GL_PROXY_PORT=${PROXY_PORT}`,
@@ -241,9 +244,9 @@ export class ContainerManager {
   }
 
   /** Verifier test container (R22.2): fresh, the snapshot read-only, internal network only; the exit code decides. */
-  async runTests(taskId: string, o: { image: string; snapshotDir: string; prebuilt: string[]; command: string; timeoutS: number; env?: Record<string, string>; egress?: boolean }): Promise<{ code: number; output: string; timedOut: boolean }> {
+  async runTests(taskId: string, o: { image: string; snapshotDir: string; prebuilt: string[]; command: string; timeoutS: number; env?: Record<string, string>; egress?: boolean; logTail?: number; /** A second test container next to the Feature tests (the baseline suite). */ suffix?: "base" }): Promise<{ code: number; output: string; timedOut: boolean }> {
     await this.ensureInternalNetwork(taskId);
-    const name = resourceName(taskId, "test");
+    const name = resourceName(taskId, o.suffix ? `test-${o.suffix}` : "test");
     await this.#replace(name);
     await this.docker.createContainer(name, this.#appContainer(taskId, "test", { ...o, run: o.command }));
     // R38.4: internet only with the Judge's consent to an outside model service.
@@ -262,7 +265,7 @@ export class ContainerManager {
       await new Promise((r) => setTimeout(r, 1000));
     }
     const info = await this.docker.inspectContainer(name);
-    const output = await this.docker.logs(name, 400).catch(() => "");
+    const output = await this.docker.logs(name, o.logTail ?? 400).catch(() => "");
     await this.docker.removeContainer(name);
     return { code: timedOut ? -1 : (info?.State.ExitCode ?? -1), output, timedOut };
   }
@@ -277,6 +280,11 @@ export class ContainerManager {
     if (o.egress) await this.docker.connectNetwork("bridge", name);
     await this.docker.startContainer(name);
     return { name };
+  }
+
+  /** The LLM_Proxy's request log of a Task (method, path, status, number, caller, tokens; never a body). */
+  async proxyLog(taskId: string): Promise<string> {
+    return this.docker.logs(resourceName(taskId, "proxy"), 5000);
   }
 
   /** Removes a container and, when given, its data volume. */

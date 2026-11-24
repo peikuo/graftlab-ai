@@ -6,18 +6,21 @@ import type { StudioEvent, UiState } from "@graftlab/shared";
 import { BriefView } from "./Brief.tsx";
 import { BoardView } from "./Board.tsx";
 import { DocsList, parsePlan, PlanStories } from "./Plan.tsx";
+import { DevBoard } from "./DevBoard.tsx";
+import { CodeChanges, UsageView } from "./Changes.tsx";
 
-type Tab = "found" | "app" | "decision" | "plan";
+type Tab = "found" | "app" | "decision" | "plan" | "board";
 
 function tabOf(e: StudioEvent): Tab | null {
   if (e.type === "file_read" || e.type === "finding_recorded" || e.type === "evidence_summary" || e.type === "reading_planned" || e.type === "repo_brief" || e.type === "meeting_summary" || e.type === "board_updated") return "found";
   if (e.type === "browser_action" || e.type === "browser_observation") return "app";
   if (e.type === "decision_doc_version" || e.type === "decision_doc_frozen" || e.type === "artifact_updated") return "decision";
   if (e.type === "plan_proposed" || e.type === "output_doc") return "plan";
+  if (e.type === "feature_status" || e.type === "regression_result") return "board";
   return null;
 }
 
-const LABEL: Record<Tab, string> = { found: "Findings", app: "App trial", decision: "Decision", plan: "Plan and documents" };
+const LABEL: Record<Tab, string> = { found: "Findings", app: "App trial", decision: "Decision", plan: "Plan and documents", board: "Build board" };
 
 /** File preview (R4.4): the latest file while reading, or a file the Judge picked. */
 function FilePreview({ path, load }: { path: string; load: (path: string) => Promise<string | null> }) {
@@ -38,12 +41,21 @@ function FilePreview({ path, load }: { path: string; load: (path: string) => Pro
   );
 }
 
-export function ArtifactArea({ state, events, loadFile }: { state: UiState; events: StudioEvent[]; loadFile?: (path: string) => Promise<string | null> }) {
+export function ArtifactArea({ state, events, loadFile, now }: { state: UiState; events: StudioEvent[]; loadFile?: (path: string) => Promise<string | null>; now?: number }) {
   const [tab, setTab] = useState<Tab>("found");
   const [picked, setPicked] = useState<string | null>(null);
   const [unseen, setUnseen] = useState<Set<Tab>>(new Set());
   const [engOpen, setEngOpen] = useState(false);
   const seen = useRef(0);
+  // The whiteboard is selected once, when development starts (design.md, development whiteboard).
+  const boardShown = useRef(false);
+  const hasBoard = Object.keys(state.featureStatus).length > 0;
+  useEffect(() => {
+    if (hasBoard && !boardShown.current) {
+      boardShown.current = true;
+      setTab("board");
+    }
+  }, [hasBoard]);
 
   useEffect(() => {
     const fresh = events.slice(seen.current);
@@ -69,12 +81,16 @@ export function ArtifactArea({ state, events, loadFile }: { state: UiState; even
   const browser = events.filter((e) => e.type === "browser_action" || e.type === "browser_observation");
   const docs = events.filter((e) => e.type === "artifact_updated");
   const tools = events.filter((e) => e.type === "tool_started" || e.type === "tool_finished" || e.type === "code_change" || e.type === "review_verdict");
+  const lastTs = events.at(-1)?.ts;
+  const boardNow = now ?? (lastTs ? Date.parse(lastTs) : 0);
   const summary = events.find((e) => e.type === "evidence_summary");
   const unavailable = summary?.type === "evidence_summary" ? summary.payload.experienceUnavailable : undefined;
 
   // A tab exists only once it has content (R1.9); the app trial also when it was due but failed (R4.6).
-  const tabs = (["found", "app", "decision", "plan"] as const).filter((t) =>
-    t === "found"
+  const tabs = (["found", "app", "decision", "plan", "board"] as const).filter((t) =>
+    t === "board"
+      ? hasBoard
+      : t === "found"
       ? files.length + findings.length + events.filter((e) => e.type === "reading_planned" || e.type === "repo_brief").length > 0
       : t === "app"
         ? browser.length > 0 || unavailable !== undefined
@@ -201,6 +217,28 @@ export function ArtifactArea({ state, events, loadFile }: { state: UiState; even
               )}
             </ul>
           )}
+        {active === "board" && (
+          <>
+            <DevBoard state={state} now={boardNow} />
+            {state.regression && (
+              <div className="regression">
+                <h4>
+                  Whole test suite <span className={`badge ${state.regression.pass ? "green" : "red"}`}>{state.regression.pass ? "no regression" : "regression found"}</span> <span className="badge slate">Verifier, code, no AI</span>
+                </h4>
+                <table className="ftable small">
+                  <tbody>
+                    <tr><td>At the pinned commit{state.regression.cached ? " (cached)" : ""}</td><td className="num">{state.regression.baseline.ran} tests</td><td className="num">{state.regression.baseline.failed.length} failing</td></tr>
+                    <tr><td>On the changed code</td><td className="num">{state.regression.main.ran} tests</td><td className="num">{state.regression.main.failed.length} failing</td></tr>
+                    <tr><td>New tests</td><td className="num">{state.regression.newTests}</td><td /></tr>
+                  </tbody>
+                </table>
+                {state.regression.regressions.length > 0 && <p className="failure-text small">Passed before, fail now: {state.regression.regressions.join(", ")}</p>}
+                {state.regression.newFailing.length > 0 && <p className="failure-text small">New tests that fail: {state.regression.newFailing.join(", ")}</p>}
+              </div>
+            )}
+            <UsageView state={state} />
+          </>
+        )}
         {active === "plan" && (
           <>
             {plan && (
@@ -224,6 +262,7 @@ export function ArtifactArea({ state, events, loadFile }: { state: UiState; even
       {tools.length > 0 && (
       <details className="engineering" open={engOpen} onToggle={(e) => setEngOpen((e.currentTarget as HTMLDetailsElement).open)}>
         <summary>Engineering_Details</summary>
+        {engOpen && <CodeChanges state={state} />}
         {engOpen && (
           <ul className="clean mono small">
             {tools.map((e) =>
@@ -234,7 +273,7 @@ export function ArtifactArea({ state, events, loadFile }: { state: UiState; even
                   ← {e.payload.tool} {e.payload.ok ? "ok" : "failed"} {e.payload.outputSummary}
                 </li>
               ) : e.type === "code_change" ? (
-                <li key={e.seq}>changed {e.payload.changedFiles.join(", ")}</li>
+                <li key={e.seq}>{e.payload.by === "test_agent" ? "tests" : "changed"} {e.payload.changedFiles.join(", ")}</li>
               ) : e.type === "review_verdict" ? (
                 <li key={e.seq}>review {e.payload.verdict} · {e.payload.label}</li>
               ) : null,

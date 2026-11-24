@@ -51,7 +51,7 @@ export interface TaskServiceOptions {
   adapters: AdapterRef[];
   runtimeRulesVersion: string;
   /** Recorded in task_created so a Replay states which model produced it (R30.18). */
-  llm?: { profile: string; model: string };
+  llm?: { profile: string; model: string; price?: { currency: string; inputPerMTok: number; cachedInputPerMTok: number; outputPerMTok: number } };
   lease: Lease;
   onStore: (store: EventStore) => void;
   limits?: ReadLimits;
@@ -159,7 +159,7 @@ export class TaskService {
       type: "task_created",
       node: "reading",
       actor: { kind: "system" },
-      payload: { url: task.url, owner: meta.owner, repo: meta.repo, repoKind: task.repoKind, ...(adapter ? { adapterId: adapter.id } : {}), runtimeRulesVersion: task.runtimeRulesVersion, commitSha: meta.sha, ...(this.#o.llm ? { llmProfile: this.#o.llm.profile, llmModel: this.#o.llm.model } : {}) },
+      payload: { url: task.url, owner: meta.owner, repo: meta.repo, repoKind: task.repoKind, ...(adapter ? { adapterId: adapter.id } : {}), runtimeRulesVersion: task.runtimeRulesVersion, commitSha: meta.sha, ...(this.#o.llm ? { llmProfile: this.#o.llm.profile, llmModel: this.#o.llm.model, ...(this.#o.llm.price ? { llmPrice: this.#o.llm.price } : {}) } : {}) },
     });
     await store.append({ type: "node_entered", node: "reading", actor: { kind: "system" }, payload: { from: null, to: "reading", edgeId: "task_created" } });
 
@@ -751,12 +751,14 @@ export class TaskService {
               const stage = this.#devStage(ctx);
               return stage ? stage.targetCheck(ctx) : (await ctx.fail("interface_call_failure", "persistence", "development has no technical design or Adapter for this Task"), "failed");
             },
+            story_test: (ctx) => this.#dev!.testFirst(ctx),
             story_develop: (ctx) => this.#dev!.develop(ctx),
             story_review: (ctx) => this.#dev!.review(ctx),
             story_ask: (ctx) => this.#dev!.ask(ctx),
             story_run: (ctx) => this.#dev!.run(ctx),
             story_checkpoint: (ctx) => this.#dev!.checkpoint(ctx),
             verifying: (ctx) => this.#dev!.verify(ctx),
+            regression_check: (ctx) => this.#dev!.regression(ctx),
           }
         : {}),
     };

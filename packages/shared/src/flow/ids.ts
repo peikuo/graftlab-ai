@@ -23,12 +23,14 @@ export const NODE_IDS = [
   "adapter_branch_2",
   "target_check",
   // source-change stories
+  "story_test",
   "story_develop",
   "story_review",
   "story_ask",
   "story_run",
   "story_checkpoint",
   "verifying",
+  "regression_check",
   // API-operation stories
   "api_read",
   "api_plan",

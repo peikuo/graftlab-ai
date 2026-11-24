@@ -16,7 +16,8 @@ Rules for every agent that plans, builds, reviews or checks a change to linkding
 ## Checks the Verifier can run
 - `api_readback`: the key is the bookmark URL; fields are `titleContains`, `tagsInclude` (planned tags must be among the read-back tags) and `archived`.
 - `test_suite`: name targeted test modules under `bookmarks/tests/` (for example `bookmarks.tests.test_bookmarks_api`); the full suite takes about 300 s.
-- `browser_check`: the changed app runs in the Run_Environment; name buttons and fields by their visible labels.
+- `browser_check`: the changed app runs in the Run_Environment; name buttons and fields by their visible labels. For a model-powered feature set `needsAi: true` and expect text that only the model's answer can produce, not a fixed heading.
+- After the last Feature the Verifier runs the whole `bookmarks.tests` suite and compares it with the pinned commit; a test that passed before and fails after is a regression.
 ## Building
 - linkding needs Python 3.13. The development sandbox already has the dependencies, Node and the built front end; do not install new system packages.
 - Change only the copy in your worktree. The Studio never starts the changed app from your instructions; it starts it the same way for every change.

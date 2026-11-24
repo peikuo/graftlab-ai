@@ -108,6 +108,7 @@
     "passwordEnv": "LD_SUPERUSER_PASSWORD"
   },
   "testSelectionHint": "Name targeted test files under bookmarks/tests/; the full suite takes about 300 s.",
+  "regression": { "suite": ["uv", "run", "manage.py", "test", "bookmarks.tests", "--parallel", "2"], "format": "django", "timeoutS": 1800 },
   "testData": "test-data.json",
   "runtimeRulesChecklist": "runtime-rules/adapters/linkding-checklist.md"
 }

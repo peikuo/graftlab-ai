@@ -19,6 +19,10 @@ export const ROLE_IDS = [
 ] as const;
 export const MEETING_PERSPECTIVES = ["user_value", "feasibility", "risk"] as const satisfies readonly (typeof ROLE_IDS)[number][];
 export const RoleIdSchema = z.enum(ROLE_IDS);
+/** Phases of a Feature on the development whiteboard (R1.10). */
+export const FEATURE_PHASES = ["todo", "testing", "building", "reviewing", "running", "demo", "verifying", "merged", "failed", "blocked"] as const;
+export type FeaturePhase = (typeof FEATURE_PHASES)[number];
+export const PATCH_MAX = 150_000;
 export const OUTPUT_DOC_KINDS = ["product_backlog", "sprint_plan", "definition_of_done", "task_board", "requirements", "architecture", "features", "demo_review_note", "retrospective"] as const;
 export type RoleId = z.infer<typeof RoleIdSchema>;
 
@@ -31,6 +35,7 @@ export const ActorSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("system") }),
   z.object({ kind: z.literal("verifier") }),
   z.object({ kind: z.literal("code_agent") }),
+  z.object({ kind: z.literal("test_agent") }),
 ]);
 export type Actor = z.infer<typeof ActorSchema>;
 
@@ -114,6 +119,8 @@ export const PAYLOADS = {
     commitSha: z.string().optional(),
     llmProfile: z.string().optional(),
     llmModel: z.string().optional(),
+    /** Prices the cost estimate uses (R30.19), from server configuration; absent: tokens only. */
+    llmPrice: z.object({ currency: nonEmpty, inputPerMTok: z.number().nonnegative(), cachedInputPerMTok: z.number().nonnegative(), outputPerMTok: z.number().nonnegative() }).optional(),
   }),
   node_entered: z.object({ from: NodeIdSchema.nullable(), to: NodeIdSchema, edgeId: id }),
   transition_rejected: z.object({ from: NodeIdSchema, requestedEdgeId: z.string(), reason: nonEmpty }),
@@ -268,6 +275,29 @@ export const PAYLOADS = {
     attempt: z.number().int().positive(),
     changedFiles: z.array(nonEmpty),
     diffRef: nonEmpty,
+    /** Who made the change: the Code_Agent (default) or the Test_Agent's tests (R40.20). */
+    by: z.enum(["code_agent", "test_agent"]).optional(),
+    /** Per-file line counts and planned marks, computed by git (R4.9). */
+    files: z.array(z.object({ path: nonEmpty, status: z.string(), added: count, removed: count, planned: z.boolean() })).optional(),
+    /** The diff text, so Replay shows the same change; cut at PATCH_MAX characters. */
+    patch: z.string().optional(),
+    patchTruncated: z.boolean().optional(),
+  }),
+  // R1.10: one phase change of a Feature on the development whiteboard, written by code.
+  feature_status: z.object({ featureId: id, storyId: id, status: z.enum(FEATURE_PHASES), attempt: count, reason: z.string().optional() }),
+  // R22.11, R30.19: the changed app's model calls through the LLM_Proxy, counted by code during one check.
+  ai_usage: z.object({ caller: z.literal("app"), checkId: id, calls: count, statuses: z.array(z.number().int()), inputTokens: count, cachedTokens: count, outputTokens: count }),
+  // R4.9: the whole change of main against the pinned commit.
+  change_summary: z.object({ base: nonEmpty, head: nonEmpty, files: z.array(z.object({ path: nonEmpty, status: z.string(), added: count, removed: count })), added: count, removed: count }),
+  // R22.10: the Regression_Check, test by test against the pinned commit.
+  regression_result: z.object({
+    baseline: z.object({ ran: count, failed: z.array(z.string()) }),
+    main: z.object({ ran: count, failed: z.array(z.string()) }),
+    newTests: z.number().int(),
+    regressions: z.array(z.string()),
+    newFailing: z.array(z.string()),
+    cached: z.boolean(),
+    pass: z.boolean(),
   }),
   review_verdict: z.object({
     storyId: id,
@@ -278,7 +308,7 @@ export const PAYLOADS = {
   }),
   question_opened: z.object({
     questionId: id,
-    from: z.union([z.literal("code_agent"), RoleIdSchema]),
+    from: z.union([z.literal("code_agent"), z.literal("test_agent"), RoleIdSchema]),
     askedParty: z.enum(["reviewer", "judge"]),
     kind: z.enum(["technical", "feature"]),
     text: nonEmpty,

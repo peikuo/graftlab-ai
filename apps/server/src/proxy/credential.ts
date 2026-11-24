@@ -6,8 +6,9 @@ import type { SecretRegistry } from "@graftlab/shared";
 
 export const PROXY_SECRET_NAME = "proxy_credential";
 
-export function issueProxyCredential(secrets: SecretRegistry): string {
+export const PROXY_APP_SECRET_NAME = "proxy_app_credential";
+export function issueProxyCredential(secrets: SecretRegistry, name = PROXY_SECRET_NAME): string {
   const value = `glp_${randomBytes(32).toString("base64url")}`;
-  secrets.register(PROXY_SECRET_NAME, value);
+  secrets.register(name, value);
   return value;
 }

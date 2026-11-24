@@ -222,7 +222,7 @@ export function App() {
           />
           <InterjectionInput state={state} events={events} queue={live.queue} onSend={send} />
         </div>
-        <ArtifactArea state={state} events={events} loadFile={loadFile} />
+        <ArtifactArea state={state} events={events} loadFile={loadFile} now={live.now} />
       </main>
     </div>
   );

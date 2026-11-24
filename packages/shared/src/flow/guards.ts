@@ -74,12 +74,14 @@ const POST_FREEZE: readonly NodeId[] = [
   "adapter_branch_2",
   "target_check",
   "docs_only",
+  "story_test",
   "story_develop",
   "story_review",
   "story_ask",
   "story_run",
   "story_checkpoint",
   "verifying",
+  "regression_check",
   "api_read",
   "api_plan",
   "api_suggest",
@@ -89,7 +91,7 @@ const POST_FREEZE: readonly NodeId[] = [
   "api_read_back",
 ];
 const EXECUTION: readonly NodeId[] = POST_FREEZE.filter(
-  (n) => n.startsWith("story_") || n.startsWith("api_") || n === "verifying",
+  (n) => n.startsWith("story_") || n.startsWith("api_") || n === "verifying" || n === "regression_check",
 );
 
 const AFTER_DOCS: readonly NodeId[] = ["adapter_branch_2", "target_check", "docs_only"];

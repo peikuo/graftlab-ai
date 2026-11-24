@@ -168,6 +168,30 @@ export interface WorktreeDiff {
   changedFiles: ChangedFile[];
   /** Unified diff against the pinned commit, binary-safe. */
   patch: string;
+  /** Added and removed lines per file (0 for binary files), from `git diff --numstat` (R4.9). */
+  stats: LineStat[];
+}
+export interface LineStat {
+  path: string;
+  added: number;
+  removed: number;
+}
+function parseNumstat(out: string): LineStat[] {
+  // -z output without renames: "added<TAB>removed<TAB>path" NUL ...; binary files show "-".
+  return out
+    .split("\0")
+    .filter((p) => p !== "")
+    .map((rec) => {
+      const [a, r, ...rest] = rec.split("\t");
+      return { path: rest.join("\t"), added: a === "-" ? 0 : Number(a), removed: r === "-" ? 0 : Number(r) };
+    });
+}
+/** The whole change of `main` against the pinned commit, per file (R4.9). */
+export async function mainSummary(wt: Worktree): Promise<{ base: string; head: string; files: (ChangedFile & LineStat)[] }> {
+  const names = parseNameStatus(await git(["diff", "--no-renames", "--name-status", "-z", wt.base, "main"], { cwd: wt.path }));
+  const stats = parseNumstat(await git(["diff", "--no-renames", "--numstat", "-z", wt.base, "main"], { cwd: wt.path }));
+  const head = (await git(["rev-parse", "main"], { cwd: wt.path })).trim();
+  return { base: wt.base, head, files: names.map((n) => ({ ...n, ...(stats.find((x) => x.path === n.path) ?? { added: 0, removed: 0 }) })) };
 }
 
 /**
@@ -178,7 +202,8 @@ export async function diffWorktree(wt: Worktree, base = wt.base): Promise<Worktr
   return withWorkingIndex(wt, async (env) => {
     const names = await git(["diff", "--cached", "--no-renames", "--name-status", "-z", base], { cwd: wt.path, env });
     const patch = await git(["diff", "--cached", "--no-renames", "--binary", base], { cwd: wt.path, env });
-    return { changedFiles: parseNameStatus(names), patch };
+    const stats = parseNumstat(await git(["diff", "--cached", "--no-renames", "--numstat", "-z", base], { cwd: wt.path, env }));
+    return { changedFiles: parseNameStatus(names), patch, stats };
   });
 }
 
@@ -297,5 +322,23 @@ export async function changedOnMain(wt: Worktree): Promise<string[]> {
 
 /** Every tracked path of `main`. */
 export async function pathsOnMain(wt: Worktree): Promise<string[]> {
-  return (await git(["ls-tree", "-r", "--name-only", "main"], { cwd: wt.path })).split("\n").filter(Boolean);
+  return pathsAt(wt, "main");
+}
+
+/** Every tracked path of a commit or branch. */
+export async function pathsAt(wt: Worktree, rev: string): Promise<string[]> {
+  return (await git(["ls-tree", "-r", "--name-only", rev], { cwd: wt.path })).split("\n").filter(Boolean);
+}
+
+/**
+ * Puts the given paths back to their state at `base` (a refused change, R40.20): tracked files are restored,
+ * files that did not exist at `base` are removed. Other changes in the working tree stay.
+ */
+export async function discardPaths(wt: Worktree, base: string, paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  const existed = new Set(await pathsAt(wt, base));
+  const restore = paths.filter((p) => existed.has(p));
+  const remove = paths.filter((p) => !existed.has(p));
+  if (restore.length) await git(["checkout", base, "--", ...restore], { cwd: wt.path });
+  for (const p of remove) await rm(join(wt.path, p), { force: true });
 }

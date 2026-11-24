@@ -93,7 +93,7 @@ function renderMeeting(o: DraftOptions): string {
 export const CHECK_FORMATS = [
   "# Acceptance check formats (JSON objects in acceptanceChecks)",
   '- {"id":"c1","kind":"test_suite","command":["python","manage.py","test","app.tests.test_x"],"timeoutS":600}: runs tests in the development sandbox.',
-  '- {"id":"c2","kind":"browser_check","target":"run_environment","steps":[{"op":"goto","path":"/"},{"op":"fill","role":"textbox","name":"URL","value":"https://example.org"},{"op":"click","role":"button","name":"Save"},{"op":"expectText","text":"…"},{"op":"expectRole","role":"button","name":"…"}]}: drives the changed app in a browser.',
+  '- {"id":"c2","kind":"browser_check","target":"run_environment","steps":[{"op":"goto","path":"/"},{"op":"fill","role":"textbox","name":"URL","value":"https://example.org"},{"op":"click","role":"button","name":"Save"},{"op":"expectText","text":"…"},{"op":"expectRole","role":"button","name":"…"}],"needsAi":true}: drives the changed app in a browser; set needsAi when the steps use a model-powered feature (the Verifier then requires that the app called the model). Prefer an expectText on text only the model\'s answer produces over a fixed label.',
   '- {"id":"c3","kind":"api_readback","target":"run_environment","expect":[{"key":"<item key>","mustExist":true,"fields":{"<field>":"<value>"}}]}: reads items back through the app API.',
   "Option ids: short lowercase words with dashes, for example local-model-tags.",
 ].join("\n");

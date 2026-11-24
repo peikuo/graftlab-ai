@@ -2,11 +2,11 @@
 // The UI state is a pure function of the event list. Live, reconnect and Replay all fold through reduce(),
 // which ignores events at or below the last applied seq, so duplicates and resends are harmless.
 // roleStatus() (R2) is added with the Workspace milestone; this state keeps the facts it needs.
-import type { Actor, FailureClass, PayloadOf, RoleId, StudioEvent } from "./events.ts";
+import type { Actor, FailureClass, FeaturePhase, PayloadOf, RoleId, StudioEvent } from "./events.ts";
 import type { NodeId, TerminalId } from "./flow/ids.ts";
 import { OUTPUT_DOC_TITLES } from "./planning.ts";
 
-export type ActorKey = "judge" | "system" | "verifier" | "code_agent" | RoleId;
+export type ActorKey = "judge" | "system" | "verifier" | "code_agent" | "test_agent" | RoleId;
 
 export function actorKey(a: Actor): ActorKey {
   return a.kind === "role" ? a.roleId : a.kind;
@@ -82,6 +82,19 @@ export interface UiState {
   plan?: { planId: string; number: number; content: unknown; status: "proposed" | "confirmed" | "sent_back"; reason?: string; seq: number };
   /** The latest document of each kind (R20.4; older Decision_Doc versions are marked by the view, R20.10). */
   outputDocs: Partial<Record<string, { kind: string; decisionVersion: number; ref: string; content: unknown; markdown: string; seq: number }>>;
+  /** R1.10: the latest phase of each Feature, from `feature_status`. */
+  featureStatus: Record<string, { featureId: string; storyId: string; status: FeaturePhase; attempt: number; reason?: string; seq: number; ts: string }>;
+  /** The last phase-track phase each Feature reached (where a failed or blocked card stopped). */
+  featureTrack: Record<string, FeaturePhase>;
+  /** R4.9: every recorded change, in order. */
+  codeChanges: (PayloadOf<"code_change"> & { seq: number; actor: ActorKey })[];
+  /** R30.19: tokens per actor from complete messages. */
+  usageByActor: Partial<Record<ActorKey, { messages: number; inputTokens: number; cachedTokens: number; outputTokens: number }>>;
+  /** R22.11: the changed app's model calls per check. */
+  appUsage: PayloadOf<"ai_usage">[];
+  llmPrice?: NonNullable<PayloadOf<"task_created">["llmPrice"]>;
+  changeSummary?: PayloadOf<"change_summary">;
+  regression?: PayloadOf<"regression_result">;
 }
 
 export const initialUiState: UiState = {
@@ -105,6 +118,11 @@ export const initialUiState: UiState = {
   visitedNodes: [],
   previousNode: null,
   outputDocs: {},
+  featureStatus: {},
+  featureTrack: {},
+  codeChanges: [],
+  usageByActor: {},
+  appUsage: [],
 };
 
 /** Event types that always produce exactly one Activity_Feed entry (Property 5). */
@@ -113,7 +131,7 @@ export const ALWAYS_NARRATED: ReadonlySet<StudioEvent["type"]> = new Set([
   "message_incomplete", "tool_started", "judge_message", "card_opened", "card_answered", "decision_doc_frozen",
   "decision_item_reviewed", "browser_action", "code_change", "memo_written", "reading_planned", "repo_brief", "index_progress", "card_expired", "decision_draft", "decision_approach_selected", "statement_submitted", "signals_collected", "meeting_summary", "review_verdict", "question_opened", "question_answered",
   "plan_proposed", "plan_confirmed", "plan_sent_back", "output_doc",
-  "verifier_result", "failure", "terminal_reached",
+  "verifier_result", "failure", "terminal_reached", "regression_result",
 ]);
 
 const ROLE_PLAIN: Record<string, string> = { facilitator: "Facilitator", user_value: "User_Value", feasibility: "Feasibility", risk: "Risk", judge: "you" };
@@ -226,7 +244,9 @@ export function narrate(e: StudioEvent): { text: string; path?: string; failure?
     case "browser_action":
       return { text: `${e.payload.action} ${e.payload.target}`.trim(), failure: !e.payload.ok };
     case "code_change":
-      return { text: `Changed ${e.payload.changedFiles.length} files (attempt ${e.payload.attempt})` };
+      return { text: e.payload.by === "test_agent" ? `Wrote tests in ${e.payload.changedFiles.length} files` : `Changed ${e.payload.changedFiles.length} files (attempt ${e.payload.attempt})` };
+    case "regression_result":
+      return { text: e.payload.pass ? `Whole test suite: no regression (${e.payload.main.ran} tests on the changed code, ${e.payload.baseline.ran} before)` : `Whole test suite: ${e.payload.regressions.length + e.payload.newFailing.length} tests fail on the changed code`, failure: !e.payload.pass };
     case "review_verdict":
       return { text: `Review: ${e.payload.verdict.replace("_", " ")}` };
     case "question_opened":
@@ -271,6 +291,7 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
       s.taskId = e.taskId;
       s.repo = { url, owner, repo, repoKind };
       s.node = e.node;
+      if (e.payload.llmPrice) s.llmPrice = e.payload.llmPrice;
       break;
     }
     case "node_entered":
@@ -297,6 +318,11 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
         const done: MessageState = { ...m, status: "complete", text: e.payload.text };
         if (e.payload.reasoning !== undefined) done.reasoning = e.payload.reasoning;
         s.messages = { ...state.messages, [m.messageId]: done };
+      }
+      const u = e.payload.usage;
+      if (u) {
+        const prev = state.usageByActor[actor] ?? { messages: 0, inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
+        s.usageByActor = { ...state.usageByActor, [actor]: { messages: prev.messages + 1, inputTokens: prev.inputTokens + u.inputTokens, cachedTokens: prev.cachedTokens + (u.cacheReadTokens ?? 0), outputTokens: prev.outputTokens + u.outputTokens } };
       }
       break;
     }
@@ -375,6 +401,22 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
       break;
     case "output_doc":
       s.outputDocs = { ...state.outputDocs, [e.payload.kind]: { kind: e.payload.kind, decisionVersion: e.payload.decisionVersion, ref: e.payload.ref, content: e.payload.content, markdown: e.payload.markdown, seq: e.seq } };
+      break;
+    case "feature_status":
+      s.featureStatus = { ...state.featureStatus, [e.payload.featureId]: { ...e.payload, seq: e.seq, ts: e.ts } };
+      if (e.payload.status !== "failed" && e.payload.status !== "blocked" && e.payload.status !== "todo") s.featureTrack = { ...state.featureTrack, [e.payload.featureId]: e.payload.status };
+      break;
+    case "code_change":
+      s.codeChanges = [...state.codeChanges, { ...e.payload, seq: e.seq, actor }];
+      break;
+    case "ai_usage":
+      s.appUsage = [...state.appUsage, e.payload];
+      break;
+    case "change_summary":
+      s.changeSummary = e.payload;
+      break;
+    case "regression_result":
+      s.regression = e.payload;
       break;
     case "decision_doc_version":
       s.decisionDocs = [...state.decisionDocs, { version: e.payload.version, hash: e.payload.hash, frozen: false }];

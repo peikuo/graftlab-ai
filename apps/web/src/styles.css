@@ -431,3 +431,38 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .md-doc table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
 .md-doc th, .md-doc td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .md-doc th { color: var(--muted); font-weight: 600; }
+/* Development whiteboard (R1.10), code changes (R4.9), AI usage (R30.19). */
+.devboard h3 { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.lane { margin: 12px 0 16px; }
+.lane h4 { margin: 0 0 8px; font-size: 13.5px; }
+.fcards { display: flex; flex-direction: column; gap: 8px; }
+.fcard { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 10px 12px; box-shadow: var(--shadow); animation: appear 0.25s ease-out; }
+.fcard.todo { background: var(--surface-2); box-shadow: none; }
+.fcard.active { border-color: var(--accent); }
+.fcard.working { background: linear-gradient(0deg, var(--working-soft), var(--surface) 70%); }
+.fcard.merged { border-color: #bbf7d0; }
+.fcard.failed { border-color: var(--failure); background: var(--failure-soft); }
+.fcard.blocked { border-color: var(--waiting); background: var(--waiting-soft); }
+.fcard-head { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.fcard-head strong { flex: 1 1 140px; font-size: 13.5px; }
+.fcard-now { margin-top: 6px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.fcard-now .dot { background: var(--working); animation: pulse-dot 1.2s ease-in-out infinite; }
+.fcard-facts { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.fcard-checks { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.track { display: flex; list-style: none; padding: 0; margin: 8px 0 0; gap: 2px; }
+.track li { flex: 1; text-align: center; font-size: 10.5px; padding: 2px 0; border-radius: 4px; background: var(--surface-2); color: var(--muted); }
+.track li.done { background: var(--working-soft); color: var(--working); }
+.track li.now { background: var(--accent); color: #fff; font-weight: 600; }
+.track li.stop-fail { background: var(--failure); color: #fff; font-weight: 600; }
+.track li.stop-block { background: var(--waiting); color: #fff; font-weight: 600; }
+.ftable { width: 100%; border-collapse: collapse; margin: 6px 0; }
+.ftable td, .ftable th { padding: 3px 6px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.ftable .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ftable tr.total td { font-weight: 600; border-bottom: none; }
+.ftable td.mono { word-break: break-all; }
+pre.diff { max-height: 420px; overflow: auto; background: var(--surface-2); border-radius: 8px; padding: 8px; font-size: 11.5px; line-height: 1.45; }
+pre.diff .add { color: #166534; background: #dcfce7; display: block; }
+pre.diff .del { color: #991b1b; background: #fee2e2; display: block; }
+pre.diff .hunk { color: var(--thinking); display: block; }
+.changes h4, .usage h4, .regression h4 { margin: 14px 0 4px; font-size: 13.5px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+@media (prefers-reduced-motion: reduce) { .fcard, .fcard-now .dot { animation: none; } }

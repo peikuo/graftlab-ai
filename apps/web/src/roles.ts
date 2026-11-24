@@ -20,6 +20,7 @@ export const ROLE_CARDS: RoleCard[] = [
   { key: "explorer", name: "Explorer", job: "Tries the app in a browser", avatar: "🕷", group: "work", kind: "agent" },
   { key: "facilitator", name: "Facilitator", job: "Runs the meeting, writes the decision", avatar: "🧙", group: "work", kind: "agent" },
   { key: "planner", name: "Planner", job: "Splits work into stories", avatar: "📜", group: "work", kind: "agent" },
+  { key: "test_agent", name: "Test_Agent", job: "Writes the tests first", avatar: "🦉", group: "work", kind: "agent" },
   { key: "code_agent", name: "Code_Agent", job: "Builds in a private copy", avatar: "🧪", group: "work", kind: "agent" },
   { key: "reviewer", name: "Reviewer", job: "Reviews each change", avatar: "🐈", group: "work", kind: "agent" },
   { key: "user_value", name: "User_Value", job: "What users gain", avatar: "🎃", group: "meeting", kind: "agent" },

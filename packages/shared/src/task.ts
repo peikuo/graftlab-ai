@@ -19,6 +19,7 @@ export const NODE_OUTCOMES = [
   "unconfirmed", // checkpoint: no response within the wait (R21.4)
   "feedback", // checkpoint: Judge feedback
   "question", // Code_Agent stopped and asked
+  "needs_tests", // story_develop: the Feature has no tests yet, the Test_Agent writes them first (R40.20)
   "retry_limit", // Code_Agent attempt finished at the retry limit
   "approve",
   "request_changes",

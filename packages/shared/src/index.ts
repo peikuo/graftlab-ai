@@ -15,3 +15,4 @@ export * from "./adapter.ts";
 export * from "./runner.ts";
 export * from "./planning.ts";
 export * from "./techdesign.ts";
+export * from "./board.ts";
