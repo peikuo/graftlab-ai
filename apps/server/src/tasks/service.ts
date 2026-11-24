@@ -13,7 +13,7 @@ import type { MemoWriter } from "../reader/memo.ts";
 import { buildRepoBrief, buildRepoIndex, type RepoMemoHandle } from "../reader/repoMemo.ts";
 import { renderBrief } from "../reader/brief.ts";
 import type { Emit, TurnOptions, TurnResult } from "../runtime/pi.ts";
-import type { RuntimeRules } from "../roles/rules.ts";
+import { roleText, sharedSystemPrompt, type RuntimeRules } from "../roles/rules.ts";
 import { filesFrom, type EvidenceFiles } from "../evidence/check.ts";
 import { runMeeting } from "../meeting/meeting.ts";
 import { exportReplay } from "../replay/export.ts";
@@ -29,6 +29,9 @@ import { runTechDesign } from "../planning/techdesign.ts";
 import { MirrorSource } from "../reader/mirror.ts";
 import { mirrorSourceFromEnv } from "../worktree/worktree.ts";
 import { DevStage, type DevStageOptions } from "../dev/stage.ts";
+import { runExperience } from "../browser/explorer.ts";
+import { Sandbox } from "../containers/sandbox.ts";
+import type { SandboxService } from "../containers/sandboxService.ts";
 import type { ContainerManager } from "../containers/manager.ts";
 import { olderVersionNote, renderArchitecture, renderBacklog, renderDefinitionOfDone, renderFeatures, renderRequirements, renderSprintPlan, renderTaskBoard } from "../planning/render.ts";
 import type { Lease } from "../queue/lease.ts";
@@ -70,7 +73,7 @@ export interface TaskServiceOptions {
     indexConcurrency?: number;
   };
   /** Live development (R38, R39): containers and the real LLM settings for the LLM_Proxy; absent means not built here. */
-  execution?: { manager: ContainerManager; devImage: string; llm: DevStageOptions["llm"]; adapters: DevStageOptions["adapter"][] };
+  execution?: { manager: ContainerManager; devImage: string; llm: DevStageOptions["llm"]; adapters: DevStageOptions["adapter"][]; sandbox?: SandboxService };
   /** The meeting roles' LLM side (R11); without it the meeting stops honestly. */
   meeting?: {
     rules: RuntimeRules;
@@ -96,6 +99,8 @@ export class TaskService {
   #decision: { draft?: { draftId: string; number: number; content: DecisionDocContent; items: ReviewItemData[] }; verdicts: Map<string, Verdict>; selected?: string | null; rejections?: { itemId: string; title: string; reason: string }[]; desk?: DecisionDesk; frozen: number } = { verdicts: new Map(), frozen: 0 };
   /** The planning step of the current Task (R19, R20): the current plan, and the Judge's reason after a send back. */
   #dev: DevStage | null = null;
+  /** The Sandbox of the current Task (evidence gathering, API-operation stories). */
+  #sandboxRef: Sandbox | null = null;
   #plan: { current?: { planId: string; number: number; plan: Plan }; design?: TechDesign; requirements?: RequirementsDoc; count: number; agenda?: string; docs: Map<OutputDocKind, { version: number; file: string }> } = { count: 0, docs: new Map() };
   /** What the reading step produced, for the meeting of the same Task. */
   #read: { memo: RepoMemoHandle; files: Map<string, string>; evidence: EvidenceFiles } | null = null;
@@ -185,6 +190,8 @@ export class TaskService {
       onTerminal: () => {
         this.#index?.abort();
         void this.#dev?.close(taskId);
+        void this.#o.execution?.sandbox?.stop().catch(() => undefined);
+        this.#sandboxRef = null;
         this.#o.lease.taskEnded();
         void this.#exportReplay(store, `${meta.owner}/${meta.repo}`);
       },
@@ -283,10 +290,12 @@ export class TaskService {
       return "failed";
     }
     const events = this.#store?.events() ?? [];
-    const agentFindings = events.flatMap((e) => (e.type === "finding_recorded" && e.actor.kind === "role" && e.payload.kind === "finding" ? [e.payload.text] : []));
+    const agentFindings = events.flatMap((e) => (e.type === "finding_recorded" && e.actor.kind === "role" && e.actor.roleId !== "explorer" && e.payload.kind === "finding" ? [e.payload.text] : []));
+    const experienceNotes = events.flatMap((e) => (e.type === "finding_recorded" && e.actor.kind === "role" && e.actor.roleId === "explorer" && e.payload.kind === "finding" ? [e.payload.text.replace(/^Tried the app: /, "")] : []));
+    const screenshotRefs = events.flatMap((e) => (e.type === "browser_observation" && e.payload.screenshotRef ? [e.payload.screenshotRef] : []));
     const skipped = events.flatMap((e) => (e.type === "finding_recorded" && e.payload.kind === "skipped" ? [e.payload.text] : []));
     const g = ctx.task.gathering;
-    const summary = { findings: agentFindings, skipped, experienceNotes: [], screenshotRefs: [], ...(g.experienceUnavailable ? { experienceUnavailable: g.experienceUnavailable } : {}), partial: g.partial };
+    const summary = { findings: agentFindings, skipped, experienceNotes, screenshotRefs, ...(g.experienceUnavailable ? { experienceUnavailable: g.experienceUnavailable } : {}), partial: g.partial };
     await ctx.emit({ type: "evidence_summary", actor: { kind: "system" }, payload: summary });
     // After the Judge sent the plan back (R19.12): the reason and the current Decision_Doc open the meeting.
     const agenda = this.#plan.agenda;
@@ -652,16 +661,72 @@ export class TaskService {
     ].filter(Boolean).join("\n");
   }
 
+  /** sandbox_start (R13, R29): the unmodified app with the fixed test data; any failure leads to the meeting (R13.4). */
+  async #sandboxStep(ctx: Parameters<NodeHandler>[0]): Promise<"done" | "failed"> {
+    const x = this.#o.execution;
+    const adapter = x?.adapters.find((a) => a.id === ctx.task.adapterId);
+    const unavailable = async (reason: string) => {
+      ctx.patch({ gathering: { ...ctx.task.gathering, experienceUnavailable: reason } });
+      await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Experience unavailable: ${reason}. The meeting starts with what was read.`, evidence: [], evidenceStatus: "none" } });
+      return "failed" as const;
+    };
+    if (!x?.sandbox || !adapter) return unavailable("live execution is not available on this server");
+    if (!this.#o.meeting) return unavailable("the Explorer has no LLM profile");
+    if (!(await x.manager.docker.ping())) return unavailable("no container engine answered");
+    await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: "Starting the app with the fixed test data (unchanged code)", evidence: [], evidenceStatus: "none" } });
+    const sandbox = new Sandbox(ctx.task.taskId, adapter, { manager: x.manager, secrets: this.#o.secrets });
+    this.#sandboxRef = sandbox;
+    const r = await x.sandbox.start(sandbox);
+    await ctx.emit({ type: "verifier_result", actor: { kind: "verifier" }, payload: { storyId: "SANDBOX", checkId: "test-data", pass: r.ok, items: r.equality.length ? r.equality : [{ item: `start the app (${r.ok ? "ready" : r.step})`, pass: r.ok, expected: "ready", actual: r.ok ? "ready" : r.reason }] } });
+    if (!r.ok) {
+      await ctx.emit({ type: "failure", actor: { kind: "system" }, payload: { failureClass: "interface_call_failure", source: "docker", detail: `the app could not start for the trial (${r.step}): ${r.reason}` } });
+      await x.sandbox.stop().catch(() => undefined);
+      return unavailable(`the app could not start (${r.step}): ${r.reason}`);
+    }
+    return "done";
+  }
+
+  /** browser_experience (R14): the Explorer uses the running app; a failure keeps the notes and leads to the meeting. */
+  async #experienceStep(ctx: Parameters<NodeHandler>[0]): Promise<"done" | "failed"> {
+    const x = this.#o.execution;
+    const m = this.#o.meeting;
+    const adapter = x?.adapters.find((a) => a.id === ctx.task.adapterId);
+    // R29.5: no Agent action against the app unless the last start, reset or restore succeeded.
+    const state = x?.sandbox?.guard() === null ? (this.#sandboxRef?.state ?? null) : null;
+    if (!x || !m || !adapter || !state || !this.#read) {
+      ctx.patch({ gathering: { ...ctx.task.gathering, experienceUnavailable: "the app is not running" } });
+      return "failed";
+    }
+    const l = adapter.browserLogin;
+    const r = await runExperience(ctx, {
+      baseUrl: `http://127.0.0.1:${state.hostPort}`,
+      taskDir: join(this.#o.dataDir, "tasks", ctx.task.taskId),
+      ...(l ? { login: { path: l.path, usernameLabel: l.usernameLabel, passwordLabel: l.passwordLabel, submitLabel: l.submitLabel, username: state.secretEnv[l.usernameEnv] ?? "", password: state.secretEnv[l.passwordEnv] ?? "" } } : {}),
+      systemPrompt: sharedSystemPrompt(m.rules, this.#contextFor(ctx, this.#read)),
+      roleText: roleText(m.rules, "explorer"),
+      appNote: adapter.testDataNote ?? "The app runs with a fixed set of test data.",
+      runTurn: (t) => m.runTurn({ ...t, emit: ctx.emit }),
+      budgetMs: 8 * 60_000,
+    });
+    await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `The Explorer used the app: ${r.actions} actions, ${r.notes.length} observations, ${r.shots.length} screenshots${r.ok ? "" : ` (ended: ${r.reason})`}`, evidence: [], evidenceStatus: "none" } });
+    if (!r.ok) {
+      ctx.patch({ gathering: { ...ctx.task.gathering, experienceUnavailable: r.notes.length ? `the experience ended early (${r.reason}); the observations so far are kept` : `${r.reason}` } });
+      return "failed";
+    }
+    return "done";
+  }
+
   /** The stable Task context of every meeting and decision turn (one cached prefix): Repo_Brief and evidence summary. */
   #contextFor(ctx: Parameters<NodeHandler>[0], read: { memo: RepoMemoHandle }): string {
     const events = this.#store?.events() ?? [];
     const s = events.find((e) => e.type === "evidence_summary");
-    const sum = s?.type === "evidence_summary" ? s.payload : { findings: [], skipped: [], partial: ctx.task.gathering.partial, experienceUnavailable: ctx.task.gathering.experienceUnavailable };
+    const sum = s?.type === "evidence_summary" ? s.payload : { findings: [], skipped: [], experienceNotes: [] as string[], partial: ctx.task.gathering.partial, experienceUnavailable: ctx.task.gathering.experienceUnavailable };
     return [
       `## Repo_Brief (written by the Reader; an LLM description, not evidence)\n\n${renderBrief(read.memo.brief).replace(/^## Repo brief\n/, "")}`,
       `## Evidence summary (built by Studio code)\n\n${[
         sum.findings.length ? `Findings so far:\n${sum.findings.map((f) => `- ${f}`).join("\n")}` : "No findings were recorded during reading.",
         sum.skipped.length ? `Skipped while reading:\n${sum.skipped.map((x) => `- ${x}`).join("\n")}` : "",
+        sum.experienceNotes.length ? `What the Explorer saw when it used the running app (observations, LLM-written):\n${sum.experienceNotes.map((f) => `- ${f}`).join("\n")}` : "",
         sum.experienceUnavailable ? `App experience unavailable: ${sum.experienceUnavailable}.` : "",
         sum.partial ? "Evidence gathering was ended early by the Judge (partial)." : "",
       ].filter(Boolean).join("\n\n")}`,
@@ -723,13 +788,8 @@ export class TaskService {
         return this.#readerStep(ctx, meta, read.files, [...read.skipped.map((s) => s.path), ...lateSkipped]);
       },
       adapter_branch: async () => "done",
-      // Until milestone 11 builds the app trial, the experience is honestly unavailable and the meeting starts (R13.4).
-      sandbox_start: async (ctx) => {
-        const reason = "the app trial is not built yet in this version";
-        ctx.patch({ gathering: { ...ctx.task.gathering, experienceUnavailable: reason } });
-        await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Experience unavailable: ${reason}. The meeting starts with what was read.`, evidence: [], evidenceStatus: "none" } });
-        return "failed";
-      },
+      sandbox_start: (ctx) => this.#sandboxStep(ctx),
+      browser_experience: (ctx) => this.#experienceStep(ctx),
       meeting: (ctx) => this.#meetingStep(ctx),
       deciding: (ctx) => this.#decidingStep(ctx),
       awaiting_confirmation: (ctx) => this.#confirmationStep(ctx),
@@ -761,6 +821,11 @@ export class TaskService {
       ...(this.#o.execution
         ? {
             target_check: async (ctx) => {
+              // Memory: the trial app stops before development when no story operates it through its API.
+              if (!ctx.task.stories.some((s) => s.kind === "api_operation")) {
+                await this.#o.execution?.sandbox?.stop().catch(() => undefined);
+                this.#sandboxRef = null;
+              }
               const stage = this.#devStage(ctx);
               return stage ? stage.targetCheck(ctx) : (await ctx.fail("interface_call_failure", "persistence", "development has no technical design or Adapter for this Task"), "failed");
             },

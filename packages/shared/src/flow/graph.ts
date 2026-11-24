@@ -53,7 +53,7 @@ export const NODES: Record<NodeId, FlowNode> = {
   browser_experience: {
     id: "browser_experience",
     kind: "agent_loop",
-    tools: ["browser_open", "browser_click", "browser_fill", "browser_press", "browser_snapshot", "browser_screenshot", "record_note"],
+    tools: ["browser_open", "browser_click", "browser_fill", "browser_press", "browser_snapshot", "browser_screenshot", "record_note", "finish_experience"],
     timeoutS: min(10),
     requirements: "R14",
   },

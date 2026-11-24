@@ -20,6 +20,8 @@ function tabOf(e: StudioEvent): Tab | null {
   return null;
 }
 
+/** A screenshot of the Task (artifacts/shots/<name>.jpg) through the read-only route. */
+const shotUrl = (taskId: string, ref: string) => `/api/tasks/${encodeURIComponent(taskId)}/shots/${encodeURIComponent(ref.split("/").pop() ?? "")}`;
 const LABEL: Record<Tab, string> = { found: "Findings", app: "App trial", decision: "Decision", plan: "Plan and documents", board: "Build board" };
 
 /** File preview (R4.4): the latest file while reading, or a file the Judge picked. */
@@ -175,6 +177,17 @@ export function ArtifactArea({ state, events, loadFile, now }: { state: UiState;
           (browser.length === 0 ? (
             <p className="empty">The app could not be tried: {unavailable}</p>
           ) : (
+            <>
+            {(() => {
+              const last = browser.findLast((e) => e.type === "browser_observation" && e.payload.screenshotRef);
+              const ref = last?.type === "browser_observation" ? last.payload.screenshotRef : undefined;
+              return ref && state.taskId ? (
+                <figure className="trial-live">
+                  <img src={shotUrl(state.taskId, ref)} alt={`The app as the Explorer sees it: ${last?.type === "browser_observation" ? last.payload.snapshotSummary : ""}`} />
+                  <figcaption className="muted small">{state.node === "browser_experience" ? "Live: the latest screenshot of the app trial" : "The last screenshot of the app trial"}</figcaption>
+                </figure>
+              ) : null;
+            })()}
             <ol className="trial">
               {browser.map((e) =>
                 e.type === "browser_action" ? (
@@ -189,10 +202,16 @@ export function ArtifactArea({ state, events, loadFile, now }: { state: UiState;
                   <li key={e.seq} className="seen">
                     <span className="trial-mark" aria-hidden="true">👁</span>
                     <span>{e.payload.snapshotSummary}</span>
+                    {e.payload.screenshotRef && state.taskId && (
+                      <a href={shotUrl(state.taskId, e.payload.screenshotRef)} target="_blank" rel="noreferrer" className="trial-thumb">
+                        <img src={shotUrl(state.taskId, e.payload.screenshotRef)} alt="" loading="lazy" />
+                      </a>
+                    )}
                   </li>
                 ) : null,
               )}
             </ol>
+            </>
           ))}
         {active === "decision" && (
             <ul className="clean">

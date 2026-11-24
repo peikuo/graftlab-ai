@@ -466,3 +466,7 @@ pre.diff .del { color: #991b1b; background: #fee2e2; display: block; }
 pre.diff .hunk { color: var(--thinking); display: block; }
 .changes h4, .usage h4, .regression h4 { margin: 14px 0 4px; font-size: 13.5px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 @media (prefers-reduced-motion: reduce) { .fcard, .fcard-now .dot { animation: none; } }
+/* App trial (R4.2, R14.2): the latest screenshot large, one thumbnail per observation. */
+.trial-live { margin: 0 0 10px; }
+.trial-live img { width: 100%; border: 1px solid var(--border); border-radius: 10px; display: block; }
+.trial-thumb img { width: 72px; height: 48px; object-fit: cover; object-position: top; border: 1px solid var(--border); border-radius: 4px; margin-left: 6px; vertical-align: middle; }

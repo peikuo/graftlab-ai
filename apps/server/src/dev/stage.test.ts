@@ -18,6 +18,8 @@ describe("ownModelClients (R40.23)", () => {
       '+    base = os.environ.get("GL_AI_BASE_URL")',
       "+++ b/bookmarks/tests/test_ai.py",
       '+    os.environ["GL_AI_MODEL"] = "m"',
+      "+++ b/bookmarks/services/ai_suggestions.py",
+      "+through the shared ``graftlab_ai`` client, configured by ``GL_AI_BASE_URL``",
       "+++ b/bookmarks/views.py",
       "+    r = graftlab_ai.ask(system, user)",
     ].join("\n");

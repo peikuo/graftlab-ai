@@ -236,6 +236,13 @@ export function createStudio(opts: StudioOptions): Studio {
     if (text === null) return reply.code(404).send({ error: "no such replay" });
     return reply.type("application/json").send(text);
   });
+  // Read-only: a screenshot of the app trial or a browser check (R4.2, R14.2); the name is checked before the path is built.
+  app.get<{ Params: { id: string; file: string } }>("/api/tasks/:id/shots/:file", async (req, reply) => {
+    if (!/^[a-z0-9-]{1,80}$/i.test(req.params.id) || !/^[A-Za-z0-9_-]{1,80}\.jpg$/.test(req.params.file)) return reply.code(400).send({ error: "invalid name" });
+    const data = await readFile(join(opts.dataDir ?? "data", "tasks", req.params.id, "artifacts", "shots", req.params.file)).catch(() => null);
+    if (!data) return reply.code(404).send({ error: "no such screenshot" });
+    return reply.type("image/jpeg").header("cache-control", "private, max-age=3600").send(data);
+  });
   // Read-only: the text of a downloaded file of the current Task (R4.4). Viewers may see it too (public repositories).
   app.get<{ Params: { id: string }; Querystring: { path?: string } }>("/api/tasks/:id/files", async (req, reply) => {
     const path = req.query.path ?? "";

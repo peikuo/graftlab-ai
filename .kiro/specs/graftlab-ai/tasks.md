@@ -504,20 +504,24 @@ Conventions:
     - Show the user `adapter.json` passing the contract schema, the comparator tests (including Property 11 from 10.4) passing, and a Sandbox started through the contract with provisioning, seed and a passing equality table, then a changed item failing the equality check and a reset passing it again; check that no credential appears in `events.jsonl` and that the repository check finds no start-procedure field
     - _Requirements: 29.4, 39.10, 30.15_
 - [ ] 11. F4-F5: evidence gathering before the meeting: Sandbox start and Browser_Use experience with live screenshots (target 2026-11-28)
-  - [ ] 11.1 Wire `sandbox_start` into the flow
+  - [x] 11.1 Wire `sandbox_start` into the flow
+    - Done 2026-11-25: `#sandboxStep` in the task service starts the Sandbox through `SandboxService` (fresh volume, provision, seed, equality as a Verifier result); a failure is recorded and leads to the meeting with "experience unavailable"; the Sandbox stops before development when no API-operation story remains
     - Node handler after `adapter_branch` for Adapted_Repo, after reading and before the meeting; a start, provisioning, reset or equality failure (including an unavailable container engine) is recorded, shown, labels the experience "experience unavailable" with the reason, and takes the edge to `meeting`; no Agent action runs against the target baseline in that state; the "not executed" end happens only at `target_check` (14.6)
     - Design: Flow_Graph (rules), Sandbox and test data
     - _Requirements: 13.1, 13.4, 25.8, 29.1, 29.5_
-  - [ ] 11.2 Implement Browser_Use tools
+  - [x] 11.2 Implement Browser_Use tools
+    - Done 2026-11-25: `apps/server/src/browser/session.ts` (route filter, Studio login, open/click/fill/press, ARIA snapshot cut at 8 KB, JPEG after every action; `session.test.ts`)
     - `apps/server/src/browser/`: Playwright Chromium, route filter that aborts other origins, Studio login, operator tools, ARIA snapshot truncated to 8 KB, screenshots only when image-capable, JPEG after each action, `browser_action` and `browser_observation`, failure recorded before the next action, 40 actions and 5 consecutive failures limit
     - Design: Browser_Use
     - _Requirements: 14.2, 14.4, 14.5, 14.6, 14.7, 14.8, 14.9, 14.10_
-  - [ ] 11.3 Implement the `browser_experience` node and the "start the meeting now" control
+  - [x] 11.3 Implement the `browser_experience` node and the "start the meeting now" control
+    - Done 2026-11-25: `apps/server/src/browser/explorer.ts` (Explorer pi agent with browser tools, record_note, finish_experience; 40 actions, 5 failures in a row, 8 min budget); `runtime-rules/roles/explorer.md`; notes and screenshots in the evidence summary; "start the meeting now" uses the existing endpoint
     - Operator pi agent with `record_note` and no `ask_judge`; analysis notes and live screenshots shown; ends with the observed experience leading to `meeting`; a failure or timeout keeps the observations so far and leads to `meeting` with "experience unavailable"
     - `POST /api/tasks/:id/gathering/end` and a Workspace control "start the meeting now", accepted only in `sandbox_start` and `browser_experience`: stops the running gathering work and leads to `meeting` with the partial label; the `evidence_summary` from 6.9 then includes the experience notes, screenshots and labels
     - Design: Browser_Use, Flow_Graph (rules), Meeting, HTTP API
     - _Requirements: 11.1, 11.9, 12.6, 14.1, 14.3, 14.12, 14.13, 14.14_
-  - [ ] 11.4 Build the live browser view
+  - [x] 11.4 Build the live browser view
+    - Done 2026-11-25: App trial tab shows the latest screenshot large and one thumbnail per observation (`/api/tasks/:id/shots/:file`)
     - Artifact_Area stream of screenshots with action and observation entries
     - Design: Web app, Browser_Use
     - _Requirements: 4.2, 14.2_

@@ -56,6 +56,8 @@ export const AdapterJsonSchema = z
     testSelectionHint: text,
     /** The fields an api_readback expectation may use, in words for the LLM roles (the comparator checks them). */
     readbackFields: text.optional(),
+    /** The fixed test data in words, for the Explorer (R14). */
+    testDataNote: text.optional(),
     /** Where the prewritten AI client library goes in the target (R40.23); the directory is its import name. */
     aiClient: z.object({ language: z.literal("python"), dir: z.string().regex(/^[A-Za-z_][A-Za-z0-9_/]*$/) }).strict().optional(),
     /** The whole suite for the Regression_Check (R22.10): the command, the output parser, the time limit. */

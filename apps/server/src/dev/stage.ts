@@ -63,13 +63,16 @@ const fileRows = (f: Feature, changed: { status: string; path: string }[], stats
   });
 /** The prewritten AI client libraries (R40.23), next to the Studio code. */
 const LIBS_DIR = join(import.meta.dirname, "..", "..", "..", "..", "runtime-libs");
-/** Added lines outside the AI client that call a chat endpoint or read the GL_AI_* variables themselves (R40.23). */
+/**
+ * Added lines outside the AI client that call a chat endpoint or read the GL_AI_* variables themselves (R40.23): the
+ * endpoint or the variable name as a string literal, so a comment or docstring that mentions them does not count.
+ */
 export function ownModelClients(patch: string, clientDir: string | undefined): string[] {
   const hits = new Set<string>();
   let file = "";
   for (const line of patch.split("\n")) {
     if (line.startsWith("+++ b/")) file = line.slice(6);
-    else if (line.startsWith("+") && !line.startsWith("+++") && /chat\/completions|GL_AI_(BASE_URL|API_KEY|MODEL)/.test(line) && !(clientDir && file.startsWith(`${clientDir}/`)) && !/(^|\/)tests?\//.test(file)) hits.add(file);
+    else if (line.startsWith("+") && !line.startsWith("+++") && /["'][^"']*chat\/completions[^"']*["']|["']GL_AI_(BASE_URL|API_KEY|MODEL)["']/.test(line) && !(clientDir && file.startsWith(`${clientDir}/`)) && !/(^|\/)tests?\//.test(file)) hits.add(file);
   }
   return [...hits];
 }
