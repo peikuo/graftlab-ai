@@ -351,10 +351,6 @@ export class TaskService {
       ...(ctx.task.adapterId ? { checkHints: await this.#checkHints(ctx.task.adapterId) } : {}),
       files: read.files,
       evidence: read.evidence,
-      ...(() => {
-        const a = this.#o.execution?.adapters.find((x) => x.id === ctx.task.adapterId);
-        return a ? { expectFields: a.hooks.itemFields } : {};
-      })(),
       emit: ctx.emit,
       runTurn: (t) => m.runTurn({ ...t, emit: ctx.emit }),
       signal: ctx.signal,
@@ -566,7 +562,9 @@ export class TaskService {
       return "failed";
     }
     const p = cur.plan;
+    const adapterHooks = this.#o.execution?.adapters.find((x) => x.id === ctx.task.adapterId)?.hooks;
     const r = await runTechDesign({
+      ...(adapterHooks ? { expectFields: adapterHooks.itemFields } : {}),
       rules: m.rules,
       context: this.#contextFor(ctx, read),
       decisionMarkdown: frozen.markdown,
