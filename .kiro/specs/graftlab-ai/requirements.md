@@ -124,6 +124,7 @@ Moved to `reference-target-linkding.md`, section "Verified linkding facts" (incl
 - **Acceptance_Check**: An executable check that proves a feature works: an API read-back compared item by item, a run of the target's own test suite in a fresh container from the Development_Sandbox image, or a scripted Playwright browser check (no LLM) in the Run_Environment (Requirement 22.2).
 - **Flow_Graph**: The explicit graph of Task stages (nodes and guarded edges stored as data) that governs every state transition of a Task.
 - **Terminal_State**: One of success, failed, aborted, Analysis only, Docs only.
+- **Test_Agent**: The in-product Agent that writes the tests of one Feature before the Code_Agent builds it (test first). It runs in the Development_Sandbox like the Code_Agent, changes only test files, and has no decision power.
 - **Code_Agent**: The in-product Agent that edits a copy of the target source and runs tests inside the Development_Sandbox. It has no decision power and stops and asks when it cannot resolve a problem.
 - **Worktree**: An isolated per-Task working copy of the target source under git (implemented as a local clone from a mirror, not a linked worktree; see design), one per Task, holding the only modified copy of the target source.
 - **Feature_Contract**: The per-story, feature-level contract derived from the Frozen Decision_Doc and carried by every Product_Backlog story. It states the feature in plain language, what it should do, what it should NOT do (in feature terms), executable Acceptance_Checks where possible, and budgets. It contains no file or path lists (Requirement 40).
@@ -162,7 +163,9 @@ Moved to `reference-target-linkding.md`, section "Verified linkding facts" (incl
 - **Agile_Docs**: The Output_Docs set: Decision_Doc, Product_Backlog, Sprint_Plan, Task_Board, Definition_of_Done, Demo_Review_Notes, Retrospective, plus requirements, design and tasks documents for the analyzed repository.
 - **Product_Backlog**: The list of user stories, each with acceptance criteria and a priority.
 - **Sprint_Plan**: The sprint goal and the selected stories.
-- **Task_Board**: The work items and their status (for example to do, in progress, done, blocked).
+- **Task_Board**: The work items and their status (for example to do, in progress, done, blocked). In the development stage it is shown live as a whiteboard: one card per Feature with its phase and the agent working on it.
+- **Regression_Check**: The Verifier's run of the target's whole test suite on the merged `main`, compared test by test with the same run on the pinned commit.
+- **AI_Usage**: Token counts of model calls, per Agent_Role and for the changed app's own calls through the LLM_Proxy, with a cost estimate from configured prices.
 - **Definition_of_Done**: The shared checklist a story must satisfy to count as done.
 - **Demo_Review_Notes**: One note per feature confirmation point, recording the demo and the Judge feedback.
 - **Retrospective**: The end-of-Task review of what worked, what failed and what to change.
@@ -359,7 +362,8 @@ Process note for our own work (layer A stays in Kiro format): each feature in ou
 | Risk | Meeting_Perspective | Argues from what can go wrong; assesses the risk of each approach; safety rules are enforced by Studio code, not by this role |
 | Planner | Agent_Role (function) | Splits the frozen decision into stories with Feature_Contracts and writes the Output_Docs (flow steps F7 and F8) |
 | Reviewer | Agent_Role (function) | Active in the development stage: reviews the files changed by the Code_Agent against the Feature_Contract and the Decision_Doc (approve, request changes, escalate) and answers technical questions; also active for API-operation stories, where it reads the relevant code with read-only tools and designs the Demo_Case (endpoints, test-data items, expected outcome, harmlessness reason, reversal statement); its verdicts and Demo_Cases are LLM judgments, not guarantees, and not success |
-| Code_Agent | Agent_Role (function) | Develops one story inside the per-Task container; has no decision power and stops to ask |
+| Test_Agent | Agent_Role (function) | Writes the tests of one Feature before the code exists, from the Feature_Contract and the technical design, inside the per-Task container; changes only test files; has no decision power (decided by the user 2026-11-24) |
+| Code_Agent | Agent_Role (function) | Develops one story inside the per-Task container; has no decision power and stops to ask; may add tests but may not change the Test_Agent's tests |
 | Verifier | Non-LLM component | The only judge of success |
 
 Agents are split by function, one per flow step, not by human job titles (decided by the user, 2026-11-22). Each function agent has one step, one input and one schema-validated output. The three Meeting_Perspectives exist only to bring different viewpoints into the meeting; they are shown only while the meeting runs. The former draft roles map as follows: Moderator became the Facilitator; Product became User_Value (meeting) and the Explorer (browser experience); Architecture became Feasibility (meeting) and the Reader (reading); Risk_and_Security became Risk; Verification was removed (the Facilitator drafts the acceptance checks; only the Verifier decides success); Tech_Manager became the Reviewer.
@@ -389,6 +393,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 6. THE Studio SHALL give each Agent_Role an avatar.
 7. WHERE a dark Halloween theme is used, THE Studio SHALL treat it as a styling choice only; the main Kiroween category remains Frankenstein.
 8. THE project documents SHALL treat the question whether one entry may be in more than one Kiroween category as TO BE CONFIRMED and SHALL NOT assume the answer.
+10. WHILE the development stage runs, THE Workspace SHALL show the Task_Board as a whiteboard (decided by the user 2026-11-24): one card per Feature, grouped by story, showing the Feature's phase (to do, writing tests, building, in review, running the app, demo, verifying, merged, failed, blocked), the agent working on it with that agent's current Role_Status, the attempt number, the size of the change (files, added and removed lines) and the Verifier result; every phase SHALL come from a recorded event, and counts such as "2 of 4 Features merged" SHALL be computed from those events.
 
 ### Requirement 2: Event-backed presence, no fake animation
 
@@ -447,6 +452,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 6. IF a work product that the flow was going to produce is unavailable (for example the browser experience after a failed Sandbox start), THEN THE Artifact_Area SHALL display the reason; a work product that is simply not due yet is not shown at all (Requirement 1.9).
 7. WHEN the first tool call, diff, Review_Verdict or rejected change exists, THE Artifact_Area SHALL provide a collapsed "Engineering details" view, closed by default, that shows on demand the diffs, Review_Verdicts, rejected changes and tool calls of the development stage.
 8. THE Studio SHALL NOT push diffs, Review_Verdicts or rejected changes into the Judge's main view and SHALL NOT open the Engineering details view without a Judge action.
+9. THE Engineering details view SHALL show the code changes (decided by the user 2026-11-24): per Feature attempt the changed files with added and removed lines, each marked planned or unplanned, and the diff text; and for the Task the whole change of `main` against the pinned commit as a file list with line counts. The diff text SHALL travel in the Event_Stream, so Replay shows the same changes.
 
 ### Requirement 5: Interjection, questions and confirmation cards
 
@@ -771,6 +777,9 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 7. THE Studio SHALL display per-item pass or fail results from the Verifier.
 8. WHERE a source change or a UI change is verified, THE Verifier SHALL verify it in the Run_Environment.
 9. THE Verifier SHALL decide each Acceptance_Check without calling an LLM.
+10. WHEN the last Feature of the Task is merged, THE Verifier SHALL run the Regression_Check (decided by the user 2026-11-24): the target's whole test suite, as named by the Adapter, on the merged `main` and on the pinned commit (the pinned-commit result may be cached per Adapter, commit and image), and SHALL compare them test by test; a test that does not fail at the pinned commit and fails on `main` is a regression, named with its test id; the check passes only without regressions and is shown with the test counts of both runs, the number of new tests and the regressions. Tests that already fail at the pinned commit are shown but are not counted against the change.
+11. WHERE the Frozen Decision_Doc's AI runtime uses the Studio's model service, THE Verifier SHALL count by code, through the LLM_Proxy, the changed app's model calls during each browser check (the app has its own proxy credential, separate from the agents'), and SHALL show the number of calls, their status codes and their tokens as an item of the check; WHERE the check is marked as needing the model, THE item SHALL pass only with at least one successful call.
+12. BEFORE the Code_Agent builds a Feature, THE Verifier SHALL run the Test_Agent's tests on the Feature's starting point and SHALL require them to fail (the "red" check, decided by the user 2026-11-24); tests that already pass before the code exists test nothing new and are sent back to the Test_Agent once with that reason, visibly.
 
 ### Requirement 23: Failure and honesty principle
 
@@ -916,6 +925,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 16. THE Studio SHALL NOT pass the real LLM key into the Development_Sandbox; THE Studio SHALL give the Code_Agent a per-Task credential for the LLM_Proxy, which holds the real key. Whether the pi-coding-agent custom provider and model entry, pointing at the LLM_Proxy as base address, works is TO BE CONFIRMED by the first spike task (history: in the 2026-11-20 test, a custom base address on the DeepSeek Harness runtime returned HTTP 404; the cause is not known).
 17. WHERE a Judge-supplied base address is enabled, THE Studio SHALL accept only https addresses that resolve to public IP addresses and SHALL reject loopback, private, link-local and cluster addresses (server-side request forgery protection).
 18. WHERE the server environment selects an LLM profile, THE Studio SHALL use that profile's base address, model and key instead of the defaults, and SHALL show the active profile and model (never the key) in the Studio status and in the Task record.
+19. THE Studio SHALL show AI_Usage (decided by the user 2026-11-24): tokens (input, cached input, output) per Agent_Role from the recorded complete messages, and the changed app's tokens counted by the LLM_Proxy; WHERE prices are configured in server-side environment variables, THE Studio SHALL show a cost estimate labeled "estimate from configured prices" and SHALL record the prices used in the Event_Stream so Replay shows the same numbers; without configured prices only tokens are shown. Counts come from the model's reported usage, never from an estimate of text length.
 
 ### Requirement 31: Narration (text to speech)
 
@@ -1111,6 +1121,9 @@ Note (hosting consequence, Open item 46): live execution (flow steps F4-F10) nee
 17. IF a Code_Agent question stays unanswered beyond its wait time (initial value 300 s, set in design.md, Open item 39), THEN THE Studio SHALL mark the story Unconfirmed-blocked and continue the flow with the next story, or end the Task in the Terminal_State `failed` if no story is left.
 18. WHERE the confirmed approach of a story executes the workflow by operating linkding through its API, THE Studio SHALL assign the story to the Reviewer for Demo_Case design (Requirement 18) instead of to the Code_Agent, and SHALL give the Reviewer only read-only tools plus the Demo_Case submission for that story.
 19. WHEN a Feature starts, THE Studio SHALL build by code a focus pack for the Code_Agent from the Repo_Memo and the current `main`: the planned files with their summaries and code outlines, their direct neighbors by import or by the Repo_Memo, an existing test next to the planned tests as an example, and the quotes of the technical design; summaries of files changed by earlier Features are marked as possibly outdated. The pack is a map, not the code: the Code_Agent reads the code itself. Which files the Code_Agent reads and changes is recorded and measured against the pack (decided by the user 2026-11-24).
+20. WHEN a Feature starts, THE Studio SHALL first give it to the Test_Agent (test first, decided by the user 2026-11-24): the Test_Agent gets the same story bundle and focus pack, writes the Feature's tests from the Feature_Contract, the acceptance criteria and the interfaces of the technical design, and commits them on the Feature branch; THE Studio SHALL reject by code a Test_Agent change to a file that is not a test file, with the Failure_Class "rejected by a safety rule".
+21. THE Studio SHALL protect the Test_Agent's tests by code: IF a Code_Agent attempt changes or deletes a file the Test_Agent wrote, THEN THE Studio SHALL record a failure with the Failure_Class "rejected by a safety rule", SHALL send the attempt back to the Code_Agent with that reason, and SHALL count it as an attempt; the Code_Agent may add its own tests, and when it thinks a Test_Agent test is wrong it SHALL stop and ask (criterion 11).
+22. THE Reviewer SHALL review the Test_Agent's tests together with the Code_Agent's change (criterion 6).
 
 ### Requirement 41: Prototype during the requirement meeting
 

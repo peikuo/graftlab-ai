@@ -597,6 +597,21 @@ Conventions:
   - [x] 14.26 Focus pack and Code_Agent rules
     - Focus pack built by code at Feature start (planned files with memo summaries and outlines, one-hop neighbors, an example test, design quotes, outdated marks), delivered as pi's project context file; `grep`, `find`, `ls` enabled; coding rules (assumptions, simplicity, surgical changes, test-driven completion) in `code_agent.md`; reads and changes measured against the pack
     - _Requirements: 40.19_
+  - [ ] 14.27 Feature status events and the development whiteboard
+    - `feature_status` written by code at every phase change; `featureBoard()` in the shared reducer (pure); Board tab in the Details panel with one lane per story, phase track, working agent and live Role_Status, attempt, change size, Verifier badges; Test_Agent avatar in the Team panel
+    - _Requirements: 1.10_
+  - [ ] 14.28 Test_Agent and the red check
+    - Node `story_test`; `runtime-rules/roles/test_agent.md`; Test_Agent run with the same runner; test-file-only rule by code; tests committed on the Feature branch; red check in a fresh test container; one visible retry; protected test files checked before the review
+    - _Requirements: 40.20, 40.21, 40.22, 22.12_
+  - [ ] 14.29 Code changes in the Engineering details
+    - `code_change` with per-file line counts, planned marks and the diff text; `change_summary` of `main` against the pinned commit at the end; the Changes fold in Engineering_Details
+    - _Requirements: 4.9, 38.5_
+  - [ ] 14.30 Regression_Check
+    - Adapter `regression` (linkding: `bookmarks.tests`, Django parser); baseline started in the background at `target_check` and cached; node `regression_check` after the last merge; `regression_result` with counts, new tests, regressions
+    - _Requirements: 22.10_
+  - [ ] 14.31 AI usage and the app's model calls
+    - Two proxy credentials; usage log lines in the LLM_Proxy; the app's calls per browser check as a Verifier item (`needsAi`); `ai_usage`; tokens per agent from `message_completed`; prices from `LLM_PRICE_*` recorded in `task_created`; usage in the Result view
+    - _Requirements: 22.11, 30.19_
   - [x] 14.1 Implement the context builder and the development rules
     - Done 2026-11-23: `apps/server/src/dev/context.ts` (one Feature, its story and contract, the architecture, summaries of the Features it builds on); `runtime-rules/roles/code_agent.md` updated
     - `apps/server/src/dev/context.ts` writes only the story, its Feature_Contract and the referenced documents; Runtime_Rules rules "small scope per Agent" and "no decision power, stop and ask, reviewed by the Reviewer"

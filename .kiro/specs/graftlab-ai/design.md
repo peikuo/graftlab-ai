@@ -276,6 +276,9 @@ stateDiagram-v2
     target_check --> story_develop: baseline check passed, next story is source change
     target_check --> api_read: baseline ready and reset verified, next story is API operation
     target_check --> failed: target baseline cannot start, not executed
+    story_develop --> story_test: the Feature has no tests yet (test first)
+    story_test --> story_develop: tests written and red before the code
+    story_test --> failed: no valid tests after one visible retry
     story_develop --> story_review: F10 attempt finished, change recorded
     story_develop --> story_ask: question, or retry limit reached
     story_develop --> failed: story budget exceeded or Code_Agent failure
@@ -294,7 +297,9 @@ stateDiagram-v2
     story_checkpoint --> verifying: confirmed, or no response marked Unconfirmed
     verifying --> story_develop: all checks pass, next story is source change
     verifying --> api_read: all checks pass, next story is API operation
-    verifying --> success: all checks pass, last story, every story verified
+    verifying --> regression_check: all checks pass, last story, every story verified
+    regression_check --> success: no regression against the pinned commit
+    regression_check --> failed: a regression, or the suite could not run
     verifying --> failed: all checks pass, last story, an earlier story not verified (partial)
     verifying --> failed: mismatch or check failure
     success --> [*]
@@ -355,12 +360,14 @@ Node table:
 | tech_design | agent_loop | Planner `read_file`, `search_repo`, `submit_tech_design`; Feasibility `submit_tech_review`; Reviewer `read_file`, `search_repo`, `submit_final_tech_design`; the Task_Board is built by code | 20 min | R19.13-R19.15 |
 | adapter_branch_2 | auto | none | 5 s | R25 |
 | target_check | auto | none (Studio code: engine ping, baseline image present by digest; if an API-operation story remains, the Sandbox is started or reused, provisioned, reset and verified) | 3 min | R13.4, R25.8, R29.5 |
+| story_test | agent_loop | Test_Agent's own tools inside the Development_Sandbox only (the same runner as the Code_Agent, its own rules); then the Verifier's red check in a fresh test container | story budget | R40.20, R22.12 |
 | story_develop | agent_loop | Code_Agent's own tools inside the Development_Sandbox only | story budget | R38, R40 |
 | story_review | agent_loop | Reviewer: `read_changed_file`, `read_diff`, `submit_review_verdict` | 5 min | R40.6-R40.10 |
 | story_ask | wait_user | Reviewer `answer_question` for technical questions; Judge question card for feature questions | 300 s for the Judge | R40.11-R40.14 |
 | story_run | auto | none (Studio starts the Run_Environment) | 240 s | R39.9-R39.11 |
 | story_checkpoint | wait_user | none | 120 s (demo 30 s) | R21 |
 | verifying | auto | none (Verifier) | 10 min | R22 |
+| regression_check | auto | none (Verifier: the Adapter's full test suite on `main` and, cached, on the pinned commit) | 40 min | R22.10 |
 | api_read | agent_loop | Reviewer designs the Demo_Case: `target_api_read` (read-only calls within the Adapter allow-list), `read_file`, `search_repo` (read-only), `submit_demo_case` | 8 min | R18.2, R18.7, R40.18 |
 | api_plan | auto | none (Studio validates the Demo_Case and derives its `api_readback` check) | 5 s | R18.2, R18.8, R18.10-R18.12 |
 | api_suggest | agent_loop | Reviewer: `target_api_read`, `read_file`, `submit_suggestion` (values only for Demo_Case items marked as suggested) | 5 min | R18.3 |
@@ -506,6 +513,7 @@ export interface Adapter {
     env: Record<string, string>;                // toolchain environment in the dev, test and run containers (linkding: use the preinstalled venv, no package sync, offline)
   };
   testSelectionHint: string;                    // guidance for test_suite checks (which tests to name)
+  regression?: { command: string[]; format: "django"; timeoutS: number }; // the whole suite for the Regression_Check (R22.10)
   runtimeRulesChecklist: string;                // runtime-rules/adapters/<id>-checklist.md (layer B)
 }
 // Deliberately absent: any build or start procedure for the MODIFIED target (R39.10).
@@ -610,6 +618,7 @@ None of them edited tests in the first scenario. The comparison is repeated at t
 - A small Node HTTP server bundled from `apps/server/src/proxy/` into one file, run in its own container on the `dev-sandbox` image, started per Task with the real key and a freshly generated per-Task credential in its environment.
 - Accepts requests only with `Authorization: Bearer <per-Task credential>`, forwards only allow-listed OpenAI-compatible paths (initially chat completions and models) to the configured LLM base address, replaces the credential with the real key, and streams the response back unchanged.
 - Logs method, path and status (never headers or bodies) so the 404 seen on 2026-11-20 can be diagnosed.
+- Two credentials per Task (R22.11, R30.19): one for the agents in the Development_Sandbox, one for the changed app in the Run_Environment and test containers. Each finished request writes one log line `#<n> <caller> <method> <path> <status> in=<input> cached=<cached> out=<output>`, with the token counts read by code from the response's `usage` (the JSON body, or the last streamed chunk that carries `usage`); the body itself is never logged or kept beyond the parse. The backend reads these lines from the container log; the sequence number marks the window of a browser check.
 - Also hosts the port relay to app ports on the internal network (see "Network policy"): one fixed TCP port, published on the loopback interface, forwarded to the Run_Environment's or the test container's app port.
 - Stopped and removed at Task end; the credential is then useless.
 - The real key is visible to the LLM_Proxy container environment on the deployment host; it never enters the Development_Sandbox or the Run_Environment.
@@ -821,7 +830,9 @@ DeepSeek caches prompt prefixes on disk by default (api-docs.deepseek.com/guides
 
 ### Development stage (R21, R38, R39, R40)
 
-Per source-change story, Feature by Feature in dependency order (R38.10; decided by the user 2026-11-23). Steps 1 to 5 run for every Feature on its branch. After the Reviewer approves a Feature that is not the last of its story, the flow goes straight to `verifying`, which runs the Feature's test command in a fresh test container and, when it passes, merges the Feature into `main`. The last Feature of a story continues with steps 7 and 8 (the running app and the Judge's checkpoint for the story's demo point), then `verifying` runs the Feature's tests and the story's acceptance checks and merges. A Verifier failure ends the Task in `failed` (Open item 53).
+Per source-change story, Feature by Feature in dependency order (R38.10; decided by the user 2026-11-23). Steps 1 to 5 run for every Feature on its branch.
+Test first (R40.20-R40.22, R22.12; decided by the user 2026-11-24): when `story_develop` starts a Feature that has no tests yet, it leaves to `story_test`. The Test_Agent runs in the Development_Sandbox with the same runner, the same story bundle and focus pack, and its own rules (`runtime-rules/roles/test_agent.md`): write the tests named in the Feature (`tests.files`) from the Feature_Contract, the acceptance criteria and the interfaces of the technical design, against interfaces that do not exist yet, and commit nothing else. Studio code then (1) rejects any changed file that is not a test file (a path in `tests.files`, or a path whose name or directory marks it as a test: `test_*`, `*_test.*`, `*.test.*`, `tests/`, `test/`), (2) commits the tests on the Feature branch as "F1: tests (Test_Agent)", (3) runs the Feature's test command in a fresh test container on that commit: a non-zero exit is the expected "red" result. A green result or a rejected change sends the Test_Agent back once with the reason (a visible retry); a second miss ends in `failed`. The Test_Agent's files are recorded as protected for the Feature; a Code_Agent attempt that changes or deletes one is rejected by code before the review (`rejected_by_safety_rule`, sent back with the reason, counted as an attempt). The Reviewer's diff covers the tests and the code. A question of the Code_Agent about a wrong test goes to the Reviewer like any technical question; changing a protected test is not possible in this version (recorded in "Deferred for later").
+Feature status (R1.10): every phase change of a Feature is one `feature_status` event written by code (`todo`, `testing`, `building`, `reviewing`, `running`, `demo`, `verifying`, `merged`, `failed`, `blocked`, with the attempt number). The whiteboard is folded from these events, the `code_change` line counts and the `verifier_result` events; the working agent on a card is the actor of the phase, and its activity comes from `roleStatus()`. After the Reviewer approves a Feature that is not the last of its story, the flow goes straight to `verifying`, which runs the Feature's test command in a fresh test container and, when it passes, merges the Feature into `main`. The last Feature of a story continues with steps 7 and 8 (the running app and the Judge's checkpoint for the story's demo point), then `verifying` runs the Feature's tests and the story's acceptance checks and merges. A Verifier failure ends the Task in `failed` (Open item 53).
 1. Context: `dev/context.ts` writes `data/tasks/<id>/context/<storyId>/story.md` containing only the story, its Feature_Contract and the documents the story references (R19.7, R40.2). A unit test checks that nothing else is included (R35.8).
 2. Develop: start or resume the Development_Sandbox (stopping the Sandbox if no API-operation story remains, to save memory), run the Code_Agent, map its events. Attempt time counts against the story budget.
 3. Record change: the backend computes changed files and the diff with git on the host using a temporary index (`GIT_INDEX_FILE`), so untracked files are included and the Code_Agent's own index is untouched. It appends `code_change` (changed files list, diff reference) (R38.5, R40.5).
@@ -861,7 +872,9 @@ Plain TypeScript, no LLM (R22.9). Each Acceptance_Check produces a per-item resu
 |---|---|---|
 | `api_readback` | Reads all pages of the target's read endpoints (Adapter allow-list) with the provisioned credential, then applies the Adapter's comparator: items matched by the comparator key, fields compared by the comparator's rules (for example inclusion where the target adds values itself), and a planned create whose key existed in the pre-state snapshot compared as an update of that item. The first target's rules: reference-target-linkding.md, "Write semantics for the comparator" | R22.2, R22.4, R22.5 |
 | `test_suite` | Runs the test selection named in the check (from the Frozen Decision_Doc or the Feature_Contract; targeted test files by default, guided by the Adapter's test-selection hint, because a full suite can take minutes; the first target's full suite took about 300 s, see reference-target-linkding.md, "Tests") inside a fresh test container from the dev-sandbox image with the Worktree snapshot read-only; the exit code decides; a parsed summary (passed, failed, errors) is shown when the output format is recognized | R22.2 |
-| `browser_check` | Scripted Playwright steps from a schema: `goto(path)`, `expectRole(role, name)`, `expectText(text)`, `click(role, name)`, `fill(role, name, value)`; each step is an item | R22.2, R14.11 |
+| `browser_check` | Scripted Playwright steps from a schema: `goto(path)`, `expectRole(role, name)`, `expectText(text)`, `click(role, name)`, `fill(role, name, value)`; each step is an item. With the Studio's model service, the LLM_Proxy's request log for the app credential is read before and after the steps; the app's calls in between (count, status codes, tokens) are one more item, which must show a successful call when the check sets `needsAi` | R22.2, R14.11, R22.11 |
+| red check | The Test_Agent's test command on the Feature branch before the code; passes when the command fails | R22.12 |
+| Regression_Check | The Adapter's `regression.command` (linkding: the whole `bookmarks.tests` suite) in a fresh test container on `main`, and on the pinned commit (started in the background at `target_check`, cached in `data/cache/regression/<adapter>-<commit>-<image>.json`). The Adapter's `regression.format` parser reads the run count and the failing test ids (linkding: Django's `FAIL:` and `ERROR:` headers and `Ran N tests`). A test failing on `main` and not at the pinned commit is a regression when its module exists at the pinned commit, otherwise a failing new test; both fail the check | R22.10 |
 
 - The pre-state snapshot for `api_readback` is taken by the Verifier before the first write of the story.
 - For API-operation stories the `api_readback` expectations are derived by code from the expected outcome of the validated Demo_Case (`deriveChecks`), one expectation per expected-outcome entry; no LLM and no second designed case is involved (R18.12).
@@ -919,7 +932,7 @@ Team panel:
 
 | Group | Agents (avatar) | Shown |
 |---|---|---|
-| Working on this Task | Reader 🦇, Explorer 🕷, Facilitator 🧙, Planner 📜, Code_Agent 🧪, Reviewer 🐈 | Each from its first event on |
+| Working on this Task | Reader 🦇, Explorer 🕷, Facilitator 🧙, Planner 📜, Test_Agent 🦉, Code_Agent 🧪, Reviewer 🐈 | Each from its first event on |
 | Meeting | User_Value 🎃, Feasibility 🧟, Risk 💀 | From the start of the meeting on (the group heading appears with them) |
 | Checker | Verifier ⚖ | From its first event on; different style: slate outline, label "code, no AI", no reasoning, a list of checks with per-item state |
 
@@ -940,6 +953,9 @@ Theme tokens (light; text always accompanies color, R8):
 
 Activity effect rules (R1.7, R2.9): only a Role_Status with "Working indicator: yes" in the Role_Status derivation table (speaking, thinking, using the browser, reading) gets the activity effect: a soft background in the status color and a pulsing dot. Waiting, blocked and idle get no effect. The effect is computed from `roleStatus(state, roleId, now)` only, so Live and Replay render the same effect at the same event (Property 4), and `prefers-reduced-motion` turns the pulse into a static dot. Halloween avatars stay as costume styling only.
 
+Development whiteboard (R1.10; decided by the user 2026-11-24): from the first `feature_status` event the Details panel gets a "Board" tab and selects it once. One lane per story, one card per Feature in dependency order. A card shows the title, size, a phase track (Tests, Build, Review, Run, Demo, Verify, Merged) with the current phase highlighted, the working agent's avatar and its live Role_Status text ("🧪 Code_Agent · writing code 40 s"), the attempt number, the change size from the latest `code_change` ("6 files, +412 −3"), and the Verifier result badges. Failed and blocked cards are red and amber with the reason. The header says "2 of 4 Features merged" from the events. The whiteboard stays visible after the Task ends.
+Code changes (R4.9): in Engineering_Details, one fold per Feature attempt with the file table (planned or unplanned, +/− lines) and the diff text, and at the Task end the whole change of `main` against the pinned commit.
+AI usage (R30.19): the Result view and the Verifier card show tokens per agent and for the app's calls, and a cost estimate when the Task recorded prices, labeled "estimate from configured prices".
 Wording rules: Interaction_Cards for the Judge use feature words without file names, paths or diffs (R5.4, R5.5, R21.2); those details live in the collapsed Engineering_Details section. Every LLM assessment, verdict or Demo_Case carries its label. Results come only from the Verifier card and the result banner.
 
 ## Data Models
@@ -971,7 +987,7 @@ Event types and payloads:
 
 | Type | Payload (main fields) | Requirements |
 |---|---|---|
-| `task_created` | url, owner, repo, repoKind (Adapted_Repo or Other_Repo), runtimeRulesVersion, commitSha | R9.5, R35.3 |
+| `task_created` | url, owner, repo, repoKind (Adapted_Repo or Other_Repo), runtimeRulesVersion, commitSha, llmPrice? { currency, inputPerMTok, cachedInputPerMTok, outputPerMTok } from `LLM_PRICE_*` | R9.5, R35.3, R30.19 |
 | `node_entered` | from, to, edgeId | R36.9 |
 | `transition_rejected` | from, requestedEdgeId, reason | R36.4 |
 | `file_read` | path, bytes, artifactRef | R10.4 |
@@ -992,7 +1008,11 @@ Event types and payloads:
 | `decision_item_reviewed` | draftId, itemId, itemHash, verdict (accept, reject), reason (required for reject) | R5.7 |
 | `browser_action` | action, target, ok | R14.2 |
 | `browser_observation` | snapshotSummary, screenshotRef | R14.2, R14.7 |
-| `code_change` | storyId, attempt, changedFiles[], diffRef | R38.5, R40.5 |
+| `code_change` | storyId, attempt, changedFiles[], diffRef, by (code_agent or test_agent), files[{ path, status, added, removed, planned }], patch (the diff text, cut at 150 KB with `patchTruncated`) | R38.5, R40.5, R4.9 |
+| `feature_status` | featureId, storyId, status (todo, testing, building, reviewing, running, demo, verifying, merged, failed, blocked), attempt | R1.10 |
+| `ai_usage` | caller (app), checkId, calls, statuses[], inputTokens, cachedTokens, outputTokens | R22.11, R30.19 |
+| `change_summary` | files[{ path, status, added, removed }], added, removed, base (pinned commit), head (`main`) | R4.9 |
+| `regression_result` | baseline { ran, failed[] }, main { ran, failed[] }, newTests, regressions[], newFailing[], cached | R22.10 |
 | `review_verdict` | storyId, attempt, verdict, reasons[], label | R40.6, R40.9 |
 | `question_opened` / `question_answered` | questionId, from (code_agent or role), askedParty (reviewer or judge), kind, text in feature words; answer | R2.10, R40.13 |
 | `demo_case_validated` | storyId, demoCaseId, hash, itemCount, derivedCheckId, label | R18.8, R18.12 |
@@ -1491,6 +1511,7 @@ Decisions the user made for the first version that are to be revisited. Each ite
 
 | Item | First version | To do later | Requirements and open items |
 |---|---|---|---|
+| Changing a protected test (user, 2026-11-24) | The Code_Agent cannot change a Test_Agent test; a wrong test ends in the retry limit and the question to the Judge | A route back to the Test_Agent with the Reviewer's reason, as a visible step | R40.21 |
 | Failure review choices | Retry the failed step, skip the story, end the Task | Collect failure cases from test and demo runs: failed step, Failure_Class, the Judge's choice, whether it helped. The Retrospective of each Task records them. Add or change choices when new cases show a need | R36.6, Open item 52 |
 | Thinking per step | A fixed table per step (Prompt caching, "Thinking per step"), decided with the user 2026-11-23 for the demo | Decide per call whether and how much to think, for example from the size and difficulty of the input, the stakes of the step, a failed first attempt or the remaining time budget; measure quality against time per step on the current test endpoint and on DeepSeek | R30, decided by the user 2026-11-23 |
 | Verifier mismatch | A result: ends the Task in `failed` directly | Decide whether a mismatch should stop in `failure_review` (for example "send the story back to development"); success stays Verifier-only | R22, R36.6, Open item 53 |
