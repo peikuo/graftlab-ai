@@ -648,6 +648,7 @@ export class TaskService {
       `The changed software runs in a container without internet access, so leave out every install step (uv sync, pip install, npm install or ci); already installed: ${(a.devSandbox?.preinstalled ?? []).join(", ")}. The app must listen on 0.0.0.0, not 127.0.0.1, so the Studio can reach it. Its AI reads the model from GL_AI_BASE_URL, GL_AI_API_KEY and GL_AI_MODEL, which the Studio sets in the run and test containers; checks that need the AI feature must switch it on first.`,
       a.aiClient ? `The Studio adds its prewritten AI client library \`${a.aiClient.dir}\` (ask, ask_json, chat, configured, stub) to the code before the first Feature; plan every model call through it and plan no own client. Background tasks do not run in the containers, so a result the person must see is computed inside the request.` : "",
       a.readbackFields ? `An api_readback check: ${a.readbackFields}. No other field can be compared.` : "",
+      (a as { environmentFacts?: string }).environmentFacts ? `${(a as { environmentFacts?: string }).environmentFacts}.` : "",
     ].filter(Boolean).join(" ");
   }
 
@@ -732,7 +733,10 @@ export class TaskService {
       ].filter(Boolean).join("\n\n")}`,
       this.#o.meeting?.rules.skills?.["ai-runtime"] ? `## ${this.#o.meeting.rules.skills["ai-runtime"].replace(/^# /, "")}` : "",
       ctx.task.repoKind === "adapted"
-        ? "## Environment facts (from the Studio and the Adapter)\nThe changed software runs in containers with about 512 MB of memory and no accelerator, so it cannot host a language model. It can reach an outside model service when the Judge consents."
+        ? `## Environment facts (from the Studio and the Adapter)\nThe changed software runs in containers with about 512 MB of memory and no accelerator, so it cannot host a language model. It can reach an outside model service when the Judge consents.${(() => {
+            const f = this.#o.execution?.adapters.find((a) => a.id === ctx.task.adapterId)?.environmentFacts;
+            return f ? ` ${f}.` : "";
+          })()}`
         : "## Environment facts\nThe Studio does not run this software; say where its AI would get its model in the user's own deployment.",
     ].filter(Boolean).join("\n\n");
   }

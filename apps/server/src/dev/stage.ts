@@ -192,9 +192,23 @@ export class DevStage {
   async develop(ctx: Ctx): Promise<"done" | "failed" | "question" | "retry_limit" | "needs_tests"> {
     const cur = currentStory(ctx.task);
     if (!cur || cur.status !== "in_progress") {
-      const next = cur && cur.status === "pending" ? cur : nextPendingStory(ctx.task) ?? ctx.task.stories.find((s) => s.status === "pending");
+      // A Feature that builds on a blocked or failed Feature cannot be built: it is blocked by code (found 2026-11-25:
+      // the next Feature read a store the blocked one should have added and ran out of time).
+      const features = this.o.design().breakdown.features;
+      for (;;) {
+        const cand = currentStory(ctx.task)?.status === "pending" ? currentStory(ctx.task)! : (nextPendingStory(ctx.task) ?? ctx.task.stories.find((s) => s.status === "pending"));
+        if (!cand) break;
+        const f = features.find((x) => x.id === cand.storyId);
+        const missing = (f?.dependsOn ?? []).filter((d) => ctx.task.stories.find((s) => s.storyId === d)?.status !== "verified");
+        if (!f || missing.length === 0) break;
+        this.#setStory(ctx, cand.storyId, { status: "blocked" });
+        await this.#status(ctx, f, "blocked", `it builds on ${missing.join(", ")}, which was not built`);
+        await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Feature ${f.id} "${f.title}" is blocked: it builds on ${missing.join(", ")}, which was not built`, evidence: [], evidenceStatus: "none" } });
+      }
+      const now = currentStory(ctx.task);
+      const next = now && now.status === "pending" ? now : nextPendingStory(ctx.task) ?? ctx.task.stories.find((s) => s.status === "pending");
       if (!next) {
-        await ctx.fail("interface_call_failure", "persistence", "no Feature is left to develop");
+        await ctx.fail("interface_call_failure", "persistence", "no Feature is left to develop: the remaining ones build on Features that were not built");
         return "failed";
       }
       ctx.patch({ currentStoryId: next.storyId });
