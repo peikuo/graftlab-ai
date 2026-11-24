@@ -35,8 +35,9 @@ export async function runBrowserCheck(o: { baseUrl: string; check: BrowserCheck;
         await page.getByLabel(o.login.usernameLabel).fill(o.login.username);
         await page.getByLabel(o.login.passwordLabel).fill(o.login.password);
         await page.getByRole("button", { name: o.login.submitLabel }).click();
-        await page.waitForLoadState();
-        items.push({ item: "log in (Studio code)", pass: !new URL(page.url()).pathname.startsWith(o.login.path), expected: "logged in", actual: new URL(page.url()).pathname });
+        // Apps that submit forms in the background (linkding uses Turbo) change the URL only after the answer.
+        const left = await page.waitForURL((u) => !u.pathname.startsWith(o.login!.path), { timeout }).then(() => true, () => false);
+        items.push({ item: "log in (Studio code)", pass: left, expected: "logged in", actual: new URL(page.url()).pathname });
       } catch (e) {
         items.push({ item: "log in (Studio code)", pass: false, expected: "logged in", actual: (e as Error).message.split("\n")[0]!.slice(0, 200) });
       }
@@ -59,7 +60,7 @@ export async function runBrowserCheck(o: { baseUrl: string; check: BrowserCheck;
           items.push({ item: describe(s), pass: true, expected: `${s.role} ${s.name}`, actual: "found" });
         } else if (s.op === "click") {
           await page.getByRole(s.role as never, { name: s.name }).first().click();
-          await page.waitForLoadState();
+          await page.waitForLoadState("networkidle").catch(() => undefined);
           items.push({ item: describe(s), pass: true, expected: "clicked", actual: "clicked" });
         } else {
           await page.getByRole(s.role as never, { name: s.name }).first().fill(s.value);

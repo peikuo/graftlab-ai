@@ -46,7 +46,11 @@ try {
     await box.scrollIntoViewIfNeeded();
     await p.waitForTimeout(3000);
     const choice = box.locator(".ritem-options input[type=radio]:not([disabled])").first();
-    if (await choice.count()) await choice.check();
+    // The selection is confirmed by the server, so the radio turns on only after the round trip.
+    if (await choice.count()) {
+      await choice.click();
+      await p.waitForFunction(() => !!document.querySelector("#decision-review .ritem-options input[type=radio]:checked"), null, { timeout: 30_000 });
+    }
     await p.waitForTimeout(1500);
     for (let guard = 0; guard < 12; guard++) {
       const pending = box.locator(".ritem.pending").first();
