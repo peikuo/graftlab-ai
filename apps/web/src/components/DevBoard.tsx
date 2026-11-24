@@ -29,10 +29,11 @@ const PHASE_NOW: Record<string, string> = {
 };
 function Track({ card }: { card: BoardCard }) {
   const at = card.status === "failed" || card.status === "blocked" ? card.reached : card.status;
-  const idx = at ? PHASE_TRACK.indexOf(at as (typeof PHASE_TRACK)[number]) : -1;
+  const track = PHASE_TRACK.filter((p) => card.phases.includes(p));
+  const idx = at ? track.indexOf(at as (typeof PHASE_TRACK)[number]) : -1;
   return (
     <ol className="track" aria-label="Phases">
-      {PHASE_TRACK.map((p, i) => {
+      {track.map((p, i) => {
         const cls = i < idx || card.status === "merged" ? "done" : i === idx ? (card.status === "failed" ? "stop-fail" : card.status === "blocked" ? "stop-block" : "now") : "";
         return (
           <li key={p} className={cls} aria-current={i === idx ? "step" : undefined}>
@@ -69,6 +70,7 @@ function Card({ card, state, now }: { card: BoardCard; state: UiState; now: numb
       </div>
       <div className="fcard-facts small muted">
         {card.attempt > 0 && <span>attempt {card.attempt}</span>}
+        {card.noDemo && <span>no demo: nothing to show in the app, the tests prove it</span>}
         {card.tests && <span>tests: {card.tests.files} files, +{card.tests.added}</span>}
         {card.change && (
           <span>

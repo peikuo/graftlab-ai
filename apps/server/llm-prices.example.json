@@ -1,0 +1,9 @@
+{
+  "your-model-name": {
+    "currency": "USD",
+    "inputPerMTok": 0.3,
+    "cachedInputPerMTok": 0.006,
+    "outputPerMTok": 1.2,
+    "source": "the provider's price page and the date you read it"
+  }
+}

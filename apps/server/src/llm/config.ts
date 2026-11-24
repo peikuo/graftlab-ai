@@ -59,20 +59,23 @@ export function resolveLlmConfig(env: Record<string, string | undefined>): LlmCo
   return { profile, baseUrl: baseUrl.replace(/\/$/, ""), model, apiKey, ...(apiKey ? {} : { missingKey: v.key }), allKeys, keyVar: v.key, reasoningParam: rp, reasoningEffort: re };
 }
 
-/** Prices for the cost estimate (R30.19): `LLM_PRICE_CURRENCY` and the three per-million-token prices; all or none. */
+/** Prices for the cost estimate (R30.19), per million tokens, from a JSON file keyed by model name (not secrets). */
 export interface LlmPrice {
   currency: string;
   inputPerMTok: number;
   cachedInputPerMTok: number;
   outputPerMTok: number;
 }
-export function resolveLlmPrice(env: Record<string, string | undefined>): LlmPrice | undefined {
-  const names = ["LLM_PRICE_INPUT_PER_MTOK", "LLM_PRICE_CACHED_INPUT_PER_MTOK", "LLM_PRICE_OUTPUT_PER_MTOK"] as const;
-  const currency = env.LLM_PRICE_CURRENCY?.trim();
-  const set = names.filter((n) => (env[n] ?? "").trim() !== "");
-  if (!currency && set.length === 0) return undefined;
-  if (!currency || set.length !== names.length) throw new Error(`set LLM_PRICE_CURRENCY and ${names.join(", ")} together, or none of them`);
-  const v = names.map((n) => Number(env[n]));
-  if (v.some((x) => !Number.isFinite(x) || x < 0)) throw new Error("LLM prices must be non-negative numbers");
-  return { currency, inputPerMTok: v[0]!, cachedInputPerMTok: v[1]!, outputPerMTok: v[2]! };
+/**
+ * Reads `<dataDir>/config/llm-prices.json`: `{ "<model>": { currency, inputPerMTok, cachedInputPerMTok, outputPerMTok,
+ * source? } }`. A missing file or model gives no price (tokens only); an invalid entry is an error with its model name.
+ */
+export function priceFromFile(text: string | null, model: string): LlmPrice | undefined {
+  if (text === null) return undefined;
+  const all = JSON.parse(text) as Record<string, Partial<LlmPrice>>;
+  const p = all[model];
+  if (!p) return undefined;
+  const nums = [p.inputPerMTok, p.cachedInputPerMTok, p.outputPerMTok];
+  if (typeof p.currency !== "string" || !p.currency.trim() || nums.some((x) => typeof x !== "number" || !Number.isFinite(x) || x < 0)) throw new Error(`llm-prices.json: the entry for ${model} needs currency and three non-negative prices`);
+  return { currency: p.currency.trim(), inputPerMTok: p.inputPerMTok!, cachedInputPerMTok: p.cachedInputPerMTok!, outputPerMTok: p.outputPerMTok! };
 }

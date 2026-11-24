@@ -284,7 +284,7 @@ export const PAYLOADS = {
     patchTruncated: z.boolean().optional(),
   }),
   // R1.10: one phase change of a Feature on the development whiteboard, written by code.
-  feature_status: z.object({ featureId: id, storyId: id, status: z.enum(FEATURE_PHASES), attempt: count, reason: z.string().optional() }),
+  feature_status: z.object({ featureId: id, storyId: id, status: z.enum(FEATURE_PHASES), attempt: count, reason: z.string().optional(), /** The phases this Feature goes through; a Feature without a demo skips run and demo (R21.10). */ phases: z.array(z.enum(FEATURE_PHASES)).optional() }),
   // R22.11, R30.19: the changed app's model calls through the LLM_Proxy, counted by code during one check.
   ai_usage: z.object({ caller: z.literal("app"), checkId: id, calls: count, statuses: z.array(z.number().int()), inputTokens: count, cachedTokens: count, outputTokens: count }),
   // R4.9: the whole change of main against the pinned commit.

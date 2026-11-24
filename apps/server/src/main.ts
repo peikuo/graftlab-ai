@@ -1,12 +1,12 @@
 // GraftLab AI backend entry. Milestone 3: event store, SSE, queue lease and, in development, the fixture player.
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pingDocker } from "./containers/engine.ts";
 import { ContainerManager, executionEnabled } from "./containers/manager.ts";
 import { SandboxService } from "./containers/sandboxService.ts";
-import { resolveLlmConfig, resolveLlmPrice } from "./llm/config.ts";
+import { priceFromFile, resolveLlmConfig } from "./llm/config.ts";
 import { buildStudioModel } from "./llm/model.ts";
 import { piMemoWriter } from "./reader/memoWriter.ts";
 import { loadRuntimeRules } from "./roles/rules.ts";
@@ -27,7 +27,6 @@ const envFile = process.env.GL_ENV_FILE ?? ".env";
 if (existsSync(envFile)) process.loadEnvFile(envFile);
 
 const llm = resolveLlmConfig(process.env);
-const llmPrice = resolveLlmPrice(process.env);
 const secrets = new SecretRegistry();
 // Every LLM key of every profile is registered, so none can leak even if the profile is switched later.
 for (const k of llm.allKeys) secrets.register(k.name, k.value);
@@ -38,6 +37,8 @@ for (const [name, key] of [["github_token", "GITHUB_TOKEN"], ["admin_token", "GL
 
 const root = resolve(import.meta.dirname, "../../..");
 const dataDir = process.env.GL_DATA_DIR ?? join(root, "data");
+const pricesFile = join(dataDir, "config", "llm-prices.json");
+const llmPrice = priceFromFile(existsSync(pricesFile) ? readFileSync(pricesFile, "utf8") : null, llm.model);
 const dev = process.env.GL_DEV === "1";
 const port = Number(process.env.GL_PORT ?? 8080);
 const host = process.env.GL_HOST ?? "127.0.0.1";

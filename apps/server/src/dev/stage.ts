@@ -149,7 +149,14 @@ export class DevStage {
         const snap = await snapshotWorktree(this.o.dataDir, this.#wt!, `regression-base-${Date.now()}`);
         this.#baseline = this.#runBaseline(ctx, snap.path).catch(() => null);
       }
-      for (const f of this.o.design().breakdown.features) await this.#status(ctx, f, "todo");
+      const all = this.o.design().breakdown.features;
+      for (const f of all) {
+        // Run and demo only for the last Feature of a story that has something to show (R21.10).
+        const lastOfStory = all.filter((x) => x.storyId === f.storyId).at(-1)?.id === f.id;
+        const demo = lastOfStory && ctx.task.stories.find((s) => s.storyId === f.id)?.demo !== false;
+        const phases: FeaturePhase[] = ["testing", "building", "reviewing", ...(demo ? (["running", "demo"] as const) : []), "verifying", "merged"];
+        await ctx.emit({ type: "feature_status", actor: { kind: "system" }, payload: { featureId: f.id, storyId: f.storyId, status: "todo", attempt: 0, phases } });
+      }
       return "done";
     } catch (e) {
       await ctx.fail("interface_call_failure", "docker", `the development environment could not start: ${(e as Error).message}`);
@@ -357,18 +364,14 @@ export class DevStage {
       return "failed";
     }
     const attempt = currentStory(ctx.task)!.attempts;
-    // R40.21: a change to a Test_Agent test is refused by code before any review.
-    if (this.#protectedHit.length) {
-      const hit = this.#protectedHit;
-      this.#protectedHit = [];
-      const why = `The tests written by the Test_Agent must not change; this attempt changed ${hit.join(", ")}. Put them back and make them pass; if a test is wrong, ask.`;
-      await ctx.emit({ type: "failure", actor: { kind: "system" }, payload: { failureClass: "rejected_by_safety_rule", source: "code_agent", detail: `Feature ${f.id}, attempt ${attempt}: a protected test was changed (${hit.join(", ").slice(0, 200)}); sent back to the Code_Agent` } });
-      this.#feedback.set(f.id, [why]);
-      await discardPaths(this.#wt!, this.#tests.get(f.id)!.commit, hit);
-      return "request_changes";
-    }
+    // R40.21 (decided by the user 2026-11-24): when the Code_Agent changes a Test_Agent test, the flow follows the
+    // Code_Agent, records it visibly, and the Reviewer must justify each changed test to approve.
+    const changedTests = this.#protectedHit;
+    this.#protectedHit = [];
+    if (changedTests.length)
+      await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `The Code_Agent changed tests the Test_Agent wrote: ${changedTests.join(", ")}. The flow follows the Code_Agent; the Reviewer must justify each change to approve.`, evidence: [], evidenceStatus: "none" } });
     await this.#status(ctx, f, "reviewing");
-    const unplanned = unplannedChanges(f, d.files);
+    const unplanned = [...unplannedChanges(f, d.files), ...changedTests.filter((t) => !unplannedChanges(f, d.files).includes(t))];
     const story = this.o.plan().backlog.stories.find((s) => s.id === f.storyId)!;
     let verdict: { verdict: "approve" | "request_changes" | "escalate"; reasons: string[] } | null = null;
     const Verdict = z.object({ verdict: z.enum(["approve", "request_changes", "escalate"]), reasons: z.array(z.string()).default([]), justified: z.array(z.object({ file: z.string(), reason: z.string() })).default([]) });
@@ -404,7 +407,7 @@ export class DevStage {
       `# Your role\n\n${roleText(this.o.rules, "reviewer")}`,
       `# Feature ${f.id}: ${f.title} (story ${story.id} "${story.title}")\n${f.summary}\n\nPlanned files: ${f.scope.files.join(", ")}\nTests: ${f.tests.files.join(", ")} — command: ${f.tests.command.join(" ")}\nMust not touch: ${f.scope.notTouch.join("; ") || "nothing named"}\nInterfaces: ${f.interfaces.join("; ") || "none named"}`,
       `# Feature_Contract\n${story.featureContract.feature}\nShould do: ${story.featureContract.shouldDo.join("; ")}\nShould not do: ${story.featureContract.shouldNotDo.join("; ")}`,
-      `# This attempt (${attempt})\nTests written first by the Test_Agent (review them too): ${d.testFiles.join(", ")}\nChanged by the Code_Agent: ${d.files.join(", ")}\nUnplanned changes found by Studio code: ${unplanned.length ? unplanned.join(", ") : "none"}`,
+      `# This attempt (${attempt})\nTests written first by the Test_Agent (review them too): ${d.testFiles.join(", ")}\nChanged by the Code_Agent: ${d.files.join(", ")}\nUnplanned changes found by Studio code: ${unplanned.length ? unplanned.join(", ") : "none"}${changedTests.length ? `\nTests of the Test_Agent changed by the Code_Agent (justify each, or request changes): ${changedTests.join(", ")}` : ""}`,
       "Read the diff, then submit_review_verdict. Tell the Judge in at most 60 words what you decided.",
     ].join("\n\n---\n\n");
     const r = await this.o.runTurn({ roleId: "reviewer", purpose: "review", systemPrompt: sharedSystemPrompt(this.o.rules, this.o.context()), prompt, tools, signal: ctx.signal, idPrefix: `${ctx.task.taskId}-${f.id}-r${attempt}`, thinkingLevel: "low", emit: ctx.emit });

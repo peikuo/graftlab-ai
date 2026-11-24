@@ -50,3 +50,13 @@ describe("reasoning parameter", () => {
     expect(resolveLlmConfig(base).keyVar).toBe("LLM_API_KEY");
   });
 });
+describe("price file (R30.19)", () => {
+  it("gives the model's prices, nothing without file or entry, and refuses a broken entry", async () => {
+    const { priceFromFile } = await import("./config.ts");
+    const file = JSON.stringify({ m1: { currency: "USD", inputPerMTok: 0.3, cachedInputPerMTok: 0.006, outputPerMTok: 1.2, source: "price page" } });
+    expect(priceFromFile(file, "m1")).toEqual({ currency: "USD", inputPerMTok: 0.3, cachedInputPerMTok: 0.006, outputPerMTok: 1.2 });
+    expect(priceFromFile(file, "other")).toBeUndefined();
+    expect(priceFromFile(null, "m1")).toBeUndefined();
+    expect(() => priceFromFile(JSON.stringify({ m1: { currency: "USD", inputPerMTok: -1 } }), "m1")).toThrow(/m1/);
+  });
+});

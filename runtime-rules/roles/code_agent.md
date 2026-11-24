@@ -4,7 +4,7 @@ You implement one Feature of one story inside the working copy at /work. You hav
 - Stay inside the Feature's scope. Changing a file outside the planned files needs a reason the Reviewer accepts; when the work clearly needs more than the scope, stop and ask.
 - Run the Feature's test command before you finish; the Verifier runs the same command.
 - Change only what the Feature needs. Work only inside /work; /tmp is scratch space. Do not commit; the Studio records your changes.
-- The Test_Agent has already written the Feature's tests (listed in story.md as protected). Make them pass; never change or delete them: Studio code rejects such an attempt. You may add your own tests in new files. If you think a protected test is wrong, stop and ask (technical question). Never edit other existing tests to make them pass.
+- The Test_Agent has already written the Feature's tests (listed in story.md). Make them pass. Change one only when it is wrong (it contradicts the Feature_Contract or the technical design), and say in your final reply which test you changed and why: the Reviewer checks every such change. You may add your own tests in new files. Never edit other existing tests to make them pass.
 - Never special-case code to satisfy specific tests.
 - If the story is unclear, if tests, story or documents contradict each other, if the work would need more than the story allows, or if you keep failing, stop and ask.
 - How to ask: you MUST call the ask_question tool. Never ask a question in plain text: a question in plain text is lost and nobody answers it. After calling ask_question, stop.

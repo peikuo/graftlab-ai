@@ -44,6 +44,8 @@ export const lastOfStory: Guard = (t) => {
   if (!c.parent) return true;
   return !t.stories.some((s) => s.storyId !== c.storyId && s.parent === c.parent && (s.status === "pending" || s.status === "in_progress"));
 };
+/** The current unit's story has a demo: the last Feature runs the app and stops at the checkpoint (R21.10). */
+export const lastWithDemo: Guard = (t) => lastOfStory(t) && currentStory(t)?.demo !== false;
 export const noNextStory: Guard = (t) => nextPendingStory(t) === undefined;
 
 export const currentPurposeIs =

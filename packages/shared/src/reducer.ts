@@ -86,6 +86,8 @@ export interface UiState {
   featureStatus: Record<string, { featureId: string; storyId: string; status: FeaturePhase; attempt: number; reason?: string; seq: number; ts: string }>;
   /** The last phase-track phase each Feature reached (where a failed or blocked card stopped). */
   featureTrack: Record<string, FeaturePhase>;
+  /** The planned phases of each Feature, when recorded (R21.10). */
+  featurePhases: Record<string, FeaturePhase[]>;
   /** R4.9: every recorded change, in order. */
   codeChanges: (PayloadOf<"code_change"> & { seq: number; actor: ActorKey })[];
   /** R30.19: tokens per actor from complete messages. */
@@ -120,6 +122,7 @@ export const initialUiState: UiState = {
   outputDocs: {},
   featureStatus: {},
   featureTrack: {},
+  featurePhases: {},
   codeChanges: [],
   usageByActor: {},
   appUsage: [],
@@ -404,6 +407,7 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
       break;
     case "feature_status":
       s.featureStatus = { ...state.featureStatus, [e.payload.featureId]: { ...e.payload, seq: e.seq, ts: e.ts } };
+      if (e.payload.phases) s.featurePhases = { ...state.featurePhases, [e.payload.featureId]: e.payload.phases };
       if (e.payload.status !== "failed" && e.payload.status !== "blocked" && e.payload.status !== "todo") s.featureTrack = { ...state.featureTrack, [e.payload.featureId]: e.payload.status };
       break;
     case "code_change":

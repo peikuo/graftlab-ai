@@ -29,6 +29,10 @@ export interface BoardCard {
   change?: { files: number; added: number; removed: number; unplanned: number };
   tests?: { files: number; added: number };
   checks: { checkId: string; pass: boolean }[];
+  /** The phases this card goes through (no run and demo for a Feature without a demo). */
+  phases: FeaturePhase[];
+  /** The story has no demo, so only the tests prove it (R21.10). */
+  noDemo: boolean;
 }
 export interface BoardLane {
   storyId: string;
@@ -77,6 +81,8 @@ export function featureBoard(state: UiState): Board | null {
       status,
       attempt: st?.attempt ?? 0,
       checks: state.verifierResults.filter((r) => r.storyId === it.id).map((r) => ({ checkId: r.checkId, pass: r.pass })),
+      phases: state.featurePhases[it.id] ?? [...PHASE_TRACK],
+      noDemo: !!state.featurePhases[it.id] && !state.featurePhases[it.id]!.includes("demo") && !items.some((x) => x.storyId === it.storyId && x.id !== it.id && state.featurePhases[x.id]?.includes("demo")),
     };
     const size = breakdown.find((f) => f.id === it.id)?.size;
     if (size) card.size = size;

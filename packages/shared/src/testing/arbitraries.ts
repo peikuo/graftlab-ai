@@ -198,7 +198,7 @@ const P: { [K in EventType]: fc.Arbitrary<PayloadOf<K>> } = {
     },
     { requiredKeys: ["storyId", "attempt", "changedFiles", "diffRef"] },
   ),
-  feature_status: fc.record({ featureId: idA, storyId: idA, status: fc.constantFrom(...FEATURE_PHASES), attempt: nat, reason: opt(str) }, { requiredKeys: ["featureId", "storyId", "status", "attempt"] }),
+  feature_status: fc.record({ featureId: idA, storyId: idA, status: fc.constantFrom(...FEATURE_PHASES), attempt: nat, reason: opt(str), phases: opt(fc.subarray([...FEATURE_PHASES])) }, { requiredKeys: ["featureId", "storyId", "status", "attempt"] }),
   ai_usage: fc.record({ caller: fc.constant("app" as const), checkId: idA, calls: nat, statuses: fc.array(fc.constantFrom(200, 401, 500), { maxLength: 3 }), inputTokens: nat, cachedTokens: nat, outputTokens: nat }),
   change_summary: fc.record({ base: ne, head: ne, files: fc.array(fc.record({ path, status: fc.constantFrom("A", "M", "D"), added: nat, removed: nat }), { maxLength: 3 }), added: nat, removed: nat }),
   regression_result: fc.record({

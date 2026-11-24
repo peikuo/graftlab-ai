@@ -17,9 +17,9 @@
 | `npm run typecheck` | Type-check all workspaces |
 | `npm run flow:check` | Flow_Graph reachability test only |
 | `npm run secret-scan` | Scan tracked and staged files for secrets |
-| `npm run dev -w apps/web` | Vite dev server (run it yourself in a terminal) |
+| `npm run dev -w apps/web` | Vite dev server; agents may start it in the background with its output in a log file (allowed by the user 2026-11-24) |
 
-Never start watchers or dev servers from an agent tool call; run tests with `--run`.
+Do not start test watchers; run tests with `--run`. The Vite dev server is the one exception: an agent may start it in the background (`nohup … > log &`) and must not block on it.
 
 ## Rules
 

@@ -50,6 +50,8 @@ export interface StoryProgress {
   unconfirmed: boolean;
   demoCaseRejections: number;
   suggestionConfirmed: boolean;
+  /** false: the story has no result to show in the running app (for example log output), so no run and no demo (R21.10). */
+  demo?: boolean;
 }
 
 export interface DecisionReview {

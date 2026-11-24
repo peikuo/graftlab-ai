@@ -37,7 +37,7 @@ export function featureContext(i: FeatureContextInput): string {
     `### Scope\n- Modules: ${f.scope.modules.join(", ")}\n- Files expected to change:\n${list(f.scope.files.map((x) => `\`${x}\``))}\n- Must not touch:\n${list(f.scope.notTouch)}\n\nChanging a file outside this list needs a reason the Reviewer accepts.`,
     `### Interfaces\n${list(f.interfaces)}`,
     i.protectedTests
-      ? `### Tests (written first by the Test_Agent, protected)\n${list(i.protectedTests.map((x) => `\`${x}\``))}\n- Run them with: \`${f.tests.command.join(" ")}\`\n\nMake these tests pass without changing or deleting them; Studio code rejects an attempt that does. You may add tests in new files. The Verifier runs exactly this command after your attempt.`
+      ? `### Tests (written first by the Test_Agent)\n${list(i.protectedTests.map((x) => `\`${x}\``))}\n- Run them with: \`${f.tests.command.join(" ")}\`\n\nMake these tests pass. Change one only when it is wrong against the Feature_Contract or the design, and name it and the reason in your final reply; the Reviewer checks every such change. You may add tests in new files. The Verifier runs exactly this command after your attempt.`
       : `### Tests\n- Add or change: ${f.tests.files.map((x) => `\`${x}\``).join(", ")}\n- Run them with: \`${f.tests.command.join(" ")}\`\n\nThe Verifier runs exactly this command after your attempt. Do not edit other tests.`,
     before.length ? `### Already built before this Feature\n${list(before.map((b) => `${b.id} ${b.title}: ${b.summary}`))}` : "",
     `## The story: ${story.title}\n${story.userStory}\n\n**Acceptance criteria**\n${list(story.acceptanceCriteria)}\n\n**Demo point:** ${story.demoPoint.description}`,

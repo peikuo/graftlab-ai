@@ -593,7 +593,10 @@ export class TaskService {
     // The execution units are the Features, in dependency order (R38.10).
     const kind = (storyId: string) => p.backlog.stories.find((s) => s.id === storyId)?.featureContract.executionKind ?? "source_change";
     const purpose = frozen.content.purpose;
-    const stories: StoryProgress[] = d.breakdown.features.map((f) => ({ storyId: f.id, parent: f.storyId, kind: kind(f.storyId), purpose, attempts: 0, status: "pending", unconfirmed: false, demoCaseRejections: 0, suggestionConfirmed: false }));
+    // R21.10: a story whose checks are all test runs has nothing to show in the running app, so it has no demo.
+    const checked = (d.checks.length ? withRefinedChecks(p, d.checks) : p).backlog.stories;
+    const demo = (storyId: string) => (checked.find((s) => s.id === storyId)?.featureContract.acceptanceChecks ?? []).some((c) => c.kind !== "test_suite");
+    const stories: StoryProgress[] = d.breakdown.features.map((f) => ({ storyId: f.id, parent: f.storyId, kind: kind(f.storyId), purpose, attempts: 0, status: "pending", unconfirmed: false, demoCaseRejections: 0, suggestionConfirmed: false, demo: demo(f.storyId) }));
     ctx.patch({ docsComplete: true, stories });
     return "done";
   }
