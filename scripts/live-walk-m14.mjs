@@ -64,6 +64,7 @@ try {
     mark("frozen");
   };
   await freeze();
+  const handled = new Set();
   const planCard = () => p.locator(".icard.pending.kind-confirm").filter({ has: p.locator(".plan") }).first();
   let sentBack = false;
   for (;;) {
@@ -83,6 +84,7 @@ try {
       await freeze();
       continue;
     }
+    handled.add(await planCard().getAttribute("id"));
     await planCard().getByRole("button", { name: /Start development|Write the documents/ }).click();
     mark("plan confirmed");
     break;
@@ -91,8 +93,17 @@ try {
   let shots = 0;
   for (let i = 0; i < 1800 && !(await p.locator(".final").count()); i++) {
     await p.waitForTimeout(2000);
-    const card = p.locator(".icard.pending").first();
-    if (!(await card.count())) continue;
+    const cards = p.locator(".icard.pending");
+    let card = null;
+    for (let k = 0; k < (await cards.count()); k++) {
+      const id = await cards.nth(k).getAttribute("id");
+      if (id && !handled.has(id)) {
+        card = cards.nth(k);
+        handled.add(id);
+        break;
+      }
+    }
+    if (!card) continue;
     const title = (await card.locator(".icard-title").textContent()) ?? "";
     await card.scrollIntoViewIfNeeded();
     await p.waitForTimeout(3000);
@@ -116,9 +127,11 @@ try {
       mark(`answered: ${title.slice(0, 80)}`);
       continue;
     }
-    await card.locator("input").fill("Keep it simple and stay inside the Feature.");
-    await card.getByRole("button", { name: "Send" }).click();
-    mark(`answered in words: ${title.slice(0, 80)}`);
+    if (await card.locator("input").count()) {
+      await card.locator("input").fill("Keep it simple and stay inside the Feature.");
+      await card.getByRole("button", { name: "Send" }).click();
+      mark(`answered in words: ${title.slice(0, 80)}`);
+    }
   }
   await p.locator(".final").waitFor({ timeout: 60_000 });
   mark("Task ended");

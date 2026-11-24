@@ -588,13 +588,13 @@ Conventions:
     - Done 2026-11-23: `packages/shared/src/techdesign.ts` (schemas, `checkBreakdown`, `unplannedChanges`), `apps/server/src/planning/techdesign.ts`, node `tech_design`, documents TECHNICAL_ARCHITECTURE.md and FEATURE_BREAKDOWN.md, Task_Board per Feature; `techdesign.test.ts`
     - Node `tech_design` after `documenting`; schemas for the Technical Architecture and the Features with the code checks of R19.14; Planner draft, Feasibility review, Reviewer final with the rubric; Task_Board per Feature; documents in the Output_Docs view
     - _Requirements: 19.13, 19.14, 19.15_
-  - [ ] 14.24 Feature branches and merge into main
+  - [x] 14.24 Feature branches and merge into main
     - Worktree `main` at the pinned commit, `feature/<id>` per Feature, `--no-ff` merge after review and Verifier, unmerged branch on failure, diff against the Feature's base, unplanned-change list for the Reviewer
     - _Requirements: 38.5, 38.6, 38.10_
-  - [ ] 14.25 AI runtime in the meeting and the Decision_Doc
+  - [x] 14.25 AI runtime in the meeting and the Decision_Doc
     - `runtime-rules/skills/ai-runtime.md`; `aiRuntime` in the draft schema and the review items; environment facts from the Adapter for Feasibility; the question card; `GL_AI_*` for the Run_Environment and the test container; egress for those two containers with consent (R38.4)
     - _Requirements: 15.12, 38.4_
-  - [ ] 14.26 Focus pack and Code_Agent rules
+  - [x] 14.26 Focus pack and Code_Agent rules
     - Focus pack built by code at Feature start (planned files with memo summaries and outlines, one-hop neighbors, an example test, design quotes, outdated marks), delivered as pi's project context file; `grep`, `find`, `ls` enabled; coding rules (assumptions, simplicity, surgical changes, test-driven completion) in `code_agent.md`; reads and changes measured against the pack
     - _Requirements: 40.19_
   - [x] 14.1 Implement the context builder and the development rules
@@ -602,7 +602,7 @@ Conventions:
     - `apps/server/src/dev/context.ts` writes only the story, its Feature_Contract and the referenced documents; Runtime_Rules rules "small scope per Agent" and "no decision power, stop and ask, reviewed by the Reviewer"
     - Design: Development stage
     - _Requirements: 19.5, 19.7, 19.8, 35.8, 35.9, 40.2_
-  - [ ] 14.2 Implement the PiCodeRuntime
+  - [x] 14.2 Implement the PiCodeRuntime
     - `apps/server/src/runtime/pi-code.ts`: Docker exec of the runner (task 10.13) in the Development_Sandbox with the per-Task proxy credential, stdin commands (prompt, answer, steer, abort), stdout protocol parsing with zod, unknown lines counted, `question` events turned into `question_opened`, answer resumes the same process, budget timer that kills the exec, read-only errors as rejected by a safety rule, `final` events mapped to attempt end
     - Design: PiCodeRuntime
     - _Requirements: 30.16, 38.3, 38.7, 38.8, 40.11, 40.13_
@@ -618,7 +618,7 @@ Conventions:
     - Done 2026-11-23: `apps/server/src/runtime/pi-code.test.ts` with the recorded runner fixtures
     - Sanitized runner event fixtures from 1.7 and 1.8 map to the expected Studio events; invalid lines counted
     - _Requirements: 38.7, 40.11_
-  - [ ] 14.6 Implement `target_check`, `story_develop` and change recording
+  - [x] 14.6 Implement `target_check`, `story_develop` and change recording
     - `target_check` after `adapter_branch_2`, before the first execution story: engine ping, baseline image present by digest, and if an API-operation story remains the Sandbox started or reused after a fresh reset, provisioned and verified with the procedure from 10.8; failure ends the Task in `failed` with the label "not executed"
     - `story_develop`: start or resume the Development_Sandbox, run the Code_Agent, compute changed files and diff with a temporary index, append `code_change`, diff in Engineering details only, budget accounting
     - Design: Flow_Graph (rules), Sandbox and test data, Development stage
@@ -626,22 +626,22 @@ Conventions:
   - [ ]* 14.7 Write property test for change recording
     - **Property 18: Every Code_Agent change is recorded and reviewed**
     - **Validates: Requirements 40.5, 38.5**
-  - [ ] 14.8 Implement the Reviewer review
+  - [x] 14.8 Implement the Reviewer review
     - `story_review`: `read_changed_file`, `read_diff`, `submit_review_verdict`; label "reviewed by Reviewer (LLM judgment)"; request changes back with reasons; escalate to the Facilitator; approach change returns to `deciding`
     - Design: Development stage, Review_Verdict
     - _Requirements: 37.8, 37.9, 40.6, 40.7, 40.8, 40.9, 40.10, 40.15_
-  - [ ] 14.9 Implement stop and ask
+  - [x] 14.9 Implement stop and ask
     - `story_ask`: attempts counted, retry limit 3 opens a question; technical questions to Reviewer `answer_question`; feature questions through the Facilitator as a question card; "waiting for answer" status; 300 s unanswered marks the story Unconfirmed-blocked and continues or ends `failed`
     - Design: Development stage, Flow_Graph
     - _Requirements: 2.10, 5.5, 40.11, 40.12, 40.13, 40.14, 40.17_
   - [ ]* 14.10 Write unit tests for development routing with a fake runtime
     - Retry limit leads to a question; technical versus feature routing; a simulated unresolved problem ends in a question and not a widened scope; approach change returns to `deciding`; unanswered question blocks the story
     - _Requirements: 35.9, 40.4, 40.12, 40.13, 40.15, 40.17_
-  - [ ] 14.11 Implement the Run_Environment
+  - [x] 14.11 Implement the Run_Environment
     - Stop the Development_Sandbox, snapshot the Worktree, record `worktree_handoff`, start a fresh Run_Environment per attempt with the `runEnvironment` commands only inside it, reached through the relay, 240 s health wait, failure to `failed`
     - Design: Development stage, Containers
     - _Requirements: 39.3, 39.4, 39.5, 39.6, 39.7, 39.9, 39.11_
-  - [ ] 14.12 Implement checkpoints and reminders
+  - [x] 14.12 Implement checkpoints and reminders
     - `story_checkpoint` confirm card in feature words with the demo, 120 s wait (`GL_CONFIRM_WAIT_S`), Unconfirmed mark, reminder card at the next Judge input, Demo_Review_Notes entry
     - Design: Development stage
     - _Requirements: 5.8, 20.2, 21.1, 21.2, 21.3, 21.4, 21.5, 21.6, 21.8, 21.9_
@@ -651,7 +651,7 @@ Conventions:
   - [ ]* 14.14 Write unit tests for checkpoints
     - No response gives Unconfirmed; next input triggers a reminder in feature terms recorded in the Event_Stream
     - _Requirements: 21.4, 21.8, 21.9_
-  - [ ] 14.15 Complete the Verifier
+  - [x] 14.15 Complete the Verifier
     - `test_suite` running the test selection named in the check (targeted files by default, guided by the Adapter's test-selection hint) in a fresh test container with a read-only snapshot, scripted `browser_check` without an LLM, per-item results, disagreement display, success only from Verifier results, Retrospective at Task end
     - Design: Verifier
     - _Requirements: 14.11, 20.3, 22.1, 22.2, 22.3, 22.6, 22.7, 22.8, 22.9_
