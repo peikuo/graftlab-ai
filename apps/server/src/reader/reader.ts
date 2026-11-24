@@ -2,7 +2,7 @@
 // order, within the read-volume limit, with a cache by commit SHA. Files are never executed (R10.3). Every file
 // read is an event (R10.4); skipped parts are listed (R10.6); a failure is shown and not retried silently (R10.5).
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, normalize } from "node:path";
+import { dirname, join, normalize, sep } from "node:path";
 import type { GitHub, RepoMeta, TreeEntry } from "./github.ts";
 
 export interface ReadLimits {
@@ -72,7 +72,7 @@ export class RepoCache {
   filePath(meta: RepoMeta, path: string): string {
     const base = join(this.dir(meta), "files");
     const p = normalize(join(base, path));
-    if (!p.startsWith(base + "/")) throw new Error(`refused a file path outside the repository: ${path}`);
+    if (!p.startsWith(base + sep)) throw new Error(`refused a file path outside the repository: ${path}`);
     return p;
   }
 
