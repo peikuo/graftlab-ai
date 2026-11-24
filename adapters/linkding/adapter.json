@@ -99,6 +99,14 @@
       "UV_OFFLINE": "1"
     }
   },
+  "browserLogin": {
+    "path": "/login/",
+    "usernameLabel": "Username",
+    "passwordLabel": "Password",
+    "submitLabel": "Login",
+    "usernameEnv": "LD_SUPERUSER_NAME",
+    "passwordEnv": "LD_SUPERUSER_PASSWORD"
+  },
   "testSelectionHint": "Name targeted test files under bookmarks/tests/; the full suite takes about 300 s.",
   "testData": "test-data.json",
   "runtimeRulesChecklist": "runtime-rules/adapters/linkding-checklist.md"

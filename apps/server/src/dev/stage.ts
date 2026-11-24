@@ -5,7 +5,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { arr, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
-import { currentStory, describeCheck, nextPendingStory, unplannedChanges, type Feature, type Plan, type RequirementsDoc, type SecretRegistry, type StoryProgress, type TechDesign } from "@graftlab/shared";
+import { currentStory, describeCheck, nextPendingStory, unplannedChanges, type Adapter, type BaselineHandle, type Feature, type TargetItem, type Plan, type RequirementsDoc, type SecretRegistry, type StoryProgress, type TechDesign } from "@graftlab/shared";
 import { z } from "zod";
 import type { ContainerManager } from "../containers/manager.ts";
 import { issueProxyCredential } from "../proxy/credential.ts";
@@ -16,6 +16,9 @@ import { runCodeAttempt } from "../runtime/pi-code.ts";
 import type { NodeHandler } from "../tasks/runner.ts";
 import { abandonFeature, createWorktree, diffWorktree, mergeFeature, mirrorSourceFromEnv, notIgnored, snapshotWorktree, startFeature, writePatchArtifact, type FeatureBranch, type Worktree } from "../worktree/worktree.ts";
 import { writeFeatureContext } from "./context.ts";
+import { generateSecretEnv, targetClient } from "../containers/sandbox.ts";
+import { runBrowserCheck } from "../verifier/browser.ts";
+import { runReadback, snapshot } from "../verifier/readback.ts";
 
 type Ctx = Parameters<NodeHandler>[0];
 
@@ -24,7 +27,7 @@ export interface DevStageOptions {
   manager: ContainerManager;
   secrets: SecretRegistry;
   devImage: string;
-  adapter: { id: string; source: { upstreamUrl: string; commit: string }; devSandbox: { prebuilt: string[]; env?: Record<string, string> } };
+  adapter: Adapter;
   /** The real LLM settings; only the LLM_Proxy container receives the key. */
   llm: { baseUrl: string; apiKey: string; model: string; reasoningParam: string; reasoningEffort: string };
   rules: RuntimeRules;
@@ -53,6 +56,9 @@ export class DevStage {
   #lastDiff: { files: string[]; patch: string } | null = null;
   #feedback = new Map<string, string[]>();
   #pendingQuestion: string | null = null;
+  /** The provisioned Run_Environment of the current story: generated secrets, credentials, state after the seed. */
+  #app: { name: string; secretEnv: Record<string, string>; credentials: Record<string, string>; preState: TargetItem[] } | null = null;
+  #runs = 0;
 
   constructor(private readonly o: DevStageOptions) {}
 
@@ -281,7 +287,7 @@ export class DevStage {
       const ok = await fetch(url, { signal: AbortSignal.timeout(3000) }).then((r) => r.status < 500, () => false);
       if (ok) {
         await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `The changed app answers on ${re.healthPath}`, evidence: [], evidenceStatus: "none" } });
-        return "done";
+        return (await this.#provision(ctx, name)) ? "done" : "failed";
       }
       const info = await m.docker.inspectContainer(name);
       if (!info?.State.Running) {
@@ -293,6 +299,34 @@ export class DevStage {
     }
     await ctx.fail("interface_call_failure", "docker", `the changed app did not answer on ${re.healthPath} within 230 s`);
     return "failed";
+  }
+
+  /**
+   * The Run_Environment starts from an empty database: Studio code creates the user and the API credential with the
+   * Adapter's provision hook (generated values, registered with the redactor) and loads the fixed test data, so
+   * browser and read-back checks have something to work on (R13.5, R29.1).
+   */
+  async #provision(ctx: Ctx, name: string): Promise<boolean> {
+    const a = this.o.adapter;
+    const gen = ++this.#runs;
+    const secretEnv = generateSecretEnv(a.baseline.secretEnv);
+    for (const [k, v] of Object.entries(secretEnv)) this.o.secrets.register(`run_${k.toLowerCase()}_${gen}`.slice(0, 41), v);
+    const handle: BaselineHandle = { secretEnv, appDir: "/tmp/app", exec: (cmd, opts) => this.o.manager.docker.exec(name, cmd, opts ?? {}), recreate: async () => { throw new Error("a Run_Environment is not recreated in place"); } };
+    try {
+      const credentials: Record<string, string> = {};
+      for (const c of await a.hooks.provision(handle)) {
+        this.o.secrets.register(`run_${c.name}_${gen}`.slice(0, 41), c.value);
+        credentials[c.name] = c.value;
+      }
+      const client = targetClient(a, this.#relayPort!, credentials);
+      await a.hooks.testData.seed(client);
+      this.#app = { name, secretEnv, credentials, preState: await snapshot(a, client) };
+      await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: "Studio code created a user and loaded the fixed test data in the changed app", evidence: [], evidenceStatus: "none" } });
+      return true;
+    } catch (e) {
+      await ctx.fail("interface_call_failure", "docker", `the changed app could not be prepared with the test data: ${(e as Error).message}`);
+      return false;
+    }
   }
 
   /** story_checkpoint (R21): the Judge looks at the story's demo point; no answer marks it Unconfirmed. */
@@ -315,6 +349,7 @@ export class DevStage {
   }
 
   async #restartDev(ctx: Ctx): Promise<void> {
+    this.#app = null;
     await this.o.manager.docker.removeContainer(`gl-${ctx.task.taskId}-run`).catch(() => undefined);
     await this.o.manager.docker.startContainer(this.#dev!).catch(() => undefined);
   }
@@ -328,11 +363,9 @@ export class DevStage {
     const snap = await snapshotWorktree(this.o.dataDir, this.#wt!, `${f.id}-${attempt}-test`);
     const checks: { id: string; command: string[]; timeoutS: number; label: string }[] = [{ id: `${f.id}-tests`, command: f.tests.command, timeoutS: 600, label: `Feature tests: ${f.tests.command.join(" ")}` }];
     const notRun: string[] = [];
+    const appChecks = last ? story.featureContract.acceptanceChecks.filter((c) => c.kind !== "test_suite") : [];
     if (last)
-      for (const c of story.featureContract.acceptanceChecks) {
-        if (c.kind === "test_suite") checks.push({ id: c.id, command: c.command, timeoutS: c.timeoutS, label: describeCheck(c) });
-        else notRun.push(`${c.id} (${c.kind})`);
-      }
+      for (const c of story.featureContract.acceptanceChecks) if (c.kind === "test_suite") checks.push({ id: c.id, command: c.command, timeoutS: c.timeoutS, label: describeCheck(c) });
     let pass = true;
     for (const c of checks) {
       const r = await this.o.manager.runTests(ctx.task.taskId, { image: this.o.devImage, snapshotDir: snap.path, prebuilt: this.o.adapter.devSandbox.prebuilt, command: shellCommand(c.command), timeoutS: c.timeoutS, env: this.o.adapter.devSandbox.env ?? {} });
@@ -340,6 +373,28 @@ export class DevStage {
       const ok = r.code === 0;
       pass &&= ok;
       await ctx.emit({ type: "verifier_result", actor: { kind: "verifier" }, payload: { storyId: f.id, checkId: c.id, pass: ok, items: [{ item: c.label, pass: ok, expected: "exit code 0", actual: r.timedOut ? `timed out after ${c.timeoutS} s` : `exit code ${r.code}${summary ? `: ${summary}` : ""}` }] } });
+    }
+    // Checks against the running changed app (browser steps, API read-back); success is decided by code only.
+    for (const c of appChecks) {
+      const app = this.#app;
+      if (c.target !== "run_environment" || !app || !this.#relayPort) {
+        notRun.push(`${c.id} (${c.kind} against ${c.target}${app ? "" : ", the app is not running"})`);
+        continue;
+      }
+      const baseUrl = `http://127.0.0.1:${this.#relayPort}`;
+      if (c.kind === "browser_check") {
+        const l = this.o.adapter.browserLogin;
+        const shot = join(this.o.dataDir, "tasks", ctx.task.taskId, "artifacts", "shots", `${f.id}-${c.id}.jpg`);
+        const r = await runBrowserCheck({ baseUrl, check: c, screenshot: shot, ...(l ? { login: { path: l.path, usernameLabel: l.usernameLabel, passwordLabel: l.passwordLabel, submitLabel: l.submitLabel, username: app.secretEnv[l.usernameEnv] ?? "", password: app.secretEnv[l.passwordEnv] ?? "" } } : {}) }).catch((e: unknown) => ({ items: [{ item: "start the browser", pass: false, expected: "browser runs", actual: (e as Error).message.split("\n")[0]!.slice(0, 200) }], screenshot: null }));
+        const ok = r.items.every((i) => i.pass);
+        pass &&= ok;
+        if (r.screenshot) await ctx.emit({ type: "artifact_updated", actor: { kind: "verifier" }, payload: { artifactKind: "screenshot", ref: `artifacts/shots/${f.id}-${c.id}.jpg`, title: `Browser check ${c.id}` } });
+        await ctx.emit({ type: "verifier_result", actor: { kind: "verifier" }, payload: { storyId: f.id, checkId: c.id, pass: ok, items: r.items } });
+      } else {
+        const r = await runReadback(this.o.adapter, targetClient(this.o.adapter, this.#relayPort, app.credentials), c.expect, app.preState).catch((e: unknown) => ({ pass: false, items: [{ item: "read back", pass: false, expected: "read", actual: (e as Error).message.slice(0, 200) }] }));
+        pass &&= r.pass;
+        await ctx.emit({ type: "verifier_result", actor: { kind: "verifier" }, payload: { storyId: f.id, checkId: c.id, pass: r.pass, items: r.items } });
+      }
     }
     for (const n of notRun) {
       pass = false;

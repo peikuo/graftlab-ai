@@ -51,6 +51,8 @@ export const AdapterJsonSchema = z
         prebuilt: z.array(text.regex(/^[A-Za-z0-9._-][A-Za-z0-9._/-]*$/).refine((p) => !p.split("/").includes(".."), "relative, inside the source")),
       })
       .strict(),
+    /** How Studio code logs in for browser checks; the values come from the generated secretEnv names. */
+    browserLogin: z.object({ path: text.regex(/^\//), usernameLabel: text, passwordLabel: text, submitLabel: text, usernameEnv: z.string().regex(/^[A-Z][A-Z0-9_]*$/), passwordEnv: z.string().regex(/^[A-Z][A-Z0-9_]*$/) }).strict().optional(),
     testSelectionHint: text,
     testData: text, // file name of the fixed test data set next to adapter.json
     runtimeRulesChecklist: text,
@@ -90,6 +92,8 @@ export interface BaselineHandle {
   recreate(): Promise<void>;
   /** The generated secret environment values of this start (for example the superuser name). */
   secretEnv: Record<string, string>;
+  /** Where the app's code lives in this container (the baseline image's own directory, or /tmp/app in a Run_Environment). */
+  appDir: string;
 }
 /** The hooks an Adapter implements in code (adapters/<id>/index.ts). */
 export interface AdapterHooks {

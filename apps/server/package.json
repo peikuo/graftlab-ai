@@ -19,6 +19,7 @@
     "@earendil-works/pi-schema": "^1.6.0",
     "@graftlab/shared": "*",
     "fastify": "^5.12.8",
+    "playwright": "^1.65.1",
     "zod": "^4.6.7"
   }
 }

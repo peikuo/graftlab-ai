@@ -42,7 +42,11 @@ export const hooks: AdapterHooks = {
   async provision(b: BaselineHandle): Promise<TargetCredential[]> {
     const user = b.secretEnv.LD_SUPERUSER_NAME;
     if (!user) throw new Error("LD_SUPERUSER_NAME was not generated for this start");
-    const r = await b.exec(["python", "manage.py", "shell", "-c", TOKEN_SCRIPT], { workdir: "/etc/linkding", env: { GL_SUPERUSER: user } });
+    // The baseline image creates the superuser at its start; a Run_Environment runs the changed app from source, so
+    // the same (idempotent) management command creates it there.
+    const su = await b.exec(["python", "manage.py", "create_initial_superuser"], { workdir: b.appDir, env: { LD_SUPERUSER_NAME: user, LD_SUPERUSER_PASSWORD: b.secretEnv.LD_SUPERUSER_PASSWORD ?? "" } });
+    if (su.code !== 0) throw new Error(`creating the superuser failed (exit ${su.code})`);
+    const r = await b.exec(["python", "manage.py", "shell", "-c", TOKEN_SCRIPT], { workdir: b.appDir, env: { GL_SUPERUSER: user } });
     const token = r.stdout.trim().split("\n").at(-1)?.trim() ?? "";
     if (r.code !== 0 || !/^[0-9a-f]{40}$/.test(token)) throw new Error(`creating the API token failed (exit ${r.code})`);
     return [{ name: "linkding_api_token", value: token }];

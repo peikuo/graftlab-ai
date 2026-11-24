@@ -137,6 +137,7 @@ export class Sandbox {
       let gen = generation;
       const handle: BaselineHandle = {
         secretEnv,
+        appDir: "/etc/linkding",
         exec: (cmd, opts) => this.#d.manager.docker.exec(this.#state!.name, cmd, opts ?? {}),
         recreate: async () => {
           await start(gen++);
