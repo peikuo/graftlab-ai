@@ -152,7 +152,9 @@ export async function runAgentTurn(o: TurnOptions): Promise<TurnResult> {
         const ok = !(e as { isError?: boolean }).isError;
         const out = (e.result as { content?: { type: string; text?: string }[] } | undefined)?.content?.find((c) => c.type === "text")?.text ?? "";
         await o.emit({ type: "tool_finished", actor, payload: { callId: e.toolCallId, tool: e.toolName, ok, outputSummary: summarize(out) } });
-        if (!ok && o.maxToolErrors !== undefined && ++toolErrors >= o.maxToolErrors && !gaveUp) {
+        // Only refused submissions and malformed arguments count; a read of a missing file is ordinary work.
+        const rejected = !ok && (e.toolName.startsWith("submit_") || /^(Validation failed|Invalid arguments)/.test(out));
+        if (rejected && o.maxToolErrors !== undefined && ++toolErrors >= o.maxToolErrors && !gaveUp) {
           gaveUp = `gave up after ${toolErrors} rejected tool calls`;
           agent.abort();
         }
