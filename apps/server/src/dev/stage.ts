@@ -280,7 +280,8 @@ export class DevStage {
     await ctx.emit({ type: "artifact_updated", actor: { kind: "system" }, payload: { artifactKind: "worktree_handoff", ref: snap.commit, title: `Snapshot of ${f.id} for the app run` } });
     const m = this.o.manager;
     await m.docker.stopContainer(this.#dev!, 5).catch(() => undefined); // memory: the Development_Sandbox pauses
-    const { name } = await m.startRunEnvironment(ctx.task.taskId, { image: this.o.devImage, snapshotDir: snap.path, prebuilt: this.o.adapter.devSandbox.prebuilt, commands: [...re.buildCommands, ...re.startCommands].join("\n"), // one line each under `set -e`; joining with && breaks on a trailing & env: this.o.adapter.devSandbox.env ?? {} });
+    // One script line per command under `set -e`; joining with && broke on a start command ending in &.
+    const { name } = await m.startRunEnvironment(ctx.task.taskId, { image: this.o.devImage, snapshotDir: snap.path, prebuilt: this.o.adapter.devSandbox.prebuilt, commands: [...re.buildCommands, ...re.startCommands].join("\n"), env: this.o.adapter.devSandbox.env ?? {} });
     const url = `http://127.0.0.1:${this.#relayPort}${re.healthPath}`;
     const end = Date.now() + 230_000;
     while (Date.now() < end && !ctx.signal.aborted) {
