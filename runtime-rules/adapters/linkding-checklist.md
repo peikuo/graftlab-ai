@@ -19,5 +19,6 @@ Rules for every agent that plans, builds, reviews or checks a change to linkding
 - `browser_check`: the changed app runs in the Run_Environment; name buttons and fields by their visible labels. For a model-powered feature set `needsAi: true` and expect text that only the model's answer can produce, not a fixed heading.
 - After the last Feature the Verifier runs the whole `bookmarks.tests` suite and compares it with the pinned commit; a test that passed before and fails after is a regression.
 ## Building
+- linkding pages use Turbo: a form that is sent with POST must answer with a redirect (303), or with status 422 to show the form again with errors. A plain 200 page in answer to a POST is not shown in the browser, even though the Django test client sees it (found 2026-11-24: a question box worked in its tests and showed nothing in the browser). To show a result on the same page, send the form with GET, or mark the form `data-turbo="false"`.
 - linkding needs Python 3.13. The development sandbox already has the dependencies, Node and the built front end; do not install new system packages.
 - Change only the copy in your worktree. The Studio never starts the changed app from your instructions; it starts it the same way for every change.

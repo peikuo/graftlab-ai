@@ -286,6 +286,7 @@ stateDiagram-v2
     story_review --> story_develop: request changes, below retry limit
     story_review --> story_ask: escalate, or request changes at retry limit
     story_review --> deciding: approach must change, new version
+    story_review --> failure_review: no valid Review_Verdict (found missing 2026-11-24)
     story_ask --> story_develop: answer received, below retry limit
     story_ask --> story_develop: unanswered or answered at retry limit, story blocked, next story is source change
     story_ask --> api_read: unanswered or answered at retry limit, story blocked, next story is API operation

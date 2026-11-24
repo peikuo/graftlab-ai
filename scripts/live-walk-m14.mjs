@@ -91,6 +91,7 @@ try {
   }
   // Development: answer what the team asks until the Task ends.
   let shots = 0;
+  let retries = 0;
   for (let i = 0; i < 1800 && !(await p.locator(".final").count()); i++) {
     await p.waitForTimeout(2000);
     const cards = p.locator(".icard.pending");
@@ -109,8 +110,11 @@ try {
     await p.waitForTimeout(3000);
     await p.screenshot({ path: `data/ui-snaps/m14-${NAME}-card${++shots}.png` });
     if (/Something went wrong|not built yet|What should happen/.test(title)) {
-      mark(`failure review: ${title}`);
-      await card.getByRole("button", { name: "End the Task" }).click();
+      // The Judge's choice, visible in the Task: retry the first failure once (for example a 5xx from the model
+      // service), end the Task on a second one.
+      const retry = retries++ === 0;
+      mark(`failure review: ${title} -> ${retry ? "retry" : "end"}`);
+      await card.getByRole("button", { name: retry ? "Try this step again" : "End the Task" }).click();
       continue;
     }
     if (await card.locator("textarea").count()) {

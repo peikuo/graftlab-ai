@@ -380,11 +380,15 @@ export class DevStage {
       {
         name: "read_changed_file",
         label: "read_changed_file",
-        description: "A changed file as it is now.",
+        description: "A file of the working copy as it is now: a changed file, or any other file for context (read-only).",
         parameters: obj({ path: str() }),
         execute: async (_i, a: { path: string }) => {
-          if (!d.files.includes(a.path) && !d.testFiles.includes(a.path)) return text(`${a.path} is not a changed file`, true);
-          return text(cut(await readFile(join(this.#wt!.path, a.path), "utf8").catch(() => "(deleted)"), 40_000));
+          const rel = String(a.path ?? "").replace(/^\/+/, "").replace(/^work\//, "");
+          if (!rel || rel.split(/[\\/]/).includes("..") || rel.startsWith(".git")) return text(`${a.path} is not a path inside the working copy`, true);
+          const changed = d.files.includes(rel) || d.testFiles.includes(rel);
+          const body = await readFile(join(this.#wt!.path, rel), "utf8").catch(() => null);
+          if (body === null) return text(changed ? "(deleted in this attempt)" : `${rel} does not exist`, !changed);
+          return text(`${changed ? "" : "(unchanged file, for context)\n"}${cut(body, 40_000)}`);
         },
       },
       {

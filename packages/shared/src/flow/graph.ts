@@ -164,6 +164,7 @@ export const EDGES: readonly FlowEdge[] = [
   e("approve_feature", "story_review", "verifying", and(outcomeIs("approve"), not(lastWithDemo)), "approve, more Features of the story follow or the story has no demo: verify and merge"),
   e("request_changes", "story_review", "story_develop", and(outcomeIs("request_changes"), belowRetryLimit), "request changes, below retry limit"),
   e("escalate", "story_review", "story_ask", (t) => t.outcome === "escalate" || (t.outcome === "request_changes" && atRetryLimit(t)), "escalate, or request changes at retry limit"),
+  e("review_failed", "story_review", "failure_review", outcomeIs("failed"), "no valid Review_Verdict after the visible retries"),
   e("approach_change", "story_review", "deciding", outcomeIs("approach_change"), "approach must change, new version"),
   e("answered", "story_ask", "story_develop", and(outcomeIs("answered"), belowRetryLimit), "answer received, below retry limit"),
   e("answered_at_limit", "story_ask", "story_develop", and(outcomeIs("answered"), atRetryLimit, nextKindIs("source_change")), "answer received at retry limit, story blocked, next story is source change"),
