@@ -3,9 +3,13 @@
 // feature-breakdown skill; (2) Feasibility reviews every Feature (thinking off); (3) the Reviewer decides the final
 // version and grades every Feature on the rubric. Code checks every submission and names the failing Feature.
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { arr, bool, int, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
+import { arr, bool, int, obj, oneOf, opt, str, unknown } from "@earendil-works/pi-schema";
 import {
   checkBreakdown,
+  missingTestTargets,
+  RefinedChecksSchema,
+  withRefinedChecks,
+  type RefinedChecks,
   FeatureGradeSchema,
   RUBRIC,
   stripIds,
@@ -79,9 +83,14 @@ const gradeP = obj({ featureId: str(), ...Object.fromEntries(RUBRIC.map((k) => [
 export const INSTALL = /\b(uv\s+sync|uv\s+pip\s+install|pip3?\s+install|python3?\s+-m\s+pip\s+install|npm\s+(install|ci|i)\b|pnpm\s+install|yarn\s+install|poetry\s+install|bundle\s+install|apt(-get)?\s+install)/;
 
 /** Checks a submitted architecture and breakdown; the architecture's quotes are checked against the files. */
-export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | "needsRunEnvironment" | "evidence">): { ok: true; architecture: TechArchitecture; breakdown: FeatureBreakdown } | { ok: false; problems: string[] } {
-  const x = (a ?? {}) as { architecture?: Record<string, unknown>; features?: unknown[] };
+export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | "needsRunEnvironment" | "evidence"> & { files?: Map<string, string> }): { ok: true; architecture: TechArchitecture; breakdown: FeatureBreakdown; checks: RefinedChecks } | { ok: false; problems: string[] } {
+  const x = (a ?? {}) as { architecture?: Record<string, unknown>; features?: unknown[]; checks?: unknown };
   const problems: string[] = [];
+  const refined = RefinedChecksSchema.safeParse(x.checks ?? []);
+  if (!refined.success) problems.push(...refined.error.issues.slice(0, 3).map((i) => `checks: ${i.path.join(".")} ${i.message}`));
+  const checks = refined.success ? refined.data : [];
+  for (const r of checks) if (!o.plan.backlog.stories.some((s) => s.id === r.storyId)) problems.push(`checks: story ${r.storyId} is not in the confirmed plan`);
+  const backlog = withRefinedChecks(o.plan, checks).backlog;
   const norm = (arch: Record<string, unknown> = {}) => ({
     ...arch,
     affected: ((arch.affected as Record<string, unknown>[] | undefined) ?? []).map((p) => ({ quotes: [], ...p })),
@@ -97,8 +106,15 @@ export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | 
     for (const c of [...arch.data.runEnvironment.buildCommands, ...arch.data.runEnvironment.startCommands])
       if (INSTALL.test(c)) problems.push(`architecture: runEnvironment command "${c}" installs packages, but the run container has no internet and the dependencies are preinstalled; leave it out`);
   const features = (x.features ?? []).map((f) => ({ interfaces: [], dependsOn: [], servesChecks: [], ...(f as object), scope: { notTouch: [], ...((f as { scope?: object })?.scope ?? {}) } }));
-  const b = checkBreakdown({ features }, o.plan.backlog);
+  const b = checkBreakdown({ features }, backlog);
   if (!b.ok) problems.push(...b.problems);
+  // R19.16: every test check runs something that exists or that a Feature adds.
+  if (b.ok && o.files) {
+    const planned = b.breakdown.features.flatMap((f) => f.tests.files);
+    for (const s of backlog.stories)
+      for (const m of missingTestTargets(s.featureContract.acceptanceChecks, o.files.keys(), planned))
+        problems.push(`story ${s.id}: check ${m.checkId} runs ${m.target}, which is not in the repository and no Feature adds it; refine the check in \`checks\` (the real test module) or add the test file to a Feature`);
+  }
   if (problems.length || !arch.success || !b.ok) return { ok: false, problems };
   const architecture = { ...arch.data, overview: stripIds(arch.data.overview).text };
   architecture.affected = architecture.affected.map((p) => ({ ...p, quotes: checkConclusion(p.quotes, o.evidence).evidence.map((e) => ({ path: e.path, ...(e.line ? { line: e.line } : {}), snippet: e.snippet, status: e.status ?? "unverified" })) }));
@@ -106,7 +122,7 @@ export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | 
     const c = checkConclusion(architecture.runEnvironment.evidence, o.evidence);
     architecture.runEnvironment = { ...architecture.runEnvironment, evidence: c.evidence.map((e) => ({ path: e.path, ...(e.line ? { line: e.line } : {}), snippet: e.snippet, status: e.status ?? "unverified" })) };
   }
-  return { ok: true, architecture, breakdown: b.breakdown };
+  return { ok: true, architecture, breakdown: b.breakdown, checks };
 }
 
 export async function runTechDesign(o: TechDesignOptions): Promise<TechDesignResult> {
@@ -139,13 +155,13 @@ export async function runTechDesign(o: TechDesignOptions): Promise<TechDesignRes
     { name: "read_file", label: "read_file", description: "Read lines of a repository file (at most 400 lines).", parameters: obj({ path: str(), fromLine: opt(int()), toLine: opt(int()) }), execute: async (_i, a: { path: string; fromLine?: number; toLine?: number }) => text(renderReadFile(readFileLines(o.files, a.path, a.fromLine, a.toLine))) },
     { name: "search_repo", label: "search_repo", description: "Literal search over the repository files.", parameters: obj({ query: str() }), execute: async (_i, a: { query: string }) => text(renderSearch(a.query, searchRepo(o.files, a.query))) },
   ];
-  const submitTool = (name: string, description: string, extra: Record<string, unknown>, onOk: (r: { architecture: TechArchitecture; breakdown: FeatureBreakdown }, a: Record<string, unknown>) => string | null): AgentTool<any> => ({
+  const submitTool = (name: string, description: string, extra: Record<string, unknown>, onOk: (r: { architecture: TechArchitecture; breakdown: FeatureBreakdown; checks: RefinedChecks }, a: Record<string, unknown>) => string | null): AgentTool<any> => ({
     name,
     label: name,
     description,
-    parameters: obj({ architecture: architectureP, features: arr(featureP), ...extra } as Record<string, ReturnType<typeof str>>),
+    parameters: obj({ architecture: architectureP, features: arr(featureP), checks: opt(arr(obj({ storyId: str(), checks: arr(unknown()), reason: str() }))), ...extra } as unknown as Record<string, ReturnType<typeof str>>),
     execute: async (_i, a: unknown) => {
-      const r = checkTechDesign(a, o);
+      const r = checkTechDesign(a, { ...o, files: o.files });
       if (!r.ok) return text(`Not accepted: ${r.problems.slice(0, 6).join("; ")}. Submit again.`, true);
       const more = onOk(r, (a ?? {}) as Record<string, unknown>);
       if (more) return text(`Not accepted: ${more}. Submit again.`, true);
@@ -154,11 +170,13 @@ export async function runTechDesign(o: TechDesignOptions): Promise<TechDesignRes
   });
 
   // (1) The Planner's draft.
-  let draft: { input: unknown; architecture: TechArchitecture; breakdown: FeatureBreakdown } | null = null;
-  const askDraft = `Read the code the stories touch, then write the Technical Architecture and the Feature breakdown following the skill. ${runEnv} Then submit_tech_design. Tell the Judge in at most 80 words what the design does.`;
+  let draft: { input: unknown; architecture: TechArchitecture; breakdown: FeatureBreakdown; checks: RefinedChecks } | null = null;
+  const checksText = o.plan.backlog.stories.map((s) => `- ${s.id}: ${s.featureContract.acceptanceChecks.map((c) => `${c.id} ${JSON.stringify(c)}`).join("; ") || "no checks"}`).join("\n");
+  const checksAsk = `The stories' acceptance checks were written before anyone read the code:\n${checksText}\nMake each one executable against this code: the real test module or file (existing, or one a Feature adds), and for browser checks the real paths and the labels of the fields and buttons as the templates render them (read the templates). Put a refined check list for a story in \`checks\` with the reason; keep the intent.`;
+  const askDraft = `Read the code the stories touch, then write the Technical Architecture and the Feature breakdown following the skill. ${checksAsk} ${runEnv} Then submit_tech_design. Tell the Judge in at most 80 words what the design does.`;
   const draftTool = submitTool("submit_tech_design", "Submit the Technical Architecture and the Feature breakdown.", {}, (r, a) => ((draft = { input: a, ...r }), null));
   if (!(await turn("planner", askDraft, [...readTools(), draftTool], () => draft !== null, o.thinking?.draft ?? THINKING.techDraft))) return { ok: false, reason: o.signal.aborted ? "stopped" : "the Planner did not submit a valid technical design", stats };
-  const d = draft as { input: unknown; architecture: TechArchitecture; breakdown: FeatureBreakdown } | null;
+  const d = draft as { input: unknown; architecture: TechArchitecture; breakdown: FeatureBreakdown; checks: RefinedChecks } | null;
   if (!d) return { ok: false, reason: "no technical design", stats };
 
   // (2) Feasibility reviews every Feature.
@@ -183,7 +201,7 @@ export async function runTechDesign(o: TechDesignOptions): Promise<TechDesignRes
   if (o.signal.aborted) return { ok: false, reason: "stopped", stats };
 
   // (3) The Reviewer decides and grades.
-  let final: { architecture: TechArchitecture; breakdown: FeatureBreakdown; grades: FeatureGrade[]; note: string } | null = null;
+  let final: { architecture: TechArchitecture; breakdown: FeatureBreakdown; checks: RefinedChecks; grades: FeatureGrade[]; note: string } | null = null;
   const finalTool = submitTool(
     "submit_final_tech_design",
     "Submit the final Technical Architecture and Feature breakdown, a grade per Feature, and a note on what you changed and why.",
@@ -198,11 +216,11 @@ export async function runTechDesign(o: TechDesignOptions): Promise<TechDesignRes
     },
   );
   const reviewText = review.length ? review.map((x) => `- ${x.featureId}: fits ${x.fits}, size ${x.sizeRight ? "right" : "wrong"}${x.missing ? `; missing: ${x.missing}` : ""}`).join("\n") : "- Feasibility submitted no review";
-  const askFinal = `You decide the final technical design. The Planner's design (JSON):\n${JSON.stringify(d.input)}\n\nFeasibility's review (LLM judgment):\n${reviewText}\n\nCheck it against the code, apply the skill, change what needs changing, and grade every final Feature on vertical slice, independent, testable, small, in scope. Then submit_final_tech_design. Tell the Judge in at most 80 words what you decided.`;
+  const askFinal = `You decide the final technical design. The Planner's design (JSON):\n${JSON.stringify(d.input)}\n\nFeasibility's review (LLM judgment):\n${reviewText}\n\nCheck it against the code, apply the skill, change what needs changing (including the refined acceptance checks: ${checksAsk}), and grade every final Feature on vertical slice, independent, testable, small, in scope. Then submit_final_tech_design. Tell the Judge in at most 80 words what you decided.`;
   if (!(await turn("reviewer", askFinal, [...readTools(), finalTool], () => final !== null, o.thinking?.final ?? THINKING.techFinal))) return { ok: false, reason: o.signal.aborted ? "stopped" : "the Reviewer did not submit a valid final technical design", stats };
-  const f = final as { architecture: TechArchitecture; breakdown: FeatureBreakdown; grades: FeatureGrade[]; note: string } | null;
+  const f = final as { architecture: TechArchitecture; breakdown: FeatureBreakdown; checks: RefinedChecks; grades: FeatureGrade[]; note: string } | null;
   if (!f) return { ok: false, reason: "no final technical design", stats };
-  const design = TechDesignSchema.safeParse({ decisionVersion: o.plan.decisionVersion, architecture: f.architecture, breakdown: f.breakdown, review, grades: f.grades, reviewerNote: f.note, label: "LLM assessment, not a guarantee" });
+  const design = TechDesignSchema.safeParse({ decisionVersion: o.plan.decisionVersion, architecture: f.architecture, breakdown: f.breakdown, checks: f.checks, review, grades: f.grades, reviewerNote: f.note, label: "LLM assessment, not a guarantee" });
   if (!design.success) return { ok: false, reason: `the technical design does not match the schema: ${design.error.issues[0]?.path.join(".")} ${design.error.issues[0]?.message}`, stats };
   return { ok: true, design: design.data as TechDesign, stats };
 }

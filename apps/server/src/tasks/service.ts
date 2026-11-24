@@ -22,7 +22,7 @@ import { DecisionDesk, type Verdict } from "../decision/desk.ts";
 import { splitItems } from "../decision/items.ts";
 import { renderDecisionDoc } from "../decision/render.ts";
 import { mkdir, writeFile } from "node:fs/promises";
-import { featureTaskBoard, storyEffort, type DecisionDocContent, type OutputDocKind, type Plan, type RequirementsDoc, type TechDesign, type Proposal, type ReviewItemData, type StoryProgress } from "@graftlab/shared";
+import { featureTaskBoard, storyEffort, withRefinedChecks, type DecisionDocContent, type OutputDocKind, type Plan, type RequirementsDoc, type TechDesign, type Proposal, type ReviewItemData, type StoryProgress } from "@graftlab/shared";
 import { runPlanning } from "../planning/plan.ts";
 import { runRequirements } from "../planning/docs.ts";
 import { runTechDesign } from "../planning/techdesign.ts";
@@ -584,6 +584,8 @@ export class TaskService {
     const v = p.decisionVersion;
     const d = r.design;
     this.#plan.design = d;
+    // R19.16: the checks refined against the code replace the stories' checks for development and the Verifier.
+    if (d.checks.length) this.#plan.current = { ...cur, plan: withRefinedChecks(p, d.checks) };
     await this.#writeDoc(ctx, "architecture", "TECHNICAL_ARCHITECTURE.md", renderArchitecture(d.architecture), d.architecture, v);
     await this.#writeDoc(ctx, "features", "FEATURE_BREAKDOWN.md", renderFeatures(d), d, v);
     const board = featureTaskBoard(d.breakdown);

@@ -2,7 +2,8 @@
 // Technical Architecture and the Feature breakdown, and the code checks every breakdown must pass. A Feature's
 // scope guides the Code_Agent and the review; it is not a write restriction (R38.2).
 import { z } from "zod";
-import type { ProductBacklog } from "./planning.ts";
+import { AcceptanceCheckSchema, type AcceptanceCheckSpec } from "./decision.ts";
+import type { Plan, ProductBacklog } from "./planning.ts";
 
 const text = z.string().trim().min(1);
 const soft = (max: number) => text.transform((s) => (s.length > max ? `${s.slice(0, max - 1)}…` : s));
@@ -69,6 +70,8 @@ export const TechDesignSchema = z
     decisionVersion: z.number().int().positive(),
     architecture: TechArchitectureSchema,
     breakdown: FeatureBreakdownSchema,
+    /** Acceptance checks refined in the technical design (R19.16), replacing the story's checks. */
+    checks: z.array(z.object({ storyId: text, checks: z.array(AcceptanceCheckSchema).max(6), reason: soft(400) }).strict()).default([]),
     review: z.array(z.object({ featureId: text, fits: z.enum(["yes", "doubt"]), sizeRight: z.boolean(), missing: z.string().max(400).optional() }).strict()),
     grades: z.array(FeatureGradeSchema),
     reviewerNote: z.string().max(800),
@@ -132,4 +135,46 @@ export function featureTaskBoard(b: FeatureBreakdown) {
 export function unplannedChanges(feature: Pick<Feature, "scope" | "tests">, changed: string[]): string[] {
   const planned = new Set([...feature.scope.files, ...feature.tests.files]);
   return changed.filter((p) => !planned.has(p));
+}
+
+// ---- acceptance checks against the code (R19.16) ----
+
+export const RefinedChecksSchema = z.array(z.object({ storyId: text, checks: z.array(AcceptanceCheckSchema).max(6), reason: soft(400) }).strict());
+export type RefinedChecks = z.infer<typeof RefinedChecksSchema>;
+
+/** The backlog with the refined checks in place of the stories' checks. */
+export function withRefinedChecks<T extends Pick<Plan, "backlog">>(plan: T, refined: RefinedChecks): T {
+  if (!refined.length) return plan;
+  return {
+    ...plan,
+    backlog: { ...plan.backlog, stories: plan.backlog.stories.map((s) => { const r = refined.find((x) => x.storyId === s.id); return r ? { ...s, featureContract: { ...s.featureContract, acceptanceChecks: r.checks } } : s; }) },
+  };
+}
+
+const words = (argv: string[]) => (argv.length === 1 && /\s/.test(argv[0]!.trim()) ? argv[0]!.trim().split(/\s+/) : argv);
+
+/**
+ * The repository paths a test command names, or null when the command is not a recognized test runner. Django
+ * `manage.py test a.b.c` labels become `a/b/c.py` (or the directory `a/b/c/`); pytest arguments are paths.
+ */
+export function testTargets(command: string[]): string[] | null {
+  const w = words(command);
+  const t = w.indexOf("test");
+  if (w.some((x) => x.endsWith("manage.py")) && t >= 0)
+    return w.slice(t + 1).filter((x) => !x.startsWith("-")).map((l) => l.split(".").join("/"));
+  const p = w.findIndex((x) => x === "pytest" || x.endsWith("/pytest"));
+  if (p >= 0) return w.slice(p + 1).filter((x) => !x.startsWith("-")).map((x) => x.split("::")[0]!.replace(/\/+$/, ""));
+  return null;
+}
+
+/** Test checks whose targets exist neither in the repository nor among the Features' planned test files. */
+export function missingTestTargets(checks: AcceptanceCheckSpec[], repoFiles: Iterable<string>, plannedTests: Iterable<string>): { checkId: string; target: string }[] {
+  const files = new Set([...repoFiles, ...plannedTests]);
+  const exists = (t: string) => files.has(t) || files.has(`${t}.py`) || [...files].some((f) => f.startsWith(`${t}/`));
+  const out: { checkId: string; target: string }[] = [];
+  for (const c of checks) {
+    if (c.kind !== "test_suite") continue;
+    for (const t of testTargets(c.command) ?? []) if (!exists(t)) out.push({ checkId: c.id, target: t });
+  }
+  return out;
 }

@@ -1,6 +1,6 @@
 // Requirements and the technical design with a scripted turn runner (tasks.md 14.23; R19.2, R19.13-R19.15).
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { checkBreakdown, unplannedChanges, type Plan } from "@graftlab/shared";
+import { checkBreakdown, missingTestTargets, testTargets, unplannedChanges, type Plan } from "@graftlab/shared";
 import { describe, expect, it } from "vitest";
 import { filesFrom } from "../evidence/check.ts";
 import { checkRequirements } from "./docs.ts";
@@ -12,6 +12,7 @@ import { checkTechDesign, runTechDesign } from "./techdesign.ts";
 const files = new Map([
   ["Makefile", "serve:\n\tuv run manage.py runserver $(BIND)\n"],
   ["bookmarks/services/auto_tagging.py", "def get_tags(script, url):\n    pass\n"],
+  ["bookmarks/tests/test_ai_tags.py", "def test_x():\n    pass\n"],
 ]);
 const skillRules = { ...rules, roles: { ...rules.roles, reviewer: "RV" }, skills: { "feature-breakdown": "FB", "story-splitting": "SS" } };
 type Tools = Map<string, AgentTool<any>>;
@@ -86,6 +87,18 @@ describe("checkBreakdown (R19.14)", () => {
     if (!r.ok) expect(r.problems).toEqual(["Feature F1: size S allows 2 non-test files but 4 are planned; raise the size or split it", "Feature F2: size M allows 5 non-test files but 6 are planned; split it"]);
   });
 
+  it("finds the targets of test commands and the ones that exist nowhere (R19.16)", () => {
+    expect(testTargets(["python", "manage.py", "test", "bookmarks.tests.test_x", "--parallel"])).toEqual(["bookmarks/tests/test_x"]);
+    expect(testTargets(["uv run pytest bookmarks/tests/test_y.py::T::t"])).toEqual(["bookmarks/tests/test_y.py"]);
+    expect(testTargets(["make", "test"])).toBeNull();
+    const checks = [
+      { id: "c1", kind: "test_suite" as const, command: ["python", "manage.py", "test", "bookmarks.tests.test_bookmarks"], timeoutS: 60 },
+      { id: "c2", kind: "test_suite" as const, command: ["python", "-m", "pytest", "bookmarks/tests/test_new.py"], timeoutS: 60 },
+      { id: "c3", kind: "test_suite" as const, command: ["python", "manage.py", "test", "bookmarks.tests"], timeoutS: 60 },
+    ];
+    expect(missingTestTargets(checks, ["bookmarks/tests/test_health.py"], ["bookmarks/tests/test_new.py"])).toEqual([{ checkId: "c1", target: "bookmarks/tests/test_bookmarks" }]);
+  });
+
   it("lists the changed files outside the plan", () => {
     expect(unplannedChanges(feature("F1", "S1") as never, ["bookmarks/services/auto_tagging.py", "bookmarks/tests/test_tag_suggestions.py", "bookmarks/views/settings.py"])).toEqual(["bookmarks/views/settings.py"]);
   });
@@ -144,6 +157,19 @@ describe("runTechDesign", () => {
       },
     });
     expect(answer).toBe("Not accepted: no grade for F2. Submit again.");
+  });
+
+  it("refuses a test check that runs nothing that exists, and accepts refined checks that replace it", async () => {
+    const plan = await confirmedPlan();
+    const fs = [feature("F1", "S1"), feature("F2", "S2")];
+    const noTests = new Map([...files].filter(([k]) => !k.includes("test_ai_tags")));
+    const bad = checkTechDesign({ architecture, features: fs }, { plan, needsRunEnvironment: true, evidence: filesFrom(noTests), files: noTests });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.problems.some((p) => /story S1: check c1 runs .* not in the repository/.test(p))).toBe(true);
+    const refined = [{ storyId: "S1", reason: "the real test module", checks: [{ id: "c1", kind: "test_suite", command: ["python", "-m", "pytest", "bookmarks/tests/test_tag_suggestions.py"], timeoutS: 120 }] }, { storyId: "S2", reason: "same", checks: [{ id: "c1", kind: "test_suite", command: ["python", "-m", "pytest", "bookmarks/tests/test_tag_suggestions.py"], timeoutS: 120 }] }];
+    const ok = checkTechDesign({ architecture, features: fs, checks: refined }, { plan, needsRunEnvironment: true, evidence: filesFrom(noTests), files: noTests });
+    expect(ok.ok).toBe(true);
+    if (ok.ok) expect(ok.checks[0]!.reason).toBe("the real test module");
   });
 
   it("requirements cover every story", async () => {

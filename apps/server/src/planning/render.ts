@@ -84,6 +84,7 @@ export function renderFeatures(d: TechDesign): string {
         .filter(Boolean)
         .join("\n\n");
     }),
+    d.checks.length ? `## Acceptance checks refined in the technical design\n\n${d.checks.map((c) => `### Story ${c.storyId}\n${c.reason}\n\n${list(c.checks.map((x) => `${x.id}: ${describeCheck(x)}`))}`).join("\n\n")}` : "",
     d.reviewerNote ? `## Reviewer's decision\n\n${d.reviewerNote}` : "",
   ]
     .filter(Boolean)
