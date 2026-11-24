@@ -26,6 +26,8 @@ import { featureTaskBoard, storyEffort, type DecisionDocContent, type OutputDocK
 import { runPlanning } from "../planning/plan.ts";
 import { runRequirements } from "../planning/docs.ts";
 import { runTechDesign } from "../planning/techdesign.ts";
+import { MirrorSource } from "../reader/mirror.ts";
+import { mirrorSourceFromEnv } from "../worktree/worktree.ts";
 import { DevStage, type DevStageOptions } from "../dev/stage.ts";
 import type { ContainerManager } from "../containers/manager.ts";
 import { olderVersionNote, renderArchitecture, renderBacklog, renderDefinitionOfDone, renderFeatures, renderRequirements, renderSprintPlan, renderTaskBoard } from "../planning/render.ts";
@@ -657,8 +659,11 @@ export class TaskService {
         const lateSkipped: string[] = [];
         let read: Awaited<ReturnType<typeof readRepository>>;
         try {
+          // R10.1: an Adapted_Repo is read from the Adapter's mirror at the pinned commit, like the Worktree.
+          const adapter = this.#o.execution?.adapters.find((a) => a.id === ctx.task.adapterId);
+          const source = adapter ? new MirrorSource(this.#o.dataDir, { adapterId: adapter.id, upstreamUrl: adapter.source.upstreamUrl, commit: adapter.source.commit, ...(mirrorSourceFromEnv(adapter.id) ? { source: mirrorSourceFromEnv(adapter.id)! } : {}) }) : this.#o.github;
           read = await readRepository(
-            this.#o.github,
+            source,
             this.#cache,
             meta,
             {

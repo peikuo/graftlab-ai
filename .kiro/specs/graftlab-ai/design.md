@@ -636,7 +636,7 @@ Second guard, the redactor (a safety net, not the mechanism):
 
 ### Repo_Reader (R10, R34)
 
-- GitHub REST API with the read-only token held server-side (R34.1): repository metadata (existence, visibility, default branch; R9.4), the commit SHA of the default branch (for an Adapted_Repo the Adapter's pinned commit instead, R10.1), the recursive git tree, then raw file contents.
+- GitHub REST API with the read-only token held server-side (R34.1): repository metadata (existence, visibility, default branch; R9.4), the commit SHA of the default branch (for an Adapted_Repo the Adapter's pinned commit instead, R10.1), the recursive git tree, then raw file contents. For an Adapted_Repo the tree and the files come from the Adapter's local mirror at the pinned commit (the same mirror the Worktree is cloned from), and GitHub is asked only for the metadata; found 2026-11-24 on the first deployment host, where GitHub's raw file host is unreachable.
 - Prioritized download order: README, docs, OpenAPI or schema files, route and URL definitions, models, then the rest by path depth. Reading stops at the read-volume limit (500 files or 4 MB of text); skipped parts are listed in a `finding_recorded` event of kind `skipped` and shown in the Artifact_Area (R10.6).
 - Binary files and files above 200 KB are skipped and listed.
 - Cache: `data/cache/github/<owner>/<repo>/<sha>/` holds the tree and file contents; a repeated request for the same SHA reads only from the cache (R34.2).

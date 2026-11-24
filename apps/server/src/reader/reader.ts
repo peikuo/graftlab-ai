@@ -118,7 +118,7 @@ export interface ReadResult {
 }
 
 /** Downloads (or reads from the cache) the planned files and reports each one as it is read. */
-export async function readRepository(gh: GitHub, cache: RepoCache, meta: RepoMeta, cb: ReadCallbacks, limits: ReadLimits = DEFAULT_LIMITS): Promise<ReadResult> {
+export async function readRepository(gh: Pick<GitHub, "tree" | "file">, cache: RepoCache, meta: RepoMeta, cb: ReadCallbacks, limits: ReadLimits = DEFAULT_LIMITS): Promise<ReadResult> {
   const cached = await cache.readTree(meta);
   const tree = cached ?? (await gh.tree(meta));
   if (!cached) await cache.writeTree(meta, tree);
