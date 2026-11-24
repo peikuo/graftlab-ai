@@ -617,6 +617,8 @@ export class TaskService {
       plan: () => this.#plan.current!.plan,
       design: () => this.#plan.design!,
       requirements: () => this.#plan.requirements,
+      memo: () => read.memo.tree,
+      aiRuntime: () => this.#frozenDecision()?.content.aiRuntime,
     });
     return this.#dev;
   }
@@ -624,7 +626,7 @@ export class TaskService {
   /** The Run_Environment's facts for the Planner's run environment (design: Containers, Network policy). */
   async #environmentNote(adapterId: string): Promise<string> {
     const a = JSON.parse(await readFile(join(this.#o.adaptersDir ?? "adapters", adapterId, "adapter.json"), "utf8")) as { devSandbox?: { preinstalled?: string[] } };
-    return `The changed software runs in a container without internet access, so leave out every install step (uv sync, pip install, npm install or ci); already installed: ${(a.devSandbox?.preinstalled ?? []).join(", ")}. The app must listen on 0.0.0.0, not 127.0.0.1, so the Studio can reach it.`;
+    return `The changed software runs in a container without internet access, so leave out every install step (uv sync, pip install, npm install or ci); already installed: ${(a.devSandbox?.preinstalled ?? []).join(", ")}. The app must listen on 0.0.0.0, not 127.0.0.1, so the Studio can reach it. Its AI reads the model from GL_AI_BASE_URL, GL_AI_API_KEY and GL_AI_MODEL, which the Studio sets in the run and test containers; checks that need the AI feature must switch it on first.`;
   }
 
   async #checkHints(adapterId: string): Promise<string> {
@@ -650,7 +652,11 @@ export class TaskService {
         sum.experienceUnavailable ? `App experience unavailable: ${sum.experienceUnavailable}.` : "",
         sum.partial ? "Evidence gathering was ended early by the Judge (partial)." : "",
       ].filter(Boolean).join("\n\n")}`,
-    ].join("\n\n");
+      this.#o.meeting?.rules.skills?.["ai-runtime"] ? `## ${this.#o.meeting.rules.skills["ai-runtime"].replace(/^# /, "")}` : "",
+      ctx.task.repoKind === "adapted"
+        ? "## Environment facts (from the Studio and the Adapter)\nThe changed software runs in containers with about 512 MB of memory and no accelerator, so it cannot host a language model. It can reach an outside model service when the Judge consents."
+        : "## Environment facts\nThe Studio does not run this software; say where its AI would get its model in the user's own deployment.",
+    ].filter(Boolean).join("\n\n");
   }
 
   #handlers(): Partial<Record<NodeId, NodeHandler>> {

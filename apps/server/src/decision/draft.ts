@@ -28,6 +28,8 @@ const DraftIn = z.object({
   uiImpact: line(800),
   risks: capped(line(300), 8).default([]),
   openQuestions: capped(line(300), 4).default([]),
+  // R15.12: required in every new draft.
+  aiRuntime: z.object({ source: z.enum(["studio_service", "judge_endpoint", "local"]), endpoint: z.string().url().optional(), dataSent: capped(line(200), 8), reason: line(400) }),
 });
 const Claim = z.object({ text: line(400), quotes: capped(Quote, 3).default([]) });
 const AssessIn = z.object({
@@ -134,6 +136,7 @@ export async function runDecisionDraft(o: DraftOptions): Promise<DraftResult> {
       uiImpact: str(),
       risks: opt(arr(str())),
       openQuestions: opt(arr(str())),
+      aiRuntime: obj({ source: oneOf(["studio_service", "judge_endpoint", "local"] as const), endpoint: opt(str()), dataSent: arr(str()), reason: str() }),
     }),
     execute: async (_i, a: unknown) => {
       const p = DraftIn.safeParse(a);
@@ -156,7 +159,7 @@ export async function runDecisionDraft(o: DraftOptions): Promise<DraftResult> {
   };
   const askDraft = o.previous
     ? `The Judge sent your previous draft back. Revise only what the rejections ask for; copy every other section exactly as it was, word for word, so the Judge's earlier verdicts stay valid.\n\nRejected items and reasons:\n${o.previous.rejections.map((r) => `- ${r.title}: ${r.reason}`).join("\n")}\n\nPrevious draft (JSON):\n${JSON.stringify(stripChecked(o.previous.content))}\n\nThen submit_decision_draft. Tell the Judge in at most 80 words what you changed.`
-    : "Write the decision draft from the meeting result. Workflows: one per recommended proposal; set `proposal` to its id (P1, P2, …). Approach options: 2 or 3 different ways to build the top recommendations, each with executable acceptance checks. Carry the binding conditions into scope and risks. Then submit_decision_draft. Tell the Judge in at most 80 words what the draft says.";
+    : "Write the decision draft from the meeting result. Workflows: one per recommended proposal; set `proposal` to its id (P1, P2, …). Approach options: 2 or 3 different ways to build the top recommendations, each with executable acceptance checks. Carry the binding conditions into scope and risks. Fill aiRuntime following the AI runtime skill in the Task context: the model source the meeting and the Judge agreed (a local model only when the environment facts allow it), the endpoint if the Judge gave one, and the data sent. Then submit_decision_draft. Tell the Judge in at most 80 words what the draft says.";
   if (!(await turn("facilitator", askDraft, draftTool, () => draft !== null))) return { ok: false, reason: o.signal.aborted ? "stopped" : "the Facilitator did not submit a valid decision draft" };
   const d = draft as DraftInput | null;
   if (!d) return { ok: false, reason: "no draft" };
@@ -253,6 +256,7 @@ export async function runDecisionDraft(o: DraftOptions): Promise<DraftResult> {
     risks: [...d.risks.map((r: string) => stripIds(r).text), ...codeRisks],
     evidenceSources,
     openQuestions: d.openQuestions,
+    aiRuntime: { ...d.aiRuntime, reason: stripIds(d.aiRuntime.reason).text },
   };
   const v = DecisionDocContentSchema.safeParse(content);
   if (!v.success) return { ok: false, reason: `the draft does not match the Decision_Doc schema: ${err(v.error)}` };
@@ -275,5 +279,6 @@ function stripChecked(c: DecisionDocContent) {
     uiImpact: c.uiImpact,
     risks: c.risks.filter((r) => !r.startsWith("Large change (engineering risk):") && !r.endsWith("effort not assessed by Feasibility")),
     openQuestions: c.openQuestions,
+    ...(c.aiRuntime ? { aiRuntime: c.aiRuntime } : {}),
   };
 }

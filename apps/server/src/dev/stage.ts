@@ -1,11 +1,12 @@
 // The development stage for source-change Features (design.md, "Development stage", "Worktree manager",
 // "PiCodeRuntime", "Verifier"; R21, R22, R38, R39, R40). One instance per Task. Every container step goes through
 // the container manager; every LLM step is labeled; success comes only from the Verifier's exit codes.
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { arr, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
-import { currentStory, describeCheck, nextPendingStory, unplannedChanges, type Adapter, type BaselineHandle, type Feature, type TargetItem, type Plan, type RequirementsDoc, type SecretRegistry, type StoryProgress, type TechDesign } from "@graftlab/shared";
+import { currentStory, describeCheck, nextPendingStory, unplannedChanges, type Adapter, type AiRuntime, type BaselineHandle, type Feature, type TargetItem, type Plan, type RequirementsDoc, type SecretRegistry, type StoryProgress, type TechDesign } from "@graftlab/shared";
 import { z } from "zod";
 import type { ContainerManager } from "../containers/manager.ts";
 import { issueProxyCredential } from "../proxy/credential.ts";
@@ -14,8 +15,10 @@ import { roleText, sharedSystemPrompt } from "../roles/rules.ts";
 import type { TurnOptions, TurnResult } from "../runtime/pi.ts";
 import { runCodeAttempt } from "../runtime/pi-code.ts";
 import type { NodeHandler } from "../tasks/runner.ts";
-import { abandonFeature, createWorktree, diffWorktree, mergeFeature, mirrorSourceFromEnv, notIgnored, snapshotWorktree, startFeature, writePatchArtifact, type FeatureBranch, type Worktree } from "../worktree/worktree.ts";
+import { abandonFeature, changedOnMain, createWorktree, pathsOnMain, diffWorktree, mergeFeature, mirrorSourceFromEnv, notIgnored, snapshotWorktree, startFeature, writePatchArtifact, type FeatureBranch, type Worktree } from "../worktree/worktree.ts";
 import { writeFeatureContext } from "./context.ts";
+import { buildFocusPack, readPaths } from "./focus.ts";
+import type { MemoTree } from "../reader/memo.ts";
 import { generateSecretEnv, targetClient } from "../containers/sandbox.ts";
 import { runBrowserCheck } from "../verifier/browser.ts";
 import { runReadback, snapshot } from "../verifier/readback.ts";
@@ -36,6 +39,10 @@ export interface DevStageOptions {
   plan: () => Plan;
   design: () => TechDesign;
   requirements: () => RequirementsDoc | undefined;
+  /** The Repo_Memo of this Task (the summaries the focus pack points with). */
+  memo: () => MemoTree | null;
+  /** The Frozen Decision_Doc's AI runtime (R15.12). */
+  aiRuntime: () => AiRuntime | undefined;
 }
 
 const text = (t: string, isError = false) => ({ content: [{ type: "text" as const, text: t }], details: {}, ...(isError ? { isError: true } : {}) });
@@ -61,6 +68,18 @@ export class DevStage {
   #runs = 0;
 
   constructor(private readonly o: DevStageOptions) {}
+
+  /**
+   * The changed software's model (R15.12, R38.4): with an outside source and the Judge's consent the run and test
+   * containers get internet access and the GL_AI_* variables. The Studio's own service is reached through the
+   * LLM_Proxy with the per-Task credential, so the real key never enters these containers either.
+   */
+  #aiAccess(): { env: Record<string, string>; egress: boolean } {
+    const ai = this.o.aiRuntime();
+    if (!ai || ai.source === "local") return { env: {}, egress: false };
+    if (ai.source === "studio_service") return { env: { GL_AI_BASE_URL: "http://llm-proxy:8787/v1", GL_AI_API_KEY: this.#credential ?? "", GL_AI_MODEL: this.o.llm.model }, egress: true };
+    return { env: { GL_AI_BASE_URL: ai.endpoint ?? "", GL_AI_API_KEY: "", GL_AI_MODEL: "" }, egress: true };
+  }
 
   #feature(ctx: Ctx): Feature {
     const id = ctx.task.currentStoryId;
@@ -129,8 +148,24 @@ export class DevStage {
     this.#branch = await startFeature(wt, f.id);
     const story = this.o.plan().backlog.stories.find((s) => s.id === f.storyId)!;
     const contextDir = await writeFeatureContext(this.o.dataDir, ctx.task.taskId, { featureId: f.id, plan: this.o.plan(), design: this.o.design(), ...(this.o.requirements() ? { requirements: this.o.requirements()! } : {}), ...(this.#feedback.get(f.id) ? { previousFeedback: this.#feedback.get(f.id)! } : {}) }, roleText(this.o.rules, "code_agent"));
-    void contextDir; // mounted read-only at /context/<featureId>/ (the whole context directory is mounted at start)
+    // The focus pack (R40.19): a map of where to look, built now from the summaries and the current main.
+    const focus = buildFocusPack({
+      feature: f,
+      design: this.o.design(),
+      memo: this.o.memo(),
+      read: (p) => {
+        try {
+          return readFileSync(join(wt.path, p), "utf8");
+        } catch {
+          return undefined;
+        }
+      },
+      paths: await pathsOnMain(wt),
+      changedSincePinned: await changedOnMain(wt),
+    });
+    await writeFile(join(contextDir, "focus.md"), focus.text);
     await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Feature ${f.id} "${f.title}", attempt ${attempt}: the Code_Agent starts on its own branch`, evidence: [], evidenceStatus: "none" } });
+    const tools: { tool: string; inputSummary: string }[] = [];
     const r = await runCodeAttempt({
       start: () =>
         this.o.manager.docker.execAttach(this.#dev!, ["node", "/opt/runner/runner.mjs"], {
@@ -142,11 +177,15 @@ export class DevStage {
             GL_REASONING_PARAM: this.o.llm.reasoningParam,
             GL_REASONING_EFFORT: this.o.llm.reasoningEffort,
             GL_RULES_FILE: `/context/${f.id}/rules.md`,
+            GL_CONTEXT_FILES: `/context/${f.id}/focus.md`,
             WORK_DIR: "/work",
           },
         }),
       prompt: `Read /context/${f.id}/story.md and build the Feature it describes.`,
-      emit: ctx.emit,
+      emit: async (e) => {
+        if (e.type === "tool_started") tools.push(e.payload as { tool: string; inputSummary: string });
+        await ctx.emit(e);
+      },
       onQuestion: (q) => this.#answer(ctx, f, q),
       budgetMs: story.featureContract.budgets.maxCodeAgentMinutes * 60_000,
       signal: ctx.signal,
@@ -166,6 +205,11 @@ export class DevStage {
     const ref = `docs/patches/${f.id}-attempt${attempt}.diff`;
     await writeFile(join(this.o.dataDir, "tasks", ctx.task.taskId, ref), diff.patch);
     await ctx.emit({ type: "code_change", actor: { kind: "code_agent" }, payload: { storyId: f.id, attempt, changedFiles: changed, diffRef: ref } });
+    // Focus measurement (R40.19): how much of what the Code_Agent read and changed the pack pointed at.
+    const inPack = new Set(focus.files);
+    const reads = readPaths(tools).filter((p) => !p.startsWith("/context/"));
+    const planned = new Set([...f.scope.files, ...f.tests.files]);
+    await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Focus of ${f.id}, attempt ${attempt}: read ${reads.length} files, ${reads.filter((p) => inPack.has(p)).length} of them in the focus pack; changed ${changed.length} files, ${changed.filter((p) => planned.has(p)).length} of them planned`, evidence: [], evidenceStatus: "none" } });
     if (changed.length === 0) {
       await ctx.fail("interface_call_failure", "code_agent", `Feature ${f.id}, attempt ${attempt}: the Code_Agent changed no file`);
       return "failed";
@@ -281,7 +325,7 @@ export class DevStage {
     const m = this.o.manager;
     await m.docker.stopContainer(this.#dev!, 5).catch(() => undefined); // memory: the Development_Sandbox pauses
     // One script line per command under `set -e`; joining with && broke on a start command ending in &.
-    const { name } = await m.startRunEnvironment(ctx.task.taskId, { image: this.o.devImage, snapshotDir: snap.path, prebuilt: this.o.adapter.devSandbox.prebuilt, commands: [...re.buildCommands, ...re.startCommands].join("\n"), env: this.o.adapter.devSandbox.env ?? {} });
+    const { name } = await m.startRunEnvironment(ctx.task.taskId, { image: this.o.devImage, snapshotDir: snap.path, prebuilt: this.o.adapter.devSandbox.prebuilt, commands: [...re.buildCommands, ...re.startCommands].join("\n"), env: { ...(this.o.adapter.devSandbox.env ?? {}), ...this.#aiAccess().env }, egress: this.#aiAccess().egress });
     const url = `http://127.0.0.1:${this.#relayPort}${re.healthPath}`;
     const end = Date.now() + 230_000;
     while (Date.now() < end && !ctx.signal.aborted) {
@@ -369,7 +413,7 @@ export class DevStage {
       for (const c of story.featureContract.acceptanceChecks) if (c.kind === "test_suite") checks.push({ id: c.id, command: c.command, timeoutS: c.timeoutS, label: describeCheck(c) });
     let pass = true;
     for (const c of checks) {
-      const r = await this.o.manager.runTests(ctx.task.taskId, { image: this.o.devImage, snapshotDir: snap.path, prebuilt: this.o.adapter.devSandbox.prebuilt, command: shellCommand(c.command), timeoutS: c.timeoutS, env: this.o.adapter.devSandbox.env ?? {} });
+      const r = await this.o.manager.runTests(ctx.task.taskId, { image: this.o.devImage, snapshotDir: snap.path, prebuilt: this.o.adapter.devSandbox.prebuilt, command: shellCommand(c.command), timeoutS: c.timeoutS, env: { ...(this.o.adapter.devSandbox.env ?? {}), ...this.#aiAccess().env }, egress: this.#aiAccess().egress });
       const summary = r.output.trim().split("\n").filter(Boolean).slice(-3).join(" | ").slice(0, 300);
       const ok = r.code === 0;
       pass &&= ok;

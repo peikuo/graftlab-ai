@@ -289,3 +289,13 @@ export async function abandonFeature(wt: Worktree, f: FeatureBranch): Promise<vo
   await commitFeature(wt, f, `${f.featureId}: unfinished (not merged)`);
   await git(["checkout", "-q", "main"], { cwd: wt.path });
 }
+
+/** Files `main` changed since the pinned commit (the work of earlier Features). */
+export async function changedOnMain(wt: Worktree): Promise<string[]> {
+  return (await git(["diff", "--name-only", wt.base, "main"], { cwd: wt.path })).split("\n").filter(Boolean);
+}
+
+/** Every tracked path of `main`. */
+export async function pathsOnMain(wt: Worktree): Promise<string[]> {
+  return (await git(["ls-tree", "-r", "--name-only", "main"], { cwd: wt.path })).split("\n").filter(Boolean);
+}

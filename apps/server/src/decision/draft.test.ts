@@ -20,6 +20,7 @@ const draft = {
     { id: "agent", kind: "independent_agent", title: "Separate helper", summary: "a helper container", acceptanceChecks: [] },
   ],
   uiImpact: "chips under the tag box",
+  aiRuntime: { source: "studio_service", dataSent: ["the bookmark title and description"], reason: "the server cannot host a model" },
 };
 type Tools = Map<string, AgentTool<any>>;
 const call = async (t: Tools, name: string, a: unknown) => ((await t.get(name)!.execute("i", a as never, undefined as never, undefined as never)).content[0] as { text: string }).text;
@@ -44,6 +45,14 @@ const team = async (role: string, t: Tools) => {
 };
 
 describe("runDecisionDraft", () => {
+  it("refuses a draft without the AI runtime section (R15.12)", async () => {
+    let answer = "";
+    const { o } = setup(async (role, t) => {
+      if (role === "facilitator" && !answer) answer = await call(t, "submit_decision_draft", { ...draft, aiRuntime: undefined });
+    });
+    await runDecisionDraft(o);
+    expect(answer).toMatch(/^Not accepted: aiRuntime/);
+  });
   it("merges the draft and both assessments; code computes complete, checks quotes and names large changes as risks", async () => {
     const { o, calls } = setup(team);
     const r = await runDecisionDraft(o);

@@ -18,6 +18,14 @@ export const AcceptanceCheckSchema = z.discriminatedUnion("kind", [
   z.object({ id: text, kind: z.literal("browser_check"), target: z.enum(["run_environment", "sandbox"]), steps: z.array(BrowserStepSchema).min(1).max(20) }),
 ]);
 export type AcceptanceCheckSpec = z.infer<typeof AcceptanceCheckSchema>;
+export const AI_SOURCES = ["studio_service", "judge_endpoint", "local"] as const;
+export const AiRuntimeSchema = z.object({
+  source: z.enum(AI_SOURCES),
+  endpoint: z.string().url().optional(),
+  dataSent: z.array(text).max(8),
+  reason: z.string(),
+});
+export type AiRuntime = z.infer<typeof AiRuntimeSchema>;
 export const APPROACH_KINDS = ["independent_agent", "source_change", "ui_change", "mix"] as const;
 const ClaimSchema = z.object({ text, evidence: z.array(EvidenceRefSchema), evidenceStatus: z.enum(["passed", "unverified"]) });
 export const AssessmentSchema = z.object({
@@ -46,6 +54,8 @@ export const DecisionDocContentSchema = z.object({
   risks: z.array(text),
   evidenceSources: z.array(EvidenceRefSchema),
   openQuestions: z.array(z.string()),
+  /** R15.12: where the model of the changed software runs, and which data it sends there (optional for older drafts). */
+  aiRuntime: AiRuntimeSchema.optional(),
 });
 export type DecisionDocContent = z.infer<typeof DecisionDocContentSchema>;
 

@@ -106,7 +106,7 @@ describe.runIf(enabled)("Code_Agent runner in the image (10.14)", { timeout: 600
     let pending = "";
     const r = await runRunner((e, send) => {
       if (e.type === "ready") {
-        expect(e.tools).toEqual(["read", "bash", "edit", "write", "ask_question"]);
+        expect(e.tools).toEqual(["read", "bash", "edit", "write", "grep", "find", "ls", "ask_question"]);
         send({ cmd: "prompt", text: "Read /context/story.md and do the story." });
       }
       if (e.type === "question") {

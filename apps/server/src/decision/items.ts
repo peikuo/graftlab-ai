@@ -5,6 +5,7 @@ import { contentHash } from "./hash.ts";
 
 const PURPOSE = { A: "AI takes over a step people do now", B: "AI makes a feature stronger or new" } as const;
 const KIND: Record<string, string> = { independent_agent: "a separate AI helper next to the app", source_change: "a change in the app's code", ui_change: "a change in the app's screens", mix: "a combination" };
+const AI_SOURCE: Record<string, string> = { studio_service: "The Studio's model service on the internet; the data below leaves the software", judge_endpoint: "Your own model endpoint", local: "A local model on the same server" };
 const EFFORT: Record<string, string> = { small: "small change", medium: "medium change", large: "large change (engineering risk)", not_assessed: "effort not assessed" };
 const unverifiedOf = (n: number) => (n === 0 ? undefined : n === 1 ? "1 statement has no quote that Studio code found in the files" : `${n} statements have no quote that Studio code found in the files`);
 
@@ -48,6 +49,16 @@ export function splitItems(c: DecisionDocContent): ReviewItemData[] {
       details: c.approachOptions.flatMap((o) => (o.assessment.acceptanceChecks.length ? o.assessment.acceptanceChecks.map((ch) => `${o.title}: ${describeCheck(ch)}`) : [`${o.title}: no executable check yet, so it cannot be chosen`])),
       evidence: [],
     }),
+    ...(c.aiRuntime
+      ? [
+          item("ai_runtime", { aiRuntime: c.aiRuntime }, {
+            title: "Where the AI gets its model",
+            summary: `${AI_SOURCE[c.aiRuntime.source]}${c.aiRuntime.endpoint ? ` (${c.aiRuntime.endpoint})` : ""}. Accepting this item is your consent.`,
+            details: [...c.aiRuntime.dataSent.map((d) => `Sent to the model: ${d}`), c.aiRuntime.reason],
+            evidence: [],
+          }),
+        ]
+      : []),
     item("risks", { risks: c.risks }, { title: "Risks", summary: c.risks.length === 1 ? "1 risk named." : `${c.risks.length} risks named.`, details: c.risks, evidence: [] }),
     item("questions", { openQuestions: c.openQuestions }, { title: "Open questions", summary: c.openQuestions.length === 0 ? "No open questions." : c.openQuestions.length === 1 ? "1 question stays open." : `${c.openQuestions.length} questions stay open.`, details: c.openQuestions, evidence: [] }),
   ];

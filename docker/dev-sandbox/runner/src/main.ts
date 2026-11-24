@@ -9,8 +9,10 @@
 //   GL_REASONING_PARAM    "send" or "omit", GL_REASONING_EFFORT "send" or "omit": the same options as the server profile
 //   GL_MAX_TOKENS         default 32768
 //   GL_RULES_FILE         Code_Agent rules, default /context/rules.md (from runtime-rules/roles/code_agent.md)
+//   GL_CONTEXT_FILES      comma-separated files given to pi as project context (the focus pack, R40.19)
 //   WORK_DIR              default /work; RUNNER_HOME default /tmp/runner-home (tmpfs)
 import { appendFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { createAgentSession, createExtensionRuntime, ModelRuntime, SessionManager, SettingsManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { RunnerEvent } from "@graftlab/shared";
@@ -19,8 +21,11 @@ import { ASK_QUESTION_DESCRIPTION, RunnerController, type SessionLike } from "./
 import { loadRules } from "./rules.ts";
 
 const PROVIDER = "studio";
-/** Built-in tools plus ask_question. A custom tool is active only if it is also in this list (task 1.8). */
-export const TOOLS = ["read", "bash", "edit", "write", "ask_question"];
+/**
+ * Built-in tools plus ask_question. A custom tool is active only if it is also in this list (task 1.8). grep, find
+ * and ls are pi's own search tools with truncated output (enabled 2026-11-24, R40.19).
+ */
+export const TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls", "ask_question"];
 
 const out = (e: RunnerEvent) => process.stdout.write(`${JSON.stringify(e)}\n`);
 // GL_RUNNER_RECORD=<file>: append every raw pi event to that file (fixture recording only; the file stays in the container).
@@ -46,6 +51,9 @@ async function main(): Promise<void> {
   const modelId = required("GL_MODEL_ID");
   const sendEffort = process.env.GL_REASONING_EFFORT === "send";
   const rules = await loadRules();
+  const contextFiles = await Promise.all(
+    (process.env.GL_CONTEXT_FILES ?? "").split(",").map((x) => x.trim()).filter(Boolean).map(async (path) => ({ path, content: await readFile(path, "utf8") })),
+  );
   const modelRuntime = await ModelRuntime.create({ authPath: `${home}/auth.json`, modelsPath: null });
   modelRuntime.registerProvider(PROVIDER, {
     name: "Studio LLM_Proxy",
@@ -81,13 +89,13 @@ async function main(): Promise<void> {
     execute: async (toolCallId: string, params: unknown) => controller.askQuestion(toolCallId, params),
   } as unknown as ToolDefinition;
 
-  // No extensions, skills, prompt templates or context files: the story bundle in /context is the only context.
+  // No extensions, skills or prompt templates; the only context files are the ones the Studio names (the focus pack).
   const resourceLoader = {
     getExtensions: () => ({ extensions: [], errors: [], runtime: createExtensionRuntime() }),
     getSkills: () => ({ skills: [], diagnostics: [] }),
     getPrompts: () => ({ prompts: [], diagnostics: [] }),
     getThemes: () => ({ themes: [], diagnostics: [] }),
-    getAgentsFiles: () => ({ agentsFiles: [] }),
+    getAgentsFiles: () => ({ agentsFiles: contextFiles }),
     getSystemPrompt: () => rules,
     getSystemPromptSource: () => undefined,
     getAppendSystemPrompt: () => [],

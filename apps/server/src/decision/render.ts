@@ -18,9 +18,10 @@ export function renderDecisionDoc(c: DecisionDocContent, v: { version: number; h
       .map((o) => `### ${o.title}${c.chosenApproachIds.includes(o.id) ? " (chosen)" : ""}\n${o.summary}\n- Effort: ${o.assessment.effort}${o.assessment.firstVersion ? `; first version: ${o.assessment.firstVersion}` : ""}\n- Feasibility: ${o.assessment.feasibility || "not assessed"}\n- Risk: ${o.assessment.risk || "not assessed"}\n- Environments: ${o.assessment.neededEnvironments.join(", ") || "none named"}\n- Complete (has an acceptance check): ${o.assessment.complete ? "yes" : "no"}${o.assessment.claims.length ? `\n- Claims:\n${o.assessment.claims.map((x) => `  - ${x.text}${mark(x.evidenceStatus)}`).join("\n")}` : ""}`)
       .join("\n\n")}`,
     `## UI impact\n${c.uiImpact}`,
+    c.aiRuntime ? `## AI runtime (accepted by the Judge)\n- Source: ${c.aiRuntime.source}${c.aiRuntime.endpoint ? ` (${c.aiRuntime.endpoint})` : ""}\n${c.aiRuntime.dataSent.map((d) => `- Sent: ${d}`).join("\n")}\n- Why: ${c.aiRuntime.reason}` : "",
     `## Executable acceptance checks (run by the Verifier, code, no AI)\n${list(c.executableAcceptanceChecks.map((x) => `${x.id}: ${describeCheck(x)}`))}`,
     `## Risks\n${list(c.risks)}`,
     `## Evidence sources (checked by Studio code)\n${list(c.evidenceSources.map((e) => `${e.path}${e.line ? `:${e.line}` : ""} — ${e.status === "passed" ? "found" : `Unverified (${e.reason})`}`))}`,
     `## Open questions\n${list(c.openQuestions)}`,
-  ].join("\n\n") + "\n";
+  ].filter(Boolean).join("\n\n") + "\n";
 }

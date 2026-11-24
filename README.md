@@ -42,6 +42,9 @@ Direct dependencies so far (the full list, including the pi packages, Playwright
 | pi-coding-agent (@earendil-works) | MIT | Code_Agent inside the Development_Sandbox (embedded by the runner) |
 | TypeBox (typebox) | MIT | Tool parameter schema of the runner's ask_question tool (pi's schema format) |
 | esbuild | MIT | Bundling the LLM_Proxy and the Code_Agent runner into one file each |
+| Playwright (playwright) | Apache-2.0 | Verifier browser checks against the changed app |
+
+Methods we read and rewrote in our own words (no text or code copied): the Humanizing Work guide to splitting user stories and the agent skills `deanpeters/product-manager-skills@user-story-splitting` and `addyosmani/agent-skills@planning-and-task-breakdown` (for `runtime-rules/skills/`), and the `multica-ai/andrej-karpathy-skills` guidelines (for the coding rules in `runtime-rules/roles/code_agent.md`).
 | Playwright (@playwright/test) | Apache-2.0 | Browser checks and UI screenshots in development |
 | Testing Library (@testing-library/react, @testing-library/dom) | MIT | Workspace UI tests |
 | jsdom | MIT | DOM for UI tests |

@@ -241,11 +241,13 @@ export class ContainerManager {
   }
 
   /** Verifier test container (R22.2): fresh, the snapshot read-only, internal network only; the exit code decides. */
-  async runTests(taskId: string, o: { image: string; snapshotDir: string; prebuilt: string[]; command: string; timeoutS: number; env?: Record<string, string> }): Promise<{ code: number; output: string; timedOut: boolean }> {
+  async runTests(taskId: string, o: { image: string; snapshotDir: string; prebuilt: string[]; command: string; timeoutS: number; env?: Record<string, string>; egress?: boolean }): Promise<{ code: number; output: string; timedOut: boolean }> {
     await this.ensureInternalNetwork(taskId);
     const name = resourceName(taskId, "test");
     await this.#replace(name);
     await this.docker.createContainer(name, this.#appContainer(taskId, "test", { ...o, run: o.command }));
+    // R38.4: internet only with the Judge's consent to an outside model service.
+    if (o.egress) await this.docker.connectNetwork("bridge", name);
     await this.docker.startContainer(name);
     const end = Date.now() + o.timeoutS * 1000;
     let timedOut = false;
@@ -266,12 +268,13 @@ export class ContainerManager {
   }
 
   /** Run_Environment (R39.3-R39.5): a fresh container per attempt running the changed app, alias `app`. */
-  async startRunEnvironment(taskId: string, o: { image: string; snapshotDir: string; prebuilt: string[]; commands: string; env?: Record<string, string> }): Promise<{ name: string }> {
+  async startRunEnvironment(taskId: string, o: { image: string; snapshotDir: string; prebuilt: string[]; commands: string; env?: Record<string, string>; egress?: boolean }): Promise<{ name: string }> {
     const network = await this.ensureInternalNetwork(taskId);
     const name = resourceName(taskId, "run");
     await this.#replace(name);
     const spec = this.#appContainer(taskId, "run", { ...o, run: o.commands });
     await this.docker.createContainer(name, { ...spec, NetworkingConfig: { EndpointsConfig: { [network]: { Aliases: [APP_ALIAS] } } } });
+    if (o.egress) await this.docker.connectNetwork("bridge", name);
     await this.docker.startContainer(name);
     return { name };
   }
