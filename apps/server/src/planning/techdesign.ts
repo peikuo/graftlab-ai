@@ -101,7 +101,7 @@ export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | 
       for (const c of s.featureContract.acceptanceChecks)
         if (c.kind === "api_readback")
           for (const ex of c.expect)
-            if (ex.fields && !o.expectFields.safeParse(ex.fields).success) problems.push(`story ${s.id}: check ${c.id} reads back fields ${Object.keys(ex.fields).join(", ")}, which the Verifier cannot compare; use only ${o.expectFieldNames ?? "the fields named in the Adapter checklist"} (refine it in \`checks\`)`);
+            if (ex.fields && !o.expectFields.safeParse(ex.fields).success) problems.push(`story ${s.id}: check ${c.id} reads back fields ${Object.keys(ex.fields).join(", ")}, which the Verifier cannot compare (${o.expectFieldNames ?? "use only the fields named in the Adapter checklist"}; refine it in \`checks\`)`);
   const norm = (arch: Record<string, unknown> = {}) => ({
     ...arch,
     affected: ((arch.affected as Record<string, unknown>[] | undefined) ?? []).map((p) => ({ quotes: [], ...p })),

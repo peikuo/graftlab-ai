@@ -565,6 +565,10 @@ export class TaskService {
     const adapterHooks = this.#o.execution?.adapters.find((x) => x.id === ctx.task.adapterId)?.hooks;
     const r = await runTechDesign({
       ...(adapterHooks ? { expectFields: adapterHooks.itemFields } : {}),
+      ...(() => {
+        const names = this.#o.execution?.adapters.find((x) => x.id === ctx.task.adapterId)?.readbackFields;
+        return names ? { expectFieldNames: names } : {};
+      })(),
       rules: m.rules,
       context: this.#contextFor(ctx, read),
       decisionMarkdown: frozen.markdown,
@@ -630,15 +634,19 @@ export class TaskService {
 
   /** The Run_Environment's facts for the Planner's run environment (design: Containers, Network policy). */
   async #environmentNote(adapterId: string): Promise<string> {
-    const a = JSON.parse(await readFile(join(this.#o.adaptersDir ?? "adapters", adapterId, "adapter.json"), "utf8")) as { devSandbox?: { preinstalled?: string[] } };
-    return `The changed software runs in a container without internet access, so leave out every install step (uv sync, pip install, npm install or ci); already installed: ${(a.devSandbox?.preinstalled ?? []).join(", ")}. The app must listen on 0.0.0.0, not 127.0.0.1, so the Studio can reach it. Its AI reads the model from GL_AI_BASE_URL, GL_AI_API_KEY and GL_AI_MODEL, which the Studio sets in the run and test containers; checks that need the AI feature must switch it on first.`;
+    const a = JSON.parse(await readFile(join(this.#o.adaptersDir ?? "adapters", adapterId, "adapter.json"), "utf8")) as { devSandbox?: { preinstalled?: string[] }; readbackFields?: string; aiClient?: { dir: string } };
+    return [
+      `The changed software runs in a container without internet access, so leave out every install step (uv sync, pip install, npm install or ci); already installed: ${(a.devSandbox?.preinstalled ?? []).join(", ")}. The app must listen on 0.0.0.0, not 127.0.0.1, so the Studio can reach it. Its AI reads the model from GL_AI_BASE_URL, GL_AI_API_KEY and GL_AI_MODEL, which the Studio sets in the run and test containers; checks that need the AI feature must switch it on first.`,
+      a.aiClient ? `The Studio adds its prewritten AI client library \`${a.aiClient.dir}\` (ask, ask_json, chat, configured, stub) to the code before the first Feature; plan every model call through it and plan no own client. Background tasks do not run in the containers, so a result the person must see is computed inside the request.` : "",
+      a.readbackFields ? `An api_readback check: ${a.readbackFields}. No other field can be compared.` : "",
+    ].filter(Boolean).join(" ");
   }
 
   async #checkHints(adapterId: string): Promise<string> {
-    const a = JSON.parse(await readFile(join(this.#o.adaptersDir ?? "adapters", adapterId, "adapter.json"), "utf8")) as { api?: { read?: { method: string; path: string }[] }; testSelectionHint?: string };
+    const a = JSON.parse(await readFile(join(this.#o.adaptersDir ?? "adapters", adapterId, "adapter.json"), "utf8")) as { api?: { read?: { method: string; path: string }[] }; testSelectionHint?: string; readbackFields?: string };
     return [
       "# How the Verifier can check this app (from its Adapter)",
-      "api_readback keys are bookmark URLs; fields are bookmark fields such as tag_names.",
+      a.readbackFields ? `api_readback: ${a.readbackFields}.` : "",
       `Read endpoints: ${(a.api?.read ?? []).map((r) => `${r.method} ${r.path}`).join(", ")}.`,
       a.testSelectionHint ? `Tests: ${a.testSelectionHint}` : "",
     ].filter(Boolean).join("\n");
