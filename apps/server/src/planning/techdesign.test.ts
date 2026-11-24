@@ -172,6 +172,15 @@ describe("runTechDesign", () => {
     if (ok.ok) expect(ok.checks[0]!.reason).toBe("the real test module");
   });
 
+  it("refuses a read-back check with fields the Adapter cannot compare", async () => {
+    const plan = await confirmedPlan();
+    const fs = [feature("F1", "S1"), feature("F2", "S2")];
+    const { ExpectFields } = await import("../../../../adapters/linkding/comparator.ts");
+    const refined = [{ storyId: "S1", reason: "read back", checks: [{ id: "c3", kind: "api_readback", target: "run_environment", expect: [{ key: "https://example.org", mustExist: true, fields: { tag_names: "" } }] }] }];
+    const bad = checkTechDesign({ architecture, features: fs, checks: refined }, { plan, needsRunEnvironment: true, evidence: filesFrom(files), expectFields: ExpectFields });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.problems.some((p) => /check c3 reads back fields tag_names/.test(p))).toBe(true);
+  });
   it("requirements cover every story", async () => {
     const plan = await confirmedPlan();
     const r = checkRequirements({ introduction: "x", items: [{ id: "R1", storyId: "S1", text: "t", acceptance: ["a"] }] }, plan);

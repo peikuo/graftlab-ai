@@ -48,6 +48,10 @@ export interface TechDesignOptions {
   signal: AbortSignal;
   idPrefix: string;
   thinking?: { draft?: "off" | "low"; review?: "off" | "low"; final?: "off" | "low" };
+  /** The Adapter's schema of read-back fields; a read-back check with other fields cannot run (found 2026-11-24). */
+  expectFields?: { safeParse(v: unknown): { success: boolean } };
+  /** The field names to name in the refusal, for example "titleContains, tagsInclude, archived". */
+  expectFieldNames?: string;
 }
 export type TechDesignResult = { ok: true; design: TechDesign; stats: { retries: number } } | { ok: false; reason: string; stats: { retries: number } };
 
@@ -83,7 +87,7 @@ const gradeP = obj({ featureId: str(), ...Object.fromEntries(RUBRIC.map((k) => [
 export const INSTALL = /\b(uv\s+sync|uv\s+pip\s+install|pip3?\s+install|python3?\s+-m\s+pip\s+install|npm\s+(install|ci|i)\b|pnpm\s+install|yarn\s+install|poetry\s+install|bundle\s+install|apt(-get)?\s+install)/;
 
 /** Checks a submitted architecture and breakdown; the architecture's quotes are checked against the files. */
-export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | "needsRunEnvironment" | "evidence"> & { files?: Map<string, string> }): { ok: true; architecture: TechArchitecture; breakdown: FeatureBreakdown; checks: RefinedChecks } | { ok: false; problems: string[] } {
+export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | "needsRunEnvironment" | "evidence" | "expectFields" | "expectFieldNames"> & { files?: Map<string, string> }): { ok: true; architecture: TechArchitecture; breakdown: FeatureBreakdown; checks: RefinedChecks } | { ok: false; problems: string[] } {
   const x = (a ?? {}) as { architecture?: Record<string, unknown>; features?: unknown[]; checks?: unknown };
   const problems: string[] = [];
   const refined = RefinedChecksSchema.safeParse(x.checks ?? []);
@@ -91,6 +95,13 @@ export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | 
   const checks = refined.success ? refined.data : [];
   for (const r of checks) if (!o.plan.backlog.stories.some((s) => s.id === r.storyId)) problems.push(`checks: story ${r.storyId} is not in the confirmed plan`);
   const backlog = withRefinedChecks(o.plan, checks).backlog;
+  // An api_readback check can only use the fields the Adapter's comparator knows.
+  if (o.expectFields)
+    for (const s of backlog.stories)
+      for (const c of s.featureContract.acceptanceChecks)
+        if (c.kind === "api_readback")
+          for (const ex of c.expect)
+            if (ex.fields && !o.expectFields.safeParse(ex.fields).success) problems.push(`story ${s.id}: check ${c.id} reads back fields ${Object.keys(ex.fields).join(", ")}, which the Verifier cannot compare; use only ${o.expectFieldNames ?? "the fields named in the Adapter checklist"} (refine it in \`checks\`)`);
   const norm = (arch: Record<string, unknown> = {}) => ({
     ...arch,
     affected: ((arch.affected as Record<string, unknown>[] | undefined) ?? []).map((p) => ({ quotes: [], ...p })),

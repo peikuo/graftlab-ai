@@ -34,7 +34,13 @@ try {
     if (!answered && (await card.count())) {
       await card.scrollIntoViewIfNeeded();
       await p.waitForTimeout(4000); // let the viewer read the question
-      await card.locator(".icard-options button").first().click();
+      const opts = card.locator(".icard-options button");
+      if (await opts.count()) await opts.first().click();
+      else {
+        // A free-text question: the walk answers with the simplest choice in words.
+        await card.locator("input, textarea").last().fill("Use the Studio's model service; keep it simple and off by default.");
+        await card.getByRole("button", { name: "Send" }).click();
+      }
       answered = true;
       mark("answered the Facilitator's question");
     }

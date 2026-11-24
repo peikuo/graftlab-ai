@@ -351,6 +351,10 @@ export class TaskService {
       ...(ctx.task.adapterId ? { checkHints: await this.#checkHints(ctx.task.adapterId) } : {}),
       files: read.files,
       evidence: read.evidence,
+      ...(() => {
+        const a = this.#o.execution?.adapters.find((x) => x.id === ctx.task.adapterId);
+        return a ? { expectFields: a.hooks.itemFields } : {};
+      })(),
       emit: ctx.emit,
       runTurn: (t) => m.runTurn({ ...t, emit: ctx.emit }),
       signal: ctx.signal,

@@ -14,7 +14,8 @@ Rules for every agent that plans, builds, reviews or checks a change to linkding
 - The Sandbox starts with a fixed set of 10 bookmarks on example.com, example.org and example.net. Use only these domains. Never use real personal data.
 - After a reset the data is exactly the fixed set again; the Studio checks it item by item.
 ## Checks the Verifier can run
-- `api_readback`: the key is the bookmark URL; fields are `titleContains`, `tagsInclude` (planned tags must be among the read-back tags) and `archived`.
+- `api_readback`: the key is the bookmark URL; the only fields are `titleContains`, `tagsInclude` (planned tags must be among the read-back tags) and `archived`. Studio code refuses any other field.
+- The bookmark list shows each bookmark's title (fetched from the page, for example "Example Domain"), not its URL; a browser check after saving should expect the title or a tag, not the address.
 - `test_suite`: name targeted test modules under `bookmarks/tests/` (for example `bookmarks.tests.test_bookmarks_api`); the full suite takes about 300 s.
 - `browser_check`: the changed app runs in the Run_Environment; name buttons and fields by their visible labels. For a model-powered feature set `needsAi: true` and expect text that only the model's answer can produce, not a fixed heading.
 - After the last Feature the Verifier runs the whole `bookmarks.tests` suite and compares it with the pinned commit; a test that passed before and fails after is a regression.
