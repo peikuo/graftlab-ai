@@ -128,6 +128,9 @@ describe("runTechDesign", () => {
     const plan = await confirmedPlan();
     const noRun = checkTechDesign({ architecture: { ...architecture, runEnvironment: undefined }, features: [feature("F1", "S1"), feature("F2", "S2")] }, { plan, needsRunEnvironment: true, evidence: filesFrom(files) });
     expect(noRun.ok).toBe(false);
+    const install = checkTechDesign({ architecture: { ...architecture, runEnvironment: { ...architecture.runEnvironment, buildCommands: ["uv sync", "npm install", "npm run build"] } }, features: [feature("F1", "S1"), feature("F2", "S2")] }, { plan, needsRunEnvironment: true, evidence: filesFrom(files) });
+    expect(install.ok).toBe(false);
+    if (!install.ok) expect(install.problems.map((p) => p.split('"')[1])).toEqual(["uv sync", "npm install"]);
     let answer = "";
     await runTechDesign({
       rules: skillRules, context: "CTX", decisionMarkdown: "# D", plan, needsRunEnvironment: true, files, evidence: filesFrom(files), emit: async () => {}, signal: new AbortController().signal, idPrefix: "t",

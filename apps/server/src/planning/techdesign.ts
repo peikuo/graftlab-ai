@@ -72,6 +72,12 @@ const featureP = obj({
 });
 const gradeP = obj({ featureId: str(), ...Object.fromEntries(RUBRIC.map((k) => [k, oneOf(["pass", "concern"] as const)])), note: str() } as Record<string, ReturnType<typeof str>>);
 
+/**
+ * Package installation in a run command (R38.4: the Run_Environment has no internet; dependencies are preinstalled
+ * in the image). Found 2026-11-24: the Planner copied `uv sync` and `npm install` from the target's Makefile.
+ */
+export const INSTALL = /\b(uv\s+sync|uv\s+pip\s+install|pip3?\s+install|python3?\s+-m\s+pip\s+install|npm\s+(install|ci|i)\b|pnpm\s+install|yarn\s+install|poetry\s+install|bundle\s+install|apt(-get)?\s+install)/;
+
 /** Checks a submitted architecture and breakdown; the architecture's quotes are checked against the files. */
 export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | "needsRunEnvironment" | "evidence">): { ok: true; architecture: TechArchitecture; breakdown: FeatureBreakdown } | { ok: false; problems: string[] } {
   const x = (a ?? {}) as { architecture?: Record<string, unknown>; features?: unknown[] };
@@ -87,6 +93,9 @@ export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | 
   const arch = TechArchitectureSchema.safeParse(norm(x.architecture));
   if (!arch.success) problems.push(...arch.error.issues.slice(0, 4).map((i) => `architecture: ${i.path.join(".")} ${i.message}`));
   else if (o.needsRunEnvironment && !arch.data.runEnvironment) problems.push("architecture: runEnvironment is required (how to build and start the changed software, from its own files)");
+  else if (arch.data.runEnvironment)
+    for (const c of [...arch.data.runEnvironment.buildCommands, ...arch.data.runEnvironment.startCommands])
+      if (INSTALL.test(c)) problems.push(`architecture: runEnvironment command "${c}" installs packages, but the run container has no internet and the dependencies are preinstalled; leave it out`);
   const features = (x.features ?? []).map((f) => ({ interfaces: [], dependsOn: [], servesChecks: [], ...(f as object), scope: { notTouch: [], ...((f as { scope?: object })?.scope ?? {}) } }));
   const b = checkBreakdown({ features }, o.plan.backlog);
   if (!b.ok) problems.push(...b.problems);
