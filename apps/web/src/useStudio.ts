@@ -29,6 +29,10 @@ export function useStudio(enabled: boolean, url = "/api/tasks/current/stream"): 
   const [queue, setQueue] = useState<QueueView | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const taskRef = useRef<string | undefined>(undefined);
+  const lastSeq = useRef(0);
+  // A dead connection (for example a dropped tunnel) can stay silent; the watchdog reopens the stream when no frame,
+  // not even the server's heartbeat, arrived for 45 s, and asks for the events after the last one it has.
+  const [attempt, setAttempt] = useState(0);
 
   // A clock for Role_Status ("waiting for LLM, 7 s"); the status itself is derived from events only.
   useEffect(() => {
@@ -38,17 +42,30 @@ export function useStudio(enabled: boolean, url = "/api/tasks/current/stream"): 
 
   useEffect(() => {
     if (!enabled) return;
-    const es = new EventSource(url, { withCredentials: true });
+    const resume = lastSeq.current > 0 && taskRef.current ? `${url}${url.includes("?") ? "&" : "?"}last=${lastSeq.current}&task=${encodeURIComponent(taskRef.current)}` : url;
+    const es = new EventSource(resume, { withCredentials: true });
+    let lastFrame = Date.now();
+    const seen = () => (lastFrame = Date.now());
+    const watchdog = setInterval(() => {
+      if (Date.now() - lastFrame > 45_000) {
+        setConnected(false);
+        setAttempt((a) => a + 1);
+      }
+    }, 5000);
+    es.addEventListener("hb", seen);
     es.onopen = () => {
       setConnected(true);
       setError(null);
     };
     es.onerror = () => setConnected(false);
     es.addEventListener("event", (m) => {
+      seen();
       const r = validateEvent(JSON.parse((m as MessageEvent).data));
       if (!r.ok) return setError(`an event did not match the schema: ${r.error.slice(0, 120)}`);
       const e = r.event;
+      if (taskRef.current === e.taskId || taskRef.current === undefined) lastSeq.current = Math.max(lastSeq.current, e.seq);
       if (taskRef.current !== e.taskId) {
+        lastSeq.current = e.seq;
         // A new Task started (for example a new fixture run): start over from its first event.
         taskRef.current = e.taskId;
         setEvents([e]);
@@ -66,6 +83,7 @@ export function useStudio(enabled: boolean, url = "/api/tasks/current/stream"): 
       }
     });
     es.addEventListener("delta", (m) => {
+      seen();
       const d = JSON.parse((m as MessageEvent).data) as { messageId: string; channel: "text" | "reasoning" | "toolcall"; text: string };
       if (d.channel === "toolcall") return;
       const channel = d.channel;
@@ -83,8 +101,11 @@ export function useStudio(enabled: boolean, url = "/api/tasks/current/stream"): 
       const data = (m as MessageEvent).data;
       if (typeof data === "string") setError((JSON.parse(data) as { message: string }).message);
     });
-    return () => es.close();
-  }, [url, enabled]);
+    return () => {
+      clearInterval(watchdog);
+      es.close();
+    };
+  }, [url, enabled, attempt]);
 
   return useMemo(() => ({ state, events, buffers, connected, error, queue, now }), [state, events, buffers, connected, error, queue, now]);
 }

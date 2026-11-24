@@ -124,7 +124,11 @@ export function createStudio(opts: StudioOptions): Studio {
 
   app.get("/api/tasks/current/stream", (req, reply) => {
     const sid = readSession(req);
-    const last = Number(req.headers["last-event-id"]);
+    // A reconnect by the browser sends Last-Event-ID; the client's own watchdog reconnect sends ?last= (R27.14).
+    const q = (req.query ?? {}) as { last?: string; task?: string };
+    // The watchdog's resume point counts only for the same Task; a new Task is sent from its first event.
+    const sameTask = !q.task || q.task === studio.current?.taskId;
+    const last = Number(req.headers["last-event-id"] ?? (sameTask ? q.last : undefined));
     reply.hijack();
     reply.raw.writeHead(200, {
       "content-type": "text/event-stream; charset=utf-8",

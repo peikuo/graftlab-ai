@@ -39,7 +39,7 @@ export class SseHub {
     this.#secrets = opts.secrets;
     this.#onLeak = opts.onLeak;
     this.#queueView = opts.queueView;
-    this.#timer = setInterval(() => this.#broadcast(": hb\n\n"), opts.heartbeatMs ?? 15_000);
+    this.#timer = setInterval(() => this.#broadcast("event: hb\ndata: {}\n\n"), opts.heartbeatMs ?? 15_000);
     this.#timer.unref?.();
   }
 
