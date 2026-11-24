@@ -14,4 +14,4 @@ Every change we propose adds AI to the software. When people use the changed sof
 - The decision draft records the choice in `aiRuntime`: the source, the endpoint when the Judge gave one, and the data sent. The Judge's acceptance of that item is the consent.
 
 ## How the changed software reaches the model
-The software reads three environment variables and nothing else for its model: `GL_AI_BASE_URL` (an OpenAI-compatible base address), `GL_AI_API_KEY` and `GL_AI_MODEL`. No address, key or model name is written into code, settings files or tests. Tests replace the model call with a stub; the running app uses the variables.
+The software reads three environment variables and nothing else for its model: `GL_AI_BASE_URL` (an OpenAI-compatible base address), `GL_AI_API_KEY` and `GL_AI_MODEL`. No address, key or model name is written into code, settings files or tests. Tests replace the model call with a stub; the running app uses the variables. The Studio adds a prewritten client library for this (for Python `graftlab_ai`, Studio-provided, not generated); the design names it as the one place that talks to the model, so no Feature plans its own model client.

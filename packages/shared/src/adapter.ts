@@ -54,6 +54,8 @@ export const AdapterJsonSchema = z
     /** How Studio code logs in for browser checks; the values come from the generated secretEnv names. */
     browserLogin: z.object({ path: text.regex(/^\//), usernameLabel: text, passwordLabel: text, submitLabel: text, usernameEnv: z.string().regex(/^[A-Z][A-Z0-9_]*$/), passwordEnv: z.string().regex(/^[A-Z][A-Z0-9_]*$/) }).strict().optional(),
     testSelectionHint: text,
+    /** Where the prewritten AI client library goes in the target (R40.23); the directory is its import name. */
+    aiClient: z.object({ language: z.literal("python"), dir: z.string().regex(/^[A-Za-z_][A-Za-z0-9_/]*$/) }).strict().optional(),
     /** The whole suite for the Regression_Check (R22.10): the command, the output parser, the time limit. */
     regression: z.object({ suite: z.array(text).min(1), format: z.literal("django"), timeoutS: z.number().int().positive().max(3600) }).strict().optional(),
     testData: text, // file name of the fixed test data set next to adapter.json

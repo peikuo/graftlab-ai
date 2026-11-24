@@ -288,7 +288,7 @@ export const PAYLOADS = {
   // R22.11, R30.19: the changed app's model calls through the LLM_Proxy, counted by code during one check.
   ai_usage: z.object({ caller: z.literal("app"), checkId: id, calls: count, statuses: z.array(z.number().int()), inputTokens: count, cachedTokens: count, outputTokens: count }),
   // R4.9: the whole change of main against the pinned commit.
-  change_summary: z.object({ base: nonEmpty, head: nonEmpty, files: z.array(z.object({ path: nonEmpty, status: z.string(), added: count, removed: count })), added: count, removed: count }),
+  change_summary: z.object({ base: nonEmpty, head: nonEmpty, files: z.array(z.object({ path: nonEmpty, status: z.string(), added: count, removed: count, /** Added by Studio code, not by an agent (the AI client library, R40.23). */ studio: z.boolean().optional() })), added: count, removed: count }),
   // R22.10: the Regression_Check, test by test against the pinned commit.
   regression_result: z.object({
     baseline: z.object({ ran: count, failed: z.array(z.string()) }),

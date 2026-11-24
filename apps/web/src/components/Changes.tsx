@@ -60,6 +60,7 @@ export function CodeChanges({ state }: { state: UiState }) {
                   <td>{STATUS[f.status] ?? f.status}</td>
                   <td className="num">+{f.added}</td>
                   <td className="num">−{f.removed}</td>
+                  <td>{f.studio ? <span className="badge slate">Studio-provided</span> : null}</td>
                 </tr>
               ))}
             </tbody>

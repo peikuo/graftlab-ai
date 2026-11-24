@@ -17,6 +17,8 @@ export interface FeatureContextInput {
   previousFeedback?: string[];
   /** The Test_Agent's tests, written before the code (R40.21); absent for the Test_Agent itself. */
   protectedTests?: string[];
+  /** The import name of the Studio's AI client library in the target (R40.23). */
+  aiClient?: string;
 }
 
 const list = (xs: string[]) => (xs.length ? xs.map((x) => `- ${x}`).join("\n") : "- none");
@@ -36,6 +38,9 @@ export function featureContext(i: FeatureContextInput): string {
     `## The Feature (size ${f.size})\n${f.summary}`,
     `### Scope\n- Modules: ${f.scope.modules.join(", ")}\n- Files expected to change:\n${list(f.scope.files.map((x) => `\`${x}\``))}\n- Must not touch:\n${list(f.scope.notTouch)}\n\nChanging a file outside this list needs a reason the Reviewer accepts.`,
     `### Interfaces\n${list(f.interfaces)}`,
+    i.aiClient
+      ? `### Calling the model: use \`${i.aiClient}\` (Studio-provided, already in the code)\nEvery model call goes through this library; do not write your own client and do not read GL_AI_* yourself.\n- \`${i.aiClient}.configured()\`: an address and a model are set\n- \`${i.aiClient}.ask(system, user, max_tokens=None, timeout=None)\` and \`${i.aiClient}.chat(messages, ...)\`: return \`Result(ok, text, error, usage)\`; never raise\n- \`${i.aiClient}.ask_json(system, user)\`: the parsed answer in \`Result.data\`\n- Tests: \`with ${i.aiClient}.stub(lambda messages: "answer") as calls:\` replaces the service (return a \`Result(ok=False, error=...)\` or raise to simulate a failure)\n- Call it inside the request when the person must see the answer; background tasks do not run here.`
+      : "",
     i.protectedTests
       ? `### Tests (written first by the Test_Agent)\n${list(i.protectedTests.map((x) => `\`${x}\``))}\n- Run them with: \`${f.tests.command.join(" ")}\`\n\nMake these tests pass. Change one only when it is wrong against the Feature_Contract or the design, and name it and the reason in your final reply; the Reviewer checks every such change. You may add tests in new files. The Verifier runs exactly this command after your attempt.`
       : `### Tests\n- Add or change: ${f.tests.files.map((x) => `\`${x}\``).join(", ")}\n- Run them with: \`${f.tests.command.join(" ")}\`\n\nThe Verifier runs exactly this command after your attempt. Do not edit other tests.`,

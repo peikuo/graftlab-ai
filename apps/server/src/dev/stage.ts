@@ -2,8 +2,8 @@
 // "PiCodeRuntime", "Verifier"; R21, R22, R38, R39, R40). One instance per Task. Every container step goes through
 // the container manager; every LLM step is labeled; success comes only from the Verifier's exit codes.
 import { readFileSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { join, relative } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { arr, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import { currentStory, describeCheck, isTestPath, nextPendingStory, PATCH_MAX, unplannedChanges, type FeaturePhase, type Adapter, type AiRuntime, type BaselineHandle, type Feature, type TargetItem, type Plan, type RequirementsDoc, type SecretRegistry, type StoryProgress, type TechDesign } from "@graftlab/shared";
@@ -17,7 +17,7 @@ import { roleText, sharedSystemPrompt } from "../roles/rules.ts";
 import type { TurnOptions, TurnResult } from "../runtime/pi.ts";
 import { runCodeAttempt } from "../runtime/pi-code.ts";
 import type { NodeHandler } from "../tasks/runner.ts";
-import { abandonFeature, changedOnMain, commitFeature, createWorktree, discardPaths, mainSummary, pathsAt, pathsOnMain, diffWorktree, mergeFeature, type LineStat, mirrorSourceFromEnv, notIgnored, snapshotWorktree, startFeature, writePatchArtifact, type FeatureBranch, type Worktree } from "../worktree/worktree.ts";
+import { abandonFeature, addStudioFiles, changedOnMain, commitFeature, createWorktree, discardPaths, mainSummary, pathsAt, pathsOnMain, diffWorktree, mergeFeature, type LineStat, mirrorSourceFromEnv, notIgnored, snapshotWorktree, startFeature, writePatchArtifact, type FeatureBranch, type Worktree } from "../worktree/worktree.ts";
 import { writeFeatureContext } from "./context.ts";
 import { buildFocusPack, readPaths } from "./focus.ts";
 import type { MemoTree } from "../reader/memo.ts";
@@ -61,6 +61,18 @@ const fileRows = (f: Feature, changed: { status: string; path: string }[], stats
     const st = stats.find((x) => x.path === c.path);
     return { path: c.path, status: c.status, added: st?.added ?? 0, removed: st?.removed ?? 0, planned: [...f.scope.files, ...f.tests.files].includes(c.path) || isTestPath(f, c.path) };
   });
+/** The prewritten AI client libraries (R40.23), next to the Studio code. */
+const LIBS_DIR = join(import.meta.dirname, "..", "..", "..", "..", "runtime-libs");
+/** Added lines outside the AI client that call a chat endpoint or read the GL_AI_* variables themselves (R40.23). */
+export function ownModelClients(patch: string, clientDir: string | undefined): string[] {
+  const hits = new Set<string>();
+  let file = "";
+  for (const line of patch.split("\n")) {
+    if (line.startsWith("+++ b/")) file = line.slice(6);
+    else if (line.startsWith("+") && !line.startsWith("+++") && /chat\/completions|GL_AI_(BASE_URL|API_KEY|MODEL)/.test(line) && !(clientDir && file.startsWith(`${clientDir}/`)) && !/(^|\/)tests?\//.test(file)) hits.add(file);
+  }
+  return [...hits];
+}
 const patchPayload = (patch: string) => (patch.length > PATCH_MAX ? { patch: patch.slice(0, PATCH_MAX), patchTruncated: true } : { patch });
 
 export class DevStage {
@@ -131,6 +143,15 @@ export class DevStage {
         const bad = await notIgnored(this.#wt, this.o.adapter.devSandbox.prebuilt);
         if (bad.length) throw new Error(`prebuilt paths not ignored by the target: ${bad.join(", ")}`);
       });
+      const lib = this.o.adapter.aiClient;
+      if (lib) {
+        await step("Adding the Studio's AI client library to the code (Studio-provided, not generated)", async () => {
+          const src = join(LIBS_DIR, lib.language, "graftlab_ai");
+          const names = (await readdir(src)).filter((n) => n.endsWith(".py"));
+          const files = await Promise.all(names.map(async (n) => ({ path: `${lib.dir}/${n}`, content: await readFile(join(src, n), "utf8") })));
+          await addStudioFiles(this.#wt!, files, `Studio-provided: graftlab_ai client (${relative(LIBS_DIR, src)})`);
+        });
+      }
       const port = this.o.design().architecture.runEnvironment?.port;
       await step("Starting the LLM_Proxy (the only holder of the model key)", async () => {
         this.#credential = issueProxyCredential(this.o.secrets);
@@ -191,7 +212,7 @@ export class DevStage {
     const tests = this.#tests.get(f.id)!;
     await this.#status(ctx, f, "building");
     const story = this.o.plan().backlog.stories.find((s) => s.id === f.storyId)!;
-    const contextDir = await writeFeatureContext(this.o.dataDir, ctx.task.taskId, { featureId: f.id, plan: this.o.plan(), design: this.o.design(), protectedTests: tests.files, ...(this.o.requirements() ? { requirements: this.o.requirements()! } : {}), ...(this.#feedback.get(f.id) ? { previousFeedback: this.#feedback.get(f.id)! } : {}) }, roleText(this.o.rules, "code_agent"));
+    const contextDir = await writeFeatureContext(this.o.dataDir, ctx.task.taskId, { featureId: f.id, plan: this.o.plan(), design: this.o.design(), protectedTests: tests.files, ...(this.o.adapter.aiClient ? { aiClient: this.o.adapter.aiClient.dir } : {}), ...(this.o.requirements() ? { requirements: this.o.requirements()! } : {}), ...(this.#feedback.get(f.id) ? { previousFeedback: this.#feedback.get(f.id)! } : {}) }, roleText(this.o.rules, "code_agent"));
     const focus = await this.#focus(f, contextDir);
     await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Feature ${f.id} "${f.title}", attempt ${attempt}: the Code_Agent starts on its own branch`, evidence: [], evidenceStatus: "none" } });
     const tools: { tool: string; inputSummary: string }[] = [];
@@ -238,7 +259,7 @@ export class DevStage {
     let reason: string | null = null;
     for (let tryNo = 1; tryNo <= 2; tryNo++) {
       await this.#status(ctx, f, "testing", tryNo > 1 ? `second try: ${reason}` : undefined);
-      const contextDir = await writeFeatureContext(this.o.dataDir, ctx.task.taskId, { featureId: f.id, plan: this.o.plan(), design: this.o.design(), ...(this.o.requirements() ? { requirements: this.o.requirements()! } : {}), ...(reason ? { previousFeedback: [reason] } : {}) }, roleText(this.o.rules, "test_agent"), "rules-test.md");
+      const contextDir = await writeFeatureContext(this.o.dataDir, ctx.task.taskId, { featureId: f.id, plan: this.o.plan(), design: this.o.design(), ...(this.o.adapter.aiClient ? { aiClient: this.o.adapter.aiClient.dir } : {}), ...(this.o.requirements() ? { requirements: this.o.requirements()! } : {}), ...(reason ? { previousFeedback: [reason] } : {}) }, roleText(this.o.rules, "test_agent"), "rules-test.md");
       await this.#focus(f, contextDir);
       await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Feature ${f.id} "${f.title}": the Test_Agent writes the tests first${tryNo > 1 ? " (second try)" : ""}`, evidence: [], evidenceStatus: "none" } });
       const r = await this.#runAgent(ctx, f, { agent: "test_agent", rulesFile: "rules-test.md", prompt: `Read /context/${f.id}/story.md and write the tests of the Feature it describes. Write only test files; the code does not exist yet.`, tools: [], idPrefix: `${ctx.task.taskId}-${f.id}-t${tryNo}`, budgetMs: Math.min(15, story.featureContract.budgets.maxCodeAgentMinutes) * 60_000 });
@@ -371,7 +392,10 @@ export class DevStage {
     if (changedTests.length)
       await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `The Code_Agent changed tests the Test_Agent wrote: ${changedTests.join(", ")}. The flow follows the Code_Agent; the Reviewer must justify each change to approve.`, evidence: [], evidenceStatus: "none" } });
     await this.#status(ctx, f, "reviewing");
-    const unplanned = [...unplannedChanges(f, d.files), ...changedTests.filter((t) => !unplannedChanges(f, d.files).includes(t))];
+    const ownClients = ownModelClients(d.patch, this.o.adapter.aiClient?.dir);
+    if (ownClients.length)
+      await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `The change calls the model or reads GL_AI_* outside the Studio's AI client in ${ownClients.join(", ")}; the Reviewer must justify it or request changes.`, evidence: [], evidenceStatus: "none" } });
+    const unplanned = [...new Set([...unplannedChanges(f, d.files), ...changedTests, ...ownClients])];
     const story = this.o.plan().backlog.stories.find((s) => s.id === f.storyId)!;
     let verdict: { verdict: "approve" | "request_changes" | "escalate"; reasons: string[] } | null = null;
     const Verdict = z.object({ verdict: z.enum(["approve", "request_changes", "escalate"]), reasons: z.array(z.string()).default([]), justified: z.array(z.object({ file: z.string(), reason: z.string() })).default([]) });
@@ -411,7 +435,7 @@ export class DevStage {
       `# Your role\n\n${roleText(this.o.rules, "reviewer")}`,
       `# Feature ${f.id}: ${f.title} (story ${story.id} "${story.title}")\n${f.summary}\n\nPlanned files: ${f.scope.files.join(", ")}\nTests: ${f.tests.files.join(", ")} — command: ${f.tests.command.join(" ")}\nMust not touch: ${f.scope.notTouch.join("; ") || "nothing named"}\nInterfaces: ${f.interfaces.join("; ") || "none named"}`,
       `# Feature_Contract\n${story.featureContract.feature}\nShould do: ${story.featureContract.shouldDo.join("; ")}\nShould not do: ${story.featureContract.shouldNotDo.join("; ")}`,
-      `# This attempt (${attempt})\nTests written first by the Test_Agent (review them too): ${d.testFiles.join(", ")}\nChanged by the Code_Agent: ${d.files.join(", ")}\nUnplanned changes found by Studio code: ${unplanned.length ? unplanned.join(", ") : "none"}${changedTests.length ? `\nTests of the Test_Agent changed by the Code_Agent (justify each, or request changes): ${changedTests.join(", ")}` : ""}`,
+      `# This attempt (${attempt})\nTests written first by the Test_Agent (review them too): ${d.testFiles.join(", ")}\nChanged by the Code_Agent: ${d.files.join(", ")}\nUnplanned changes found by Studio code: ${unplanned.length ? unplanned.join(", ") : "none"}${changedTests.length ? `\nTests of the Test_Agent changed by the Code_Agent (justify each, or request changes): ${changedTests.join(", ")}` : ""}${ownClients.length ? `\nOwn model client outside graftlab_ai (justify, or request changes so it uses graftlab_ai): ${ownClients.join(", ")}` : ""}`,
       "Read the diff, then submit_review_verdict. Tell the Judge in at most 60 words what you decided.",
     ].join("\n\n---\n\n");
     const r = await this.o.runTurn({ roleId: "reviewer", purpose: "review", systemPrompt: sharedSystemPrompt(this.o.rules, this.o.context()), prompt, tools, signal: ctx.signal, idPrefix: `${ctx.task.taskId}-${f.id}-r${attempt}`, thinkingLevel: "low", emit: ctx.emit });
@@ -633,7 +657,7 @@ export class DevStage {
   async regression(ctx: Ctx): Promise<"passed" | "failed"> {
     const wt = this.#wt!;
     const sum = await mainSummary(wt);
-    await ctx.emit({ type: "change_summary", actor: { kind: "system" }, payload: { base: sum.base, head: sum.head, files: sum.files.map((x) => ({ path: x.path, status: x.status, added: x.added, removed: x.removed })), added: sum.files.reduce((a, x) => a + x.added, 0), removed: sum.files.reduce((a, x) => a + x.removed, 0) } });
+    await ctx.emit({ type: "change_summary", actor: { kind: "system" }, payload: { base: sum.base, head: sum.head, files: sum.files.map((x) => ({ path: x.path, status: x.status, added: x.added, removed: x.removed, ...(this.o.adapter.aiClient && x.path.startsWith(`${this.o.adapter.aiClient.dir}/`) ? { studio: true } : {}) })), added: sum.files.reduce((a, x) => a + x.added, 0), removed: sum.files.reduce((a, x) => a + x.removed, 0) } });
     await writePatchArtifact(this.o.dataDir, wt, "TASK");
     const reg = this.o.adapter.regression;
     if (!reg) {

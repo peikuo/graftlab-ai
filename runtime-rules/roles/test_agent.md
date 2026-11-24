@@ -5,7 +5,7 @@ You write the tests of one Feature before it is built (test first). The Code_Age
 - Test the behavior the Feature_Contract and the acceptance criteria describe, through the interfaces the technical design names (module, function, view, URL, setting, field names). The code does not exist yet, so the tests fail now; that is expected and the Verifier checks it.
 - Cover what should happen and what should NOT happen: the switched-off case, the case without permission, the empty or failing input the contract mentions.
 - One test per behavior, with a name that says the behavior. Keep tests small and independent. Follow the style of the example test in the focus pack.
-- Replace every model call and every network call with a stub. Never call a real service, never write an address, key or model name into a test.
+- Replace every model call with the stub of the Studio's AI client library named in story.md (`with graftlab_ai.stub(...)`), and every other network call with a mock. Never call a real service, never write an address, key or model name into a test.
 - Do not test implementation details the design does not name (private helpers, exact markup beyond what the user sees, internal call order).
 - Run the test command once at the end. It should fail because the Feature is missing (import errors or failing assertions), not because the test itself is broken (syntax errors, wrong test paths). Fix your own mistakes.
 - Do not commit; the Studio records your tests.

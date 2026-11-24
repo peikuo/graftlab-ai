@@ -612,6 +612,9 @@ Conventions:
   - [x] 14.31 AI usage and the app's model calls
     - Two proxy credentials; usage log lines in the LLM_Proxy; the app's calls per browser check as a Verifier item (`needsAi`); `ai_usage`; tokens per agent from `message_completed`; prices from `<data>/config/llm-prices.json` recorded in `task_created`; optional demo per story (R21.10); the flow follows the Code_Agent on a changed Test_Agent test (R40.21); usage in the Result view
     - _Requirements: 22.11, 30.19_
+  - [x] 14.32 Prewritten AI client library
+    - `runtime-libs/python/graftlab_ai/` with its own tests; Adapter `aiClient`; added to `main` at `target_check` as a Studio-provided commit; rules and story bundle name the API; code flag on own model clients in the review
+    - _Requirements: 40.23_
   - [x] 14.1 Implement the context builder and the development rules
     - Done 2026-11-23: `apps/server/src/dev/context.ts` (one Feature, its story and contract, the architecture, summaries of the Features it builds on); `runtime-rules/roles/code_agent.md` updated
     - `apps/server/src/dev/context.ts` writes only the story, its Feature_Contract and the referenced documents; Runtime_Rules rules "small scope per Agent" and "no decision power, stop and ask, reviewed by the Reviewer"

@@ -8,3 +8,19 @@ describe("shellCommand", () => {
     expect(shellCommand(["it's"])).toBe("'it'\\''s'");
   });
 });
+describe("ownModelClients (R40.23)", () => {
+  it("names files outside the AI client that call the chat endpoint or read GL_AI_*", async () => {
+    const { ownModelClients } = await import("./stage.ts");
+    const patch = [
+      "+++ b/bookmarks/services/ai.py",
+      '+    url = os.environ["GL_AI_BASE_URL"] + "/chat/completions"',
+      "+++ b/graftlab_ai/__init__.py",
+      '+    base = os.environ.get("GL_AI_BASE_URL")',
+      "+++ b/bookmarks/tests/test_ai.py",
+      '+    os.environ["GL_AI_MODEL"] = "m"',
+      "+++ b/bookmarks/views.py",
+      "+    r = graftlab_ai.ask(system, user)",
+    ].join("\n");
+    expect(ownModelClients(patch, "graftlab_ai")).toEqual(["bookmarks/services/ai.py"]);
+  });
+});

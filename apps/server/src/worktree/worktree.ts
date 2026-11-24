@@ -320,6 +320,24 @@ export async function changedOnMain(wt: Worktree): Promise<string[]> {
   return (await git(["diff", "--name-only", wt.base, "main"], { cwd: wt.path })).split("\n").filter(Boolean);
 }
 
+/**
+ * Adds Studio-provided files (the AI client library, R40.23) to `main` as one commit, before any Feature starts.
+ * Returns the commit, or null when the files are already there unchanged.
+ */
+export async function addStudioFiles(wt: Worktree, files: { path: string; content: string }[], message: string): Promise<string | null> {
+  await git(["checkout", "-q", "main"], { cwd: wt.path });
+  for (const f of files) {
+    if (f.path.split("/").includes("..") || f.path.startsWith("/")) throw new Error(`invalid Studio file path ${f.path}`);
+    await mkdir(dirname(join(wt.path, f.path)), { recursive: true });
+    await writeFile(join(wt.path, f.path), f.content, "utf8");
+  }
+  await git(["add", "--", ...files.map((f) => f.path)], { cwd: wt.path });
+  const staged = await git(["diff", "--cached", "--name-only"], { cwd: wt.path });
+  if (!staged.trim()) return null;
+  await git(["commit", "-q", "--no-verify", "-m", message], { cwd: wt.path });
+  return head(wt);
+}
+
 /** Every tracked path of `main`. */
 export async function pathsOnMain(wt: Worktree): Promise<string[]> {
   return pathsAt(wt, "main");
