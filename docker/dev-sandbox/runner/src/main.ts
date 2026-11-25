@@ -14,7 +14,7 @@
 import { appendFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { createAgentSession, createExtensionRuntime, ModelRuntime, SessionManager, SettingsManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, createBashToolDefinition, createExtensionRuntime, createLocalBashOperations, ModelRuntime, SessionManager, SettingsManager, type BashOperations, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { RunnerEvent } from "@graftlab/shared";
 import { Type } from "typebox";
 import { ASK_QUESTION_DESCRIPTION, RunnerController, type SessionLike } from "./controller.ts";
@@ -25,6 +25,14 @@ const PROVIDER = "studio";
  * Built-in tools plus ask_question. A custom tool is active only if it is also in this list (task 1.8). grep, find
  * and ls are pi's own search tools with truncated output (enabled 2026-11-24, R40.19).
  */
+/**
+ * Every shell command ends after at most BASH_MAX_S seconds (found 2026-11-25: one `grep -r` over the whole file
+ * system ran until the Feature's 10-minute budget was gone). A longer timeout asked for by the model is lowered.
+ */
+export const BASH_MAX_S = 120;
+export function cappedBash(base: BashOperations): BashOperations {
+  return { exec: (command, cwd, o) => base.exec(command, cwd, { ...o, timeout: Math.min(o.timeout ?? BASH_MAX_S, BASH_MAX_S) }) };
+}
 export const TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls", "ask_question"];
 
 const out = (e: RunnerEvent) => process.stdout.write(`${JSON.stringify(e)}\n`);
@@ -111,7 +119,8 @@ async function main(): Promise<void> {
     modelRuntime,
     resourceLoader: resourceLoader as never,
     tools: TOOLS,
-    customTools: [askQuestion],
+    // A custom tool with a built-in name replaces the built-in one; this bash differs only in its time cap.
+    customTools: [askQuestion, createBashToolDefinition(cwd, { operations: cappedBash(createLocalBashOperations()) }) as unknown as ToolDefinition],
     sessionManager: SessionManager.inMemory(cwd),
     // No compaction. One automatic retry at most; every retry is forwarded as a visible `notice` event.
     settingsManager: SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: true, maxRetries: 1 } }),

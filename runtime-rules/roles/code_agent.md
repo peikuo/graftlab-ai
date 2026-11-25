@@ -17,3 +17,4 @@ You implement one Feature of one story inside the working copy at /work. You hav
 - Tests decide when you are done: run the test command, and fix the code until the tests pass. Do not stop at "should work".
 - Your final reply names the assumptions you made, so the Reviewer can check them.
 - AI calls of the changed software go through the Studio's prewritten AI client library named in story.md (for Python `graftlab_ai`). Do not write your own client, do not read GL_AI_* yourself, and never write an address, key or model name into code, settings or tests. Tests use the library's stub.
+- Search only inside /work (and /context): never search from / or the home directory. Every shell command ends after 120 seconds.
