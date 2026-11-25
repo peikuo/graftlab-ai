@@ -31,14 +31,6 @@ export const NODE_IDS = [
   "story_checkpoint",
   "verifying",
   "regression_check",
-  // API-operation stories
-  "api_read",
-  "api_plan",
-  "api_suggest",
-  "api_confirm",
-  "api_try_one",
-  "api_write_batch",
-  "api_read_back",
   // user loop after an unexpected failure (R36.6)
   "failure_review",
   // terminals

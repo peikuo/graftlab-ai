@@ -44,16 +44,17 @@ const storyParams = obj({
   acceptanceCriteria: arr(str()),
   demoPoint: str(),
   references: opt(arr(str())),
-  featureContract: obj({ feature: str(), shouldDo: arr(str()), shouldNotDo: opt(arr(str())), executionKind: oneOf(["source_change", "api_operation"] as const), acceptanceChecks: opt(arr(unknown())) }),
+  featureContract: obj({ feature: str(), shouldDo: arr(str()), shouldNotDo: opt(arr(str())), executionKind: oneOf(["source_change"] as const), acceptanceChecks: opt(arr(unknown())) }),
 });
 const planParams = (withNote: boolean) =>
   obj({ ...(withNote ? { note: str() } : {}), sprintGoal: str(), stories: arr(storyParams), definitionOfDone: arr(str()) } as Record<string, ReturnType<typeof str>>);
 
-/** The story kinds the chosen approach allows (R40.18): code changes, API work, or both for a mix. */
-export function allowedKinds(decision: DecisionDocContent): Set<string> {
-  const chosen = decision.approachOptions.find((o) => decision.chosenApproachIds.includes(o.id));
-  if (!chosen || chosen.kind === "mix") return new Set(["source_change", "api_operation"]);
-  return new Set([chosen.kind === "independent_agent" ? "api_operation" : "source_change"]);
+/**
+ * The story kinds a plan may use. The Studio builds software and does not operate it for the user (decided by the
+ * user 2026-11-25; the API-operation path is withdrawn), so every story is delivered as a change of the software.
+ */
+export function allowedKinds(_decision: DecisionDocContent): Set<string> {
+  return new Set(["source_change"]);
 }
 
 export async function runPlanning(o: PlanningOptions): Promise<PlanningResult> {

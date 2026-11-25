@@ -7,7 +7,7 @@ import { NODE_OUTCOMES, type StoryProgress, type TaskState } from "../task.ts";
 const story = (i: number): fc.Arbitrary<StoryProgress> =>
   fc.record({
     storyId: fc.constant(`S${i + 1}`),
-    kind: fc.constantFrom("source_change" as const, "api_operation" as const),
+    kind: fc.constant("source_change" as const),
     purpose: fc.constantFrom("A" as const, "B" as const),
     attempts: fc.integer({ min: 0, max: 4 }),
     status: fc.constantFrom("pending" as const, "in_progress" as const, "verified" as const, "failed" as const, "blocked" as const),

@@ -17,7 +17,7 @@ const draft = {
   acceptanceCriteria: ["suggested tags appear"],
   approachOptions: [
     { id: "src", kind: "source_change", title: "Change the save step", summary: "call a model after the page fetch", acceptanceChecks: [check] },
-    { id: "agent", kind: "independent_agent", title: "Separate helper", summary: "a helper container", acceptanceChecks: [] },
+    { id: "agent", kind: "ui_change", title: "Separate helper", summary: "a helper container", acceptanceChecks: [] },
   ],
   uiImpact: "chips under the tag box",
   aiRuntime: { source: "studio_service", dataSent: ["the bookmark title and description"], reason: "the server cannot host a model" },

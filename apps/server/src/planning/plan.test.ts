@@ -96,7 +96,8 @@ describe("runPlanning", () => {
 
   it("refuses story kinds the chosen approach does not allow", async () => {
     expect([...allowedKinds(decision)]).toEqual(["source_change"]);
-    expect([...allowedKinds(content({ chosenApproachIds: ["agent"] }))]).toEqual(["api_operation"]);
+    // Every story is a change of the software (the API-operation path is withdrawn, 2026-11-25).
+    expect([...allowedKinds(content({ chosenApproachIds: ["agent"] }))]).toEqual(["source_change"]);
     let answer = "";
     const { o } = setup(async (role, t) => {
       if (role === "planner") answer = await call(t, "submit_plan", { ...planInput, stories: [story("S1", { featureContract: { ...story("S1").featureContract, executionKind: "api_operation" } })] });

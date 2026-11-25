@@ -8,7 +8,7 @@ export const STEPS = [
   { id: "meet", label: "Meeting", nodes: ["meeting", "prototype"] },
   { id: "decide", label: "Decide", nodes: ["deciding", "awaiting_confirmation", "frozen"] },
   { id: "plan", label: "Plan", nodes: ["planning", "plan_review", "documenting", "tech_design", "adapter_branch_2", "target_check"] },
-  { id: "build", label: "Build and check", nodes: ["story_test", "story_develop", "story_review", "story_ask", "story_run", "story_checkpoint", "verifying", "regression_check", "api_read", "api_plan", "api_suggest", "api_confirm", "api_try_one", "api_write_batch", "api_read_back"] },
+  { id: "build", label: "Build and check", nodes: ["story_test", "story_develop", "story_review", "story_ask", "story_run", "story_checkpoint", "verifying", "regression_check"] },
   { id: "result", label: "Result", nodes: ["success", "failed", "aborted", "analysis_only", "docs_only"] },
 ] as const satisfies readonly { id: string; label: string; nodes: readonly NodeId[] }[];
 

@@ -647,7 +647,7 @@ Conventions:
     - `apps/server/src/runtime/pi-code.ts`: Docker exec of the runner (task 10.13) in the Development_Sandbox with the per-Task proxy credential, stdin commands (prompt, answer, steer, abort), stdout protocol parsing with zod, unknown lines counted, `question` events turned into `question_opened`, answer resumes the same process, budget timer that kills the exec, read-only errors as rejected by a safety rule, `final` events mapped to attempt end
     - Design: PiCodeRuntime
     - _Requirements: 30.16, 38.3, 38.7, 38.8, 40.11, 40.13_
-  - [ ] 14.3 Implement the Demo_Case schema, validator and check derivation
+  - [x] 14.3 WITHDRAWN 2026-11-25 (function boundary, R18.14): Implement the Demo_Case schema, validator and check derivation
     - `packages/shared` Demo_Case and suggestion schemas (generic keys and fields); `apps/server/src/apiops/validate.ts` (Item_Count_Cap as the lower of `GL_DEMO_CASE_MAX_ITEMS` and the Adapter's `itemCap`, Adapter allow-list and `itemFields`, Sandbox target); `deriveChecks`
     - Design: Demo_Case and suggestion, Adapter contract; reference-target-linkding.md (Write semantics for the comparator)
     - _Requirements: 18.8, 18.10, 18.11, 18.12_
@@ -697,7 +697,7 @@ Conventions:
     - `test_suite` running the test selection named in the check (targeted files by default, guided by the Adapter's test-selection hint) in a fresh test container with a read-only snapshot, scripted `browser_check` without an LLM, per-item results, disagreement display, success only from Verifier results, Retrospective at Task end
     - Design: Verifier
     - _Requirements: 14.11, 20.3, 22.1, 22.2, 22.3, 22.6, 22.7, 22.8, 22.9_
-  - [ ] 14.16 Implement the API-operation path with the Demo_Case
+  - [x] 14.16 WITHDRAWN 2026-11-25 (function boundary, R18.14): Implement the API-operation path with the Demo_Case
     - `api_read` Reviewer loop with `target_api_read` (read-only calls within the Adapter allow-list), `read_file`, `search_repo`, `submit_demo_case`; `api_plan` validation; `api_suggest` and `api_confirm` for purpose B; `apiops/writer.ts` as the only code path that writes to the target (Sandbox origin, allow-list, per item, `api_write` events); `api_try_one`, `api_write_batch`, `api_read_back`; label "designed by Reviewer (LLM judgment)"; checkpoint shows the read-back table
     - Design: Flow_Graph (API-operation sub-path), Development stage (per API-operation story)
     - _Requirements: 15.7, 18.2, 18.3, 18.4, 18.7, 18.9, 18.10, 18.13, 22.1, 40.18_
@@ -705,7 +705,7 @@ Conventions:
     - Done 2026-11-25: `packages/shared/src/flow/success.property.test.ts` (Property 3: random walks over the development graph reach success only when the Verifier passed every story and the regression check; approvals and Judge answers never lead to success)
     - **Property 3: Success comes only from the Verifier**
     - **Validates: Requirements 22.3, 40.10, 41.3**
-  - [ ] 14.18 Write property test for Demo_Case write constraints
+  - [x] 14.18 WITHDRAWN 2026-11-25 (function boundary, R18.14): Write property test for Demo_Case write constraints
     - **Property 19: Demo_Case write constraints**
     - Recording fake HTTP client; mutated Demo_Cases (missing harmlessness reason, reversal or expected outcome, too many items, disallowed endpoint, other origin)
     - **Validates: Requirements 18.8, 18.9, 18.10, 18.11, 18.12**
@@ -720,6 +720,7 @@ Conventions:
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 16. Scope decision day (target 2026-12-01)
+  - Decision 2026-11-25 (user): the API-operation path (14.3, 14.16, 14.18) is withdrawn; the Studio builds software and does not operate it for the user. Checked by unit tests only; the next live run tests it together with the other changes (open: live check of issue log 24, 25, 26 and of this change).
   - Decision 2026-11-25 (user): until 2026-11-28, finish the open work as well as possible (fixes from the issue log, the API-operation path, deployment, demos); from 2026-11-28, or earlier when the Kiro credit quota reaches 90 %, switch fully to the presentation work (UI polish, README, Kiro usage write-up, Devpost text, demo video). The user reports the quota; the agent cannot see it.
   - [ ] 16.1 Assess status
     - Run the full test suite and one linkding Task end to end; list each milestone sub-task as done, partial or not started in `docs/status-2026-12-01.md`

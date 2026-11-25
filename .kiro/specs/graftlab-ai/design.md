@@ -852,7 +852,7 @@ Feature status (R1.10): every phase change of a Feature is one `feature_status` 
 
 The Patch_Artifact is `git diff <pinned commit>` saved to `data/tasks/<id>/docs/patches/<storyId>.patch` after each approved attempt and at Task end (R38.6).
 
-Per API-operation story (Feature_Contract `executionKind: "api_operation"`; decided by the user, Open item 50):
+WITHDRAWN 2026-11-25 (function boundary, R18.14; kept for the record, not built, the nodes are removed from the Flow_Graph). Per API-operation story (Feature_Contract `executionKind: "api_operation"`; decided by the user, Open item 50):
 
 1. Context: the same context builder writes the story bundle (R19.7). The story goes to the Reviewer, not to the Code_Agent; no Development_Sandbox is started (R40.18).
 2. Design (`api_read`): the Reviewer (pi agent) reads the relevant target code from the downloaded repository with `read_file` and `search_repo` and the current Sandbox data with `target_api_read` (read endpoints of the Adapter allow-list only, through the Studio; the target credential stays in the backend). It submits a Demo_Case with `submit_demo_case`: endpoints, test-data items, expected outcome, harmlessness reason, reversal statement and evidence. Choosing a meaningful, understandable case and the harmlessness reasoning are best effort (R18.7); the Demo_Case is labeled "designed by Reviewer (LLM judgment)" wherever it is shown.
@@ -1183,7 +1183,7 @@ type AcceptanceCheckSpec =
 
 `{ storyId, attempt, verdict: "approve" | "request_changes" | "escalate", reasons: string[] (at least one), questionForJudge?: string, label: "reviewed by Reviewer (LLM judgment)" }`.
 
-### Demo_Case and suggestion (R18.7-R18.13, Open item 50)
+### Demo_Case and suggestion (WITHDRAWN 2026-11-25, R18.14; kept for the record, not built)
 
 The Demo_Case replaces the earlier "API plan". It is the only input from which Studio code writes to the target, and its expected outcome is the source of the story's `api_readback` check. Item keys, fields and op ids come from the Adapter (for the first target: reference-target-linkding.md, "Write semantics for the comparator").
 
@@ -1360,7 +1360,7 @@ Each property below is implemented by exactly one fast-check property test. Prop
 
 **Validates: Requirements 40.5, 38.5**
 
-### Property 19: Demo_Case write constraints
+### Property 19: Demo_Case write constraints (WITHDRAWN 2026-11-25 with the API-operation path)
 
 *For any* generated Demo_Case (valid or mutated: missing harmlessness reason, reversal or expected outcome, too many items, a disallowed endpoint, a URL pointing at another origin), *any* Adapter allow-list and *any* Item_Count_Cap, running `api_plan`, `api_try_one` and `api_write_batch` against a recording fake HTTP client gives: the Demo_Case is accepted if and only if it is schema-valid, has at most Item_Count_Cap items (the lower of the Studio value and the Adapter's `itemCap`) and uses only allowed endpoints; for a rejected Demo_Case zero writes are sent; for an accepted Demo_Case every sent write goes to the Sandbox origin with an allowed method and path, belongs to exactly one item of that validated Demo_Case (by item id), no item is written twice, and the number of writes is at most Item_Count_Cap; and the derived `api_readback` check has exactly one expectation per expected-outcome entry.
 
@@ -1518,6 +1518,7 @@ Decisions the user made for the first version that are to be revisited. Each ite
 
 | Item | First version | To do later | Requirements and open items |
 |---|---|---|---|
+| Sidecar delivery (user, 2026-11-25) | Every story is a change of the target's code | A separate AI service built next to the software, started with it, offering features or acting on the person's instructions through the software's API, without changing the software's code; needs its own build, run, credentials and Verifier checks | R18.14 |
 | Disagreement about a test (user, 2026-11-24) | The flow follows the Code_Agent when it changes a Test_Agent test; the change is recorded and the Reviewer must justify it | A small meeting of Test_Agent, Code_Agent and Reviewer (the Facilitator leading, the Judge able to join) that settles whether the test or the code is wrong, with the outcome recorded as a decision | R40.21 |
 | Failure review choices | Retry the failed step, skip the story, end the Task | Collect failure cases from test and demo runs: failed step, Failure_Class, the Judge's choice, whether it helped. The Retrospective of each Task records them. Add or change choices when new cases show a need | R36.6, Open item 52 |
 | Thinking per step | A fixed table per step (Prompt caching, "Thinking per step"), decided with the user 2026-11-23 for the demo | Decide per call whether and how much to think, for example from the size and difficulty of the input, the stakes of the step, a failed first attempt or the remaining time budget; measure quality against time per step on the current test endpoint and on DeepSeek | R30, decided by the user 2026-11-23 |
@@ -1529,6 +1530,7 @@ Decisions the user made for the first version that are to be revisited. Each ite
 | Reader exploration tools | Covered by the Repo_Map and the Repo_Memo tools (2026-11-23): the directory listing is part of the map | Nothing left from this item; a separate `list_dir` tool only if agents still need it after the first real runs | R10, R34 |
 
 ## Deliberately left out
+- The Studio operating the target software for the user (the API-operation path: Demo_Case, `api_read` to `api_read_back`, Property 19), withdrawn 2026-11-25 by the user: the Studio is a tool that builds software, and the people who use the software afterwards do not open the Studio. Purpose A is delivered as a feature of the software. The decision draft no longer offers the `independent_agent` approach, plans contain only `source_change` stories, and the API-operation nodes and edges are gone from the Flow_Graph (old Replay events stay readable). Measured before the decision: in 13 live runs no plan ever used an API-operation story.
 
 - Running more than one Task at a time; queue scaling beyond one operator (R28).
 - Docker-in-Docker, and giving any container the Docker socket.

@@ -10,7 +10,6 @@ import { transition } from "./transition.ts";
 const POST_FREEZE: NodeId[] = [
   "frozen", "planning", "plan_review", "documenting", "tech_design", "adapter_branch_2", "target_check", "docs_only",
   "story_test", "story_develop", "story_review", "story_ask", "story_run", "story_checkpoint", "verifying", "regression_check",
-  "api_read", "api_plan", "api_suggest", "api_confirm", "api_try_one", "api_write_batch", "api_read_back",
 ];
 const EXECUTION = POST_FREEZE.filter((n) => n.startsWith("story_") || n.startsWith("api_") || n === "verifying" || n === "regression_check");
 const SAME_STORY_BACK_EDGES = ["request_changes", "answered", "checkpoint_feedback"];
@@ -22,9 +21,6 @@ const RESULT_EDGES_TO_FAILED = [
   "regression_failed",
   "unanswered_last",
   "answered_at_limit_last",
-  "confirm_unanswered_last",
-  "judge_rejected_final",
-  "checkpoint_feedback_api_final",
 ];
 
 const atSource = (node: NodeId) => taskStateArb.map((t): TaskState => placeAt(t, node));
@@ -94,10 +90,6 @@ describe("transition", () => {
         }
         if ((GATHERING_NODES as readonly NodeId[]).includes(task.node) && !edge!.global) {
           expect(to).not.toMatch(/^(success|failed|aborted|analysis_only|docs_only)$/);
-        }
-        if (to === "api_try_one" && currentStory(task)?.purpose === "B") {
-          const confirmedNow = task.node === "api_confirm" && task.outcome === "confirmed";
-          expect(confirmedNow || (judgeRetry && currentStory(task)!.suggestionConfirmed)).toBe(true);
         }
         if (SAME_STORY_BACK_EDGES.includes(edgeId)) {
           expect(currentStory(task)!.attempts).toBeLessThan(task.limits.storyAttempts);

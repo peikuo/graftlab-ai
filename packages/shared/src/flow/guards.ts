@@ -84,13 +84,6 @@ const POST_FREEZE: readonly NodeId[] = [
   "story_checkpoint",
   "verifying",
   "regression_check",
-  "api_read",
-  "api_plan",
-  "api_suggest",
-  "api_confirm",
-  "api_try_one",
-  "api_write_batch",
-  "api_read_back",
 ];
 const EXECUTION: readonly NodeId[] = POST_FREEZE.filter(
   (n) => n.startsWith("story_") || n.startsWith("api_") || n === "verifying" || n === "regression_check",
@@ -110,7 +103,5 @@ export function entryInvariant(target: NodeId, t: TaskState): string | null {
   }
   if (target === "failure_review" && t.failure?.node !== t.node)
     return "no recorded failure for the node being left (R36.6)";
-  if (target === "api_try_one" && currentPurposeIs("B")(t) && !currentStory(t)?.suggestionConfirmed)
-    return "purpose B write without a confirmed suggestion (R15.7, R18.4)";
   return null;
 }
