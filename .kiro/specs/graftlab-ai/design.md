@@ -274,7 +274,6 @@ stateDiagram-v2
     adapter_branch_2 --> docs_only: Other_Repo
     adapter_branch_2 --> target_check: Adapted_Repo
     target_check --> story_develop: baseline check passed, next story is source change
-    target_check --> api_read: baseline ready and reset verified, next story is API operation
     target_check --> failed: target baseline cannot start, not executed
     story_develop --> story_test: the Feature has no tests yet (test first)
     story_test --> story_develop: tests written and red before the code
@@ -289,7 +288,6 @@ stateDiagram-v2
     story_review --> failure_review: no valid Review_Verdict (found missing 2026-11-24)
     story_ask --> story_develop: answer received, below retry limit
     story_ask --> story_develop: unanswered or answered at retry limit, story blocked, next story is source change
-    story_ask --> api_read: unanswered or answered at retry limit, story blocked, next story is API operation
     story_ask --> failed: unanswered or answered at retry limit, story blocked, no next story
     story_run --> story_checkpoint: Run_Environment healthy
     story_run --> failed: modified target failed to start
@@ -297,7 +295,6 @@ stateDiagram-v2
     story_checkpoint --> story_ask: Judge feedback at retry limit
     story_checkpoint --> verifying: confirmed, or no response marked Unconfirmed
     verifying --> story_develop: all checks pass, next story is source change
-    verifying --> api_read: all checks pass, next story is API operation
     verifying --> regression_check: all checks pass, last story, every story verified
     regression_check --> success: no regression against the pinned commit
     regression_check --> failed: a regression, or the suite could not run
@@ -310,7 +307,7 @@ stateDiagram-v2
     docs_only --> [*]
 ```
 
-API-operation sub-path, used for stories whose confirmed approach executes the workflow by operating the target through its API (R18.2-R18.4, R18.7-R18.13, R15.7, R22.1, R40.18; decided by the user, Open item 50). It is part of the same Flow_Graph data. The read and plan stages of R18.2 are the Reviewer designing the Demo_Case: in `api_read` the Reviewer reads the relevant target code and the Sandbox test data with read-only tools and submits a Demo_Case with `submit_demo_case`; in `api_plan` Studio code validates it (schema, Item_Count_Cap, Adapter endpoint allow-list, Sandbox target) and derives the Verifier's `api_readback` Acceptance_Check from its expected outcome. Writes in `api_try_one` and `api_write_batch` are executed by Studio code from the validated Demo_Case; no LLM-facing write tool exists, so write capability exists only in the two write stages. Purpose B still needs a schema-valid suggestion with evidence (`api_suggest`) and Judge confirmation (`api_confirm`) before any write. No agent designs a second case; the non-LLM Verifier runs the derived checks:
+WITHDRAWN 2026-11-25 (R18.14; not in the Flow_Graph any more, kept for the record): API-operation sub-path, used for stories whose confirmed approach executes the workflow by operating the target through its API (R18.2-R18.4, R18.7-R18.13, R15.7, R22.1, R40.18; decided by the user, Open item 50). It is part of the same Flow_Graph data. The read and plan stages of R18.2 are the Reviewer designing the Demo_Case: in `api_read` the Reviewer reads the relevant target code and the Sandbox test data with read-only tools and submits a Demo_Case with `submit_demo_case`; in `api_plan` Studio code validates it (schema, Item_Count_Cap, Adapter endpoint allow-list, Sandbox target) and derives the Verifier's `api_readback` Acceptance_Check from its expected outcome. Writes in `api_try_one` and `api_write_batch` are executed by Studio code from the validated Demo_Case; no LLM-facing write tool exists, so write capability exists only in the two write stages. Purpose B still needs a schema-valid suggestion with evidence (`api_suggest`) and Judge confirmation (`api_confirm`) before any write. No agent designs a second case; the non-LLM Verifier runs the derived checks:
 
 ```mermaid
 stateDiagram-v2
