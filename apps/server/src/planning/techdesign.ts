@@ -104,6 +104,12 @@ export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | 
   const checks = refined.success ? refined.data : [];
   for (const r of checks) if (!o.plan.backlog.stories.some((s) => s.id === r.storyId)) problems.push(`checks: story ${r.storyId} is not in the confirmed plan`);
   const backlog = withRefinedChecks(o.plan, checks).backlog;
+  // Found 2026-11-25 (issue log 26): a check for a model-powered feature that is off by default must switch it on
+  // first; a needsAi check without any checkbox or switch click cannot see the feature.
+  for (const st of backlog.stories)
+    for (const c of st.featureContract.acceptanceChecks)
+      if (c.kind === "browser_check" && c.needsAi && !c.steps.some((x) => x.op === "click" && (x.role === "checkbox" || x.role === "switch")))
+        problems.push(`story ${st.id}: check ${c.id} uses the model but never switches the feature on; the AI switches are off by default, so open the settings page, click the switch (role checkbox) and save before the feature's steps (refine it in \`checks\`)`);
   // An api_readback check can only use the fields the Adapter's comparator knows.
   if (o.expectFields)
     for (const s of backlog.stories)

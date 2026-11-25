@@ -228,6 +228,18 @@ describe("runTechDesign", () => {
     expect(r.ok).toBe(true);
     expect(notes.some((n) => /as text instead of calling the tool/.test(n))).toBe(true);
   });
+  it("refuses a needsAi browser check that never switches the feature on (issue log 26)", async () => {
+    const plan = await confirmedPlan();
+    const fs = [feature("F1", "S1"), feature("F2", "S2")];
+    const steps = [{ op: "goto", path: "/bookmarks/new" }, { op: "click", role: "button", name: "Suggest" }, { op: "expectText", text: "Suggested tags" }];
+    const refined = (st: unknown[]) => [{ storyId: "S1", reason: "browser", checks: [{ id: "c1", kind: "test_suite", command: ["python", "-m", "pytest", "bookmarks/tests/test_tag_suggestions.py"], timeoutS: 120 }, { id: "c2", kind: "browser_check", target: "run_environment", needsAi: true, steps: st }] }];
+    const bad = checkTechDesign({ architecture, features: fs, checks: refined(steps) }, { plan, needsRunEnvironment: true, evidence: filesFrom(files) });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.problems.some((p) => /never switches the feature on/.test(p))).toBe(true);
+    const on = [{ op: "goto", path: "/settings/general" }, { op: "click", role: "checkbox", name: "Enable suggestions" }, { op: "click", role: "button", name: "Save" }, ...steps];
+    const good = checkTechDesign({ architecture, features: fs, checks: refined(on) }, { plan, needsRunEnvironment: true, evidence: filesFrom(files) });
+    if (!good.ok) expect(good.problems.filter((p) => /switches the feature/.test(p))).toEqual([]);
+  });
   it("requirements cover every story", async () => {
     const plan = await confirmedPlan();
     const r = checkRequirements({ introduction: "x", items: [{ id: "R1", storyId: "S1", text: "t", acceptance: ["a"] }] }, plan);

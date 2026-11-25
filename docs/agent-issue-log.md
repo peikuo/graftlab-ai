@@ -38,6 +38,7 @@ Rules for this log:
 | 22 | — | Planner, Reviewer | First runs with detail designs: answer shapes written for every model Feature | observed twice |
 | 23 | misread | Explorer | Clicked "Bulk edit", which is not a plain button; timed out | accepted (recorded, within limits) |
 | 24 | format | Planner (GLM 5.4) | Wrote the whole technical design as plain text instead of calling submit_tech_design | fixed (text passes the same checks), not yet verified live |
+| 26 | misread | Planner, Reviewer | A needsAi browser check never switched the feature on, so its button was not there | fixed (refused by code), not yet verified |
 | 25 | studio | Planner | The visible retry starts a fresh turn, so the model reads the repository again and runs out of the step's time | fixed in the technical design (retry gets the first answer), not yet verified live |
 
 ## Entries
@@ -185,3 +186,10 @@ Rules for this log:
 
 - Kind: studio. Seen: same run, trace `0028-…-plan1-t1r.json`: the retry got the original prompt plus "You ended your turn without a valid submit_tech_design. Call it now." in a new turn, without the first turn's reading or answer, so it read the repository again (80 tool calls) and the step hit its 20-minute limit. The Judge's retry (failure review) then succeeded in 14 min (`0029-…`), after two refused submissions (six Features, a browser step `op` outside the schema, check ids `t2`, `t3`, more than six `notTouch` entries).
 - Possible fix (not done): the retry continues the same conversation, or gets the first turn's final text; `notTouch` becomes a soft list like the others.
+
+### 26. A model check that never switches the feature on
+
+- Kind: misread. Agents: Planner (draft) and Reviewer (final technical design). Seen: `linkding-mww360n6`, S1 c2 `{"goto":"/bookmarks/new"} → fill URL → click "Suggest"` with `needsAi: true`. The template shows the button only `{% if request.user_profile.enable_ai_suggestions %}`, which is off by default (F1's switch). The click timed out, the LLM_Proxy counted 0 app calls, the Task ended in `failed` after every Feature test had passed.
+- Prompt at the time: the environment note says "checks that need the AI feature must switch it on first"; earlier runs did include the switch steps.
+- Fix: the technical design refuses a `needsAi` browser check without a click on a checkbox or switch, with the reason. Not yet verified.
+- Also seen in this run: the background worker started (`uv run manage.py run_huey -f &` in the start commands, app healthy), and the Judge message and "Start the meeting now" during the app trial worked (tasks.md 11.3).
