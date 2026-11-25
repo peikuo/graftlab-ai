@@ -32,14 +32,19 @@ try {
     await p.waitForTimeout(2000);
     const card = p.locator(".icard.pending.kind-question").first();
     if (!answered && (await card.count())) {
-      await card.scrollIntoViewIfNeeded();
+      await card.scrollIntoViewIfNeeded().catch(() => {});
       await p.waitForTimeout(4000); // let the viewer read the question
-      const opts = card.locator(".icard-options button");
-      if (await opts.count()) await opts.first().click();
-      else {
-        // A free-text question: the walk answers with the simplest choice in words.
-        await card.locator("input, textarea").last().fill("Use the Studio's model service; keep it simple and off by default.");
-        await card.getByRole("button", { name: "Send" }).click();
+      // The card may have closed meanwhile (a meeting question expires); then the loop just goes on.
+      try {
+        const opts = card.locator(".icard-options button");
+        if (await opts.count()) await opts.first().click({ timeout: 5000 });
+        else {
+          // A free-text question: the walk answers with the simplest choice in words.
+          await card.locator("input, textarea").last().fill("Use the Studio's model service; keep it simple and off by default.", { timeout: 5000 });
+          await card.getByRole("button", { name: "Send" }).click({ timeout: 5000 });
+        }
+      } catch {
+        continue;
       }
       answered = true;
       mark("answered the Facilitator's question");
