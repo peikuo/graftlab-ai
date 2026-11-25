@@ -115,6 +115,8 @@ export interface AdapterHooks {
   };
   /** Schema of the fields of a Demo_Case item and of an expectation (R18.10). */
   itemFields: z.ZodType;
+  /** Schema of the fields of a read-back expectation only (the comparator's), checked in the technical design. */
+  expectFields?: z.ZodType;
   comparator: {
     key(item: TargetItem): string;
     compare(expect: Expectation, readBack: TargetItem[], preState: TargetItem[]): ItemResult;

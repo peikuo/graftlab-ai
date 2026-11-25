@@ -573,7 +573,8 @@ export class TaskService {
     const p = cur.plan;
     const adapterHooks = this.#o.execution?.adapters.find((x) => x.id === ctx.task.adapterId)?.hooks;
     const r = await runTechDesign({
-      ...(adapterHooks ? { expectFields: adapterHooks.itemFields } : {}),
+      // The comparator's own schema; the Demo_Case item fields (for example url) are not read-back fields (found 2026-11-25).
+      ...(adapterHooks ? { expectFields: adapterHooks.expectFields ?? adapterHooks.itemFields } : {}),
       ...(() => {
         const names = this.#o.execution?.adapters.find((x) => x.id === ctx.task.adapterId)?.readbackFields;
         return names ? { expectFieldNames: names } : {};

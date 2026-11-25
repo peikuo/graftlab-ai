@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AdapterHooks, BaselineHandle, ItemResult, TargetClient, TargetCredential, TargetItem } from "@graftlab/shared";
 import { z } from "zod";
-import { compare, itemFields, key, normalizeUrl } from "./comparator.ts";
+import { compare, ExpectFields, itemFields, key, normalizeUrl } from "./comparator.ts";
 
 export const TestDataSchema = z
   .object({
@@ -83,6 +83,7 @@ export const hooks: AdapterHooks = {
     },
   },
   itemFields,
+  expectFields: ExpectFields,
   comparator: { key, compare },
   readAll,
 };

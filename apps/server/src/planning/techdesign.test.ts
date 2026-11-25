@@ -181,6 +181,10 @@ describe("runTechDesign", () => {
     const bad = checkTechDesign({ architecture, features: fs, checks: refined }, { plan, needsRunEnvironment: true, evidence: filesFrom(files), expectFields: ExpectFields });
     expect(bad.ok).toBe(false);
     if (!bad.ok) expect(bad.problems.some((p) => /check c3 reads back fields tag_names/.test(p))).toBe(true);
+    // A Demo_Case item field such as url is not a read-back field (found 2026-11-25).
+    const url = [{ storyId: "S1", reason: "read back", checks: [{ id: "c3", kind: "api_readback", target: "run_environment", expect: [{ key: "https://example.org", mustExist: true, fields: { url: "https://example.org" } }] }] }];
+    const bad2 = checkTechDesign({ architecture, features: fs, checks: url }, { plan, needsRunEnvironment: true, evidence: filesFrom(files), expectFields: ExpectFields });
+    expect(bad2.ok).toBe(false);
   });
   it("refuses a model-using Feature without an answer shape, and a Feature without a detail design (R19.17)", async () => {
     const plan = await confirmedPlan();

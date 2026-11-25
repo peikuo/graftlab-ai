@@ -34,6 +34,8 @@ Rules for this log:
 | 18 | rule-break | all runtimes | Did not ask on an ambiguous request in unattended mode (spike) | backstop: question at the retry limit |
 | 19 | format | Planner, roles | Texts over the length limits were refused and the turn failed | fixed (soft caps), verified |
 | 20 | format | Planner | A test command given as one string | fixed (split by code), verified |
+| 21 | studio | Reviewer | Read-back field `url` passed the design check but not the comparator | fixed, not yet verified |
+| 22 | — | Planner, Reviewer | First run with detail designs: answer shapes written for both model Features | observed |
 
 ## Entries
 
@@ -152,3 +154,13 @@ Rules for this log:
 
 - Kind: format. Agent: Planner. `["python manage.py test x"]` was run as one program name.
 - Fix: a one-element command with spaces is split into words (`shellCommand`, 0eab119). Verified.
+
+### 21. Read-back field `url` passed the design check
+
+- Kind: studio. Agent: Reviewer (final technical design). Seen: `linkding-mwvm0f3k`, S1 c3 refined to `fields: {"url": "https://example.org"}`; the Verifier's comparator refused it ("Unrecognized key: url") and the Task ended in `failed` after F2 had passed every other check.
+- Cause: the technical design checked read-back fields against the Adapter's `itemFields`, which also allows Demo_Case item fields (`url`, `title`, `tags`); the comparator accepts only `titleContains`, `tagsInclude`, `archived`.
+- Fix: the Adapter exposes `expectFields` (the comparator's schema) and the design check uses it. Not yet verified.
+
+### 22. First run with Feature detail designs (observation)
+
+- Seen: `linkding-mwvm0f3k`, Runtime_Rules 0.14.0. The final design gave answer shapes for both model-using Features, for example F4 `{"answer": "one sentence naming what matched", "bookmark_ids": [3, 7]}`, the shape that was missing in entry 1. Switch Features had `usesModel: false` and no model call. No Test_Agent searched outside /work in this run.
