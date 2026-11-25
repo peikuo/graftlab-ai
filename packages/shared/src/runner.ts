@@ -44,8 +44,9 @@ export const RunnerEvent = z.discriminatedUnion("type", [
     usage: Usage.optional(),
   }),
   z.strictObject({ type: z.literal("message_incomplete"), messageId: z.string(), partialText: z.string(), reason: z.string() }),
-  z.strictObject({ type: z.literal("tool_start"), callId: z.string(), tool: z.string(), inputSummary: z.string() }),
-  z.strictObject({ type: z.literal("tool_end"), callId: z.string(), tool: z.string(), ok: z.boolean(), outputSummary: z.string() }),
+  /** `input` and `output` are the full texts (cut at 20 KB) for the local prompt trace only (R35); never events. */
+  z.strictObject({ type: z.literal("tool_start"), callId: z.string(), tool: z.string(), inputSummary: z.string(), input: z.string().max(20_100).optional() }),
+  z.strictObject({ type: z.literal("tool_end"), callId: z.string(), tool: z.string(), ok: z.boolean(), outputSummary: z.string(), output: z.string().max(20_100).optional() }),
   z.strictObject({
     type: z.literal("question"),
     questionId: z.string(),
@@ -203,10 +204,10 @@ export function createPiEventMapper(prefix = "code-m"): PiEventMapper {
           ];
         }
         case "tool_execution_start":
-          return [{ type: "tool_start", callId: String(e.toolCallId), tool: String(e.toolName), inputSummary: summarize(e.args) }];
+          return [{ type: "tool_start", callId: String(e.toolCallId), tool: String(e.toolName), inputSummary: summarize(e.args), input: summarize(e.args, 20_000) }];
         case "tool_execution_end": {
           const out = e.result?.content?.find((c) => c.type === "text")?.text ?? "";
-          return [{ type: "tool_end", callId: String(e.toolCallId), tool: String(e.toolName), ok: !e.isError, outputSummary: summarize(out) }];
+          return [{ type: "tool_end", callId: String(e.toolCallId), tool: String(e.toolName), ok: !e.isError, outputSummary: summarize(out), output: summarize(out, 20_000) }];
         }
         default:
           if (NOTICE_TYPES.has(e.type)) {

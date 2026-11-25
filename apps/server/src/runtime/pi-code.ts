@@ -23,6 +23,8 @@ export interface CodeAttemptOptions {
   setTimer?: (fn: () => void, ms: number) => () => void;
   /** Which in-container agent runs: the Code_Agent (default) or the Test_Agent (R40.20). */
   agent?: "code_agent" | "test_agent";
+  /** R35: the whole conversation of the attempt for the local prompt trace (never an event). */
+  trace?: (t: { prompt: string; steps: unknown[] }) => Promise<void>;
 }
 
 export interface CodeAttemptResult {
@@ -69,7 +71,9 @@ export async function runCodeAttempt(o: CodeAttemptOptions): Promise<CodeAttempt
   o.signal.addEventListener("abort", onAbort, { once: true });
   // Events are handled in order, one at a time, so the Studio events keep the runner's order.
   let chain = Promise.resolve();
+  const steps: unknown[] = [];
   const handle = async (e: RunnerEvent) => {
+    if (o.trace && e.type !== "delta") steps.push({ at: new Date().toISOString(), ...e });
     switch (e.type) {
       case "ready":
         send({ cmd: "prompt", text: o.prompt });
@@ -138,6 +142,7 @@ export async function runCodeAttempt(o: CodeAttemptOptions): Promise<CodeAttempt
   await chain;
   cancelBudget();
   o.signal.removeEventListener("abort", onAbort);
+  if (o.trace) await o.trace({ prompt: o.prompt, steps }).catch(() => undefined);
   if (res.unknownLines) await o.emit({ type: "finding_recorded", actor, payload: { kind: "note", text: `Code_Agent runner: ${res.unknownLines} output lines were not protocol events`, evidence: [], evidenceStatus: "none" } });
   const f = final as Extract<RunnerEvent, { type: "final" }> | null;
   if (budgetHit) return { ...res, outcome: "budget_exceeded", detail: `the Feature's time budget of ${Math.round(o.budgetMs / 60000)} min ran out` };

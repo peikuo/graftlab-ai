@@ -46,6 +46,8 @@ export interface DevStageOptions {
   memo: () => MemoTree | null;
   /** The Frozen Decision_Doc's AI runtime (R15.12). */
   aiRuntime: () => AiRuntime | undefined;
+  /** R35: keeps the input files of every in-container agent attempt (local prompt trace). */
+  traces?: { attemptInputs(taskId: string, contextDir: string, label: string): Promise<void>; agentRun(taskId: string, label: string, data: unknown): Promise<void> };
 }
 
 const text = (t: string, isError = false) => ({ content: [{ type: "text" as const, text: t }], details: {}, ...(isError ? { isError: true } : {}) });
@@ -234,6 +236,7 @@ export class DevStage {
     const story = this.o.plan().backlog.stories.find((s) => s.id === f.storyId)!;
     const contextDir = await writeFeatureContext(this.o.dataDir, ctx.task.taskId, { featureId: f.id, plan: this.o.plan(), design: this.o.design(), protectedTests: tests.files, ...(this.o.adapter.aiClient ? { aiClient: this.o.adapter.aiClient.dir } : {}), ...(this.#answers.get(f.id)?.length ? { answers: this.#answers.get(f.id)! } : {}), ...(this.o.requirements() ? { requirements: this.o.requirements()! } : {}), ...(this.#feedback.get(f.id) ? { previousFeedback: this.#feedback.get(f.id)! } : {}) }, roleText(this.o.rules, "code_agent"));
     const focus = await this.#focus(f, contextDir);
+    await this.o.traces?.attemptInputs(ctx.task.taskId, contextDir, `${f.id}-code_agent-a${attempt}`).catch(() => undefined);
     await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Feature ${f.id} "${f.title}", attempt ${attempt}: the Code_Agent starts on its own branch`, evidence: [], evidenceStatus: "none" } });
     const tools: { tool: string; inputSummary: string }[] = [];
     const r = await this.#runAgent(ctx, f, { agent: "code_agent", rulesFile: "rules.md", prompt: `Read /context/${f.id}/story.md and build the Feature it describes.`, tools, idPrefix: `${ctx.task.taskId}-${f.id}-a${attempt}`, budgetMs: this.o.plan().backlog.stories.find((s) => s.id === f.storyId)!.featureContract.budgets.maxCodeAgentMinutes * 60_000 });
@@ -281,6 +284,7 @@ export class DevStage {
       await this.#status(ctx, f, "testing", tryNo > 1 ? `second try: ${reason}` : undefined);
       const contextDir = await writeFeatureContext(this.o.dataDir, ctx.task.taskId, { featureId: f.id, plan: this.o.plan(), design: this.o.design(), ...(this.o.adapter.aiClient ? { aiClient: this.o.adapter.aiClient.dir } : {}), ...(this.#answers.get(f.id)?.length ? { answers: this.#answers.get(f.id)! } : {}), ...(this.o.requirements() ? { requirements: this.o.requirements()! } : {}), ...(reason ? { previousFeedback: [reason] } : {}) }, roleText(this.o.rules, "test_agent"), "rules-test.md");
       await this.#focus(f, contextDir);
+      await this.o.traces?.attemptInputs(ctx.task.taskId, contextDir, `${f.id}-test_agent-t${tryNo}`).catch(() => undefined);
       await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Feature ${f.id} "${f.title}": the Test_Agent writes the tests first${tryNo > 1 ? " (second try)" : ""}`, evidence: [], evidenceStatus: "none" } });
       const r = await this.#runAgent(ctx, f, { agent: "test_agent", rulesFile: "rules-test.md", prompt: `Read /context/${f.id}/story.md and write the tests of the Feature it describes. Write only test files; the code does not exist yet.`, tools: [], idPrefix: `${ctx.task.taskId}-${f.id}-t${tryNo}`, budgetMs: Math.min(15, story.featureContract.budgets.maxCodeAgentMinutes) * 60_000 });
       if (r.outcome !== "completed") {
@@ -349,8 +353,10 @@ export class DevStage {
 
   /** One run of an in-container agent (Code_Agent or Test_Agent) with the same runner and the proxy (R40.20). */
   #runAgent(ctx: Ctx, f: Feature, o: { agent: "code_agent" | "test_agent"; rulesFile: string; prompt: string; tools: { tool: string; inputSummary: string }[]; idPrefix: string; budgetMs: number }) {
+    const traces = this.o.traces;
     return runCodeAttempt({
       agent: o.agent,
+      ...(traces ? { trace: (t: unknown) => traces.agentRun(ctx.task.taskId, `${f.id}-${o.agent}-${o.idPrefix.split("-").pop()}`, t) } : {}),
       start: () =>
         this.o.manager.docker.execAttach(this.#dev!, ["node", "/opt/runner/runner.mjs"], {
           workdir: "/work",

@@ -84,6 +84,9 @@ const norm = (events: RunnerEvent[]) =>
   events.map((e) => {
     const x: Record<string, unknown> = { ...e };
     for (const k of ["inputSummary", "outputSummary"]) if (typeof x[k] === "string") x[k] = (x[k] as string).slice(0, 80);
+    // The full input and output are for the local prompt trace only (R35); the recorded fixtures predate them.
+    delete x.input;
+    delete x.output;
     return x;
   });
 const piEvents = (name: string) => fixture(name, "pi").map((l) => JSON.parse(l) as PiEventLike);

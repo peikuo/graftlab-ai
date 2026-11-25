@@ -73,7 +73,7 @@ export interface TaskServiceOptions {
     indexConcurrency?: number;
   };
   /** Live development (R38, R39): containers and the real LLM settings for the LLM_Proxy; absent means not built here. */
-  execution?: { manager: ContainerManager; devImage: string; llm: DevStageOptions["llm"]; adapters: DevStageOptions["adapter"][]; sandbox?: SandboxService };
+  execution?: { manager: ContainerManager; devImage: string; llm: DevStageOptions["llm"]; adapters: DevStageOptions["adapter"][]; sandbox?: SandboxService; traces?: DevStageOptions["traces"] };
   /** The meeting roles' LLM side (R11); without it the meeting stops honestly. */
   meeting?: {
     rules: RuntimeRules;
@@ -628,6 +628,7 @@ export class TaskService {
     if (!x || !m || !adapter || !this.#plan.current || !this.#plan.design || !this.#read) return null;
     const read = this.#read;
     this.#dev = new DevStage({
+      ...(x.traces ? { traces: x.traces } : {}),
       dataDir: this.#o.dataDir,
       manager: x.manager,
       secrets: this.#o.secrets,

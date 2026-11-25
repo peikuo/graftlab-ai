@@ -55,8 +55,55 @@ function summarize(v: unknown, max = 160): string {
   return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
+/** One model turn as the model saw and answered it, for the local prompt trace (R35; not an event, not in Replay). */
+export interface TurnTrace {
+  idPrefix: string;
+  roleId: RoleId;
+  purpose: string;
+  model: string;
+  thinkingLevel: string;
+  startedAt: string;
+  endedAt: string;
+  systemPrompt: string;
+  prompt: string;
+  tools: { name: string; description: string }[];
+  messages: { id: string; text: string; reasoning?: string; toolCalls: { name: string; arguments: unknown }[]; stopReason: string; error?: string; usage?: unknown }[];
+  toolResults: { callId: string; name: string; ok: boolean; text: string }[];
+  result: { stopReason: string; error?: string; toolCalls: number; truncated: boolean };
+}
+let traceSink: ((t: TurnTrace) => Promise<void> | void) | null = null;
+/** Set by the server: where finished turns go (null: no trace). */
+export function setTurnTraceSink(sink: ((t: TurnTrace) => Promise<void> | void) | null): void {
+  traceSink = sink;
+}
+
 /** Runs one prompt to completion (the agent may call tools and take several model turns). */
 export async function runAgentTurn(o: TurnOptions): Promise<TurnResult> {
+  const traced: TurnTrace = {
+    idPrefix: o.idPrefix,
+    roleId: o.roleId,
+    purpose: o.purpose,
+    model: String((o.model.model as { id?: string }).id ?? ""),
+    thinkingLevel: o.thinkingLevel ?? "low",
+    startedAt: new Date().toISOString(),
+    endedAt: "",
+    systemPrompt: o.systemPrompt,
+    prompt: o.prompt,
+    tools: o.tools.map((t) => ({ name: t.name, description: t.description })),
+    messages: [],
+    toolResults: [],
+    result: { stopReason: "none", toolCalls: 0, truncated: false },
+  };
+  const r = await runAgentTurnInner(o, traced);
+  if (traceSink) {
+    traced.endedAt = new Date().toISOString();
+    traced.result = { stopReason: r.stopReason, ...(r.error ? { error: r.error } : {}), toolCalls: r.toolCalls, truncated: r.truncated };
+    await Promise.resolve(traceSink(traced)).catch(() => undefined);
+  }
+  return r;
+}
+
+async function runAgentTurnInner(o: TurnOptions, traced: TurnTrace): Promise<TurnResult> {
   const actor: Actor = { kind: "role", roleId: o.roleId };
   const now = o.now ?? Date.now;
   const every = o.progressEveryMs ?? 5000;
@@ -114,6 +161,15 @@ export async function runAgentTurn(o: TurnOptions): Promise<TurnResult> {
         const id = current.id;
         current = null;
         result.stopReason = m.stopReason;
+        traced.messages.push({
+          id,
+          text: textOf(m),
+          ...(reasoningOf(m) ? { reasoning: reasoningOf(m) } : {}),
+          toolCalls: m.content.flatMap((c) => (c.type === "toolCall" ? [{ name: (c as { name: string }).name, arguments: (c as { arguments?: unknown }).arguments }] : [])),
+          stopReason: m.stopReason,
+          ...(m.errorMessage ? { error: m.errorMessage } : {}),
+          usage: m.usage,
+        });
         if (m.stopReason === "error" || m.stopReason === "aborted") {
           const reason = m.stopReason === "aborted" ? (gaveUp ?? "stopped") : summarize(m.errorMessage ?? "the model call failed", 300);
           result.error = reason;
@@ -152,6 +208,7 @@ export async function runAgentTurn(o: TurnOptions): Promise<TurnResult> {
         const ok = !(e as { isError?: boolean }).isError;
         const out = (e.result as { content?: { type: string; text?: string }[] } | undefined)?.content?.find((c) => c.type === "text")?.text ?? "";
         await o.emit({ type: "tool_finished", actor, payload: { callId: e.toolCallId, tool: e.toolName, ok, outputSummary: summarize(out) } });
+        traced.toolResults.push({ callId: e.toolCallId, name: e.toolName, ok, text: out });
         // Only refused submissions and malformed arguments count; a read of a missing file is ordinary work.
         const rejected = !ok && (e.toolName.startsWith("submit_") || /^(Validation failed|Invalid arguments)/.test(out));
         if (rejected && o.maxToolErrors !== undefined && ++toolErrors >= o.maxToolErrors && !gaveUp) {

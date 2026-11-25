@@ -7,6 +7,8 @@ import { pingDocker } from "./containers/engine.ts";
 import { ContainerManager, executionEnabled } from "./containers/manager.ts";
 import { SandboxService } from "./containers/sandboxService.ts";
 import { priceFromFile, resolveLlmConfig } from "./llm/config.ts";
+import { setTurnTraceSink } from "./runtime/pi.ts";
+import { TraceWriter } from "./trace/trace.ts";
 import { buildStudioModel } from "./llm/model.ts";
 import { piMemoWriter } from "./reader/memoWriter.ts";
 import { loadRuntimeRules } from "./roles/rules.ts";
@@ -51,10 +53,14 @@ const envInt = (name: string) => (process.env[name] ? Number(process.env[name]) 
 let hub: { delta(messageId: string, channel: "text" | "reasoning" | "toolcall", text: string): void } | null = null;
 const lease = new Lease({ idleReleaseMs: Number(process.env.GL_LEASE_IDLE_S ?? 120) * 1000 });
 let setCurrent: (store: EventStore) => void = () => {};
+// R35: the local prompt trace of the current Task (data/tasks/<id>/traces/), never an event or a Replay part.
+let traceTaskId: string | null = null;
 const adapters = await loadAdapters(join(root, "adapters"));
 const execution = executionEnabled();
 const containers = execution ? new ContainerManager() : null;
 const sandbox = new SandboxService();
+const traces = new TraceWriter(dataDir, secrets, () => traceTaskId);
+if (process.env.GL_TRACE !== "0") setTurnTraceSink((t) => traces.turn(t));
 const tasks = new TaskService({
   dataDir,
   secrets,
@@ -67,14 +73,17 @@ const tasks = new TaskService({
   adapters,
   // Live development needs the engine and a key; the key goes only to the LLM_Proxy container (R30.16).
   ...(containers && llm.apiKey
-    ? { execution: { manager: containers, devImage: process.env.GL_DEV_IMAGE ?? "graftlab/dev-sandbox-linkding:latest", llm: { baseUrl: llm.baseUrl, apiKey: llm.apiKey, model: llm.model, reasoningParam: llm.reasoningParam, reasoningEffort: llm.reasoningEffort }, adapters, sandbox } }
+    ? { execution: { manager: containers, devImage: process.env.GL_DEV_IMAGE ?? "graftlab/dev-sandbox-linkding:latest", llm: { baseUrl: llm.baseUrl, apiKey: llm.apiKey, model: llm.model, reasoningParam: llm.reasoningParam, reasoningEffort: llm.reasoningEffort }, adapters, sandbox, ...(process.env.GL_TRACE !== "0" ? { traces } : {}) } }
     : {}),
   adaptersDir: join(root, "adapters"),
   replayPublicDir: join(root, "apps/web/public/replays"),
   runtimeRulesVersion,
   llm: { profile: llm.profile, model: llm.model, ...(llmPrice ? { price: llmPrice } : {}) },
   lease,
-  onStore: (store) => setCurrent(store),
+  onStore: (store) => {
+    traceTaskId = store.taskId;
+    setCurrent(store);
+  },
   limits: {
     ...DEFAULT_LIMITS,
     ...(process.env.GL_READ_MAX_FILES ? { maxFiles: Number(process.env.GL_READ_MAX_FILES) } : {}),
