@@ -15,6 +15,7 @@ This file holds constraints and an index only. Details live in `.kiro/specs/graf
 - Build stage by stage: use the real output of each stage as the input to debug the next, and test with real documents.
 - Streamed text is not stored: the server persists only complete messages (an interrupted stream is persisted as incomplete with the reason).
 - All hackathon materials and documents are written in English.
+- Every agent or LLM mistake seen in a run (misread task, broken rule, refused submission, design gap, or a Studio prompt that misled it) is recorded in `docs/agent-issue-log.md` with evidence, the prompt at the time, the fix and whether a run verified it.
 
 ## Scope
 
@@ -40,3 +41,4 @@ This file holds constraints and an index only. Details live in `.kiro/specs/graf
 - Reference, deployment: `.kiro/specs/graftlab-ai/reference-deployment.md` (where and how the Studio is deployed, and the host facts from the spikes; design.md is authoritative)
 - Tasks: `.kiro/specs/graftlab-ai/tasks.md`
 - How we use Kiro (spec, steering, hooks; not product design): `docs/kiro-usage.md`
+- Agent issue log (for review; not product design): `docs/agent-issue-log.md`
