@@ -37,6 +37,8 @@ Rules for this log:
 | 21 | studio | Reviewer | Read-back field `url` passed the design check but not the comparator | fixed, verified |
 | 22 | — | Planner, Reviewer | First runs with detail designs: answer shapes written for every model Feature | observed twice |
 | 23 | misread | Explorer | Clicked "Bulk edit", which is not a plain button; timed out | accepted (recorded, within limits) |
+| 24 | format | Planner (GLM 5.4) | Wrote the whole technical design as plain text instead of calling submit_tech_design | open |
+| 25 | studio | Planner | The visible retry starts a fresh turn, so the model reads the repository again and runs out of the step's time | open |
 
 ## Entries
 
@@ -171,3 +173,15 @@ Rules for this log:
 
 - Kind: misread. Agent: Explorer. Seen: `linkding-mwuxchea` and `linkding-mwvnwdgv`: `browser_click` on button "Bulk edit" timed out (the control is a toggle shown only in some states). The failure was recorded and the Explorer went on; the experience completed.
 - No fix; one failed action per run, inside the limit of 5 in a row.
+
+### 24. Technical design written as text instead of the submit tool (GLM 5.4)
+
+- Kind: format. Agent: Planner. Model: glm-5.4 (first run on it). Runtime_Rules 0.14.1.
+- Seen: `linkding-mwvwvy2i`, trace `0027-…-plan1-t1.json`: 114 tool calls (78 read_file, 36 search_repo) over 11 min 45 s, then a final message with stop reason `stop` whose text is the complete design JSON (`{"architecture":{"overview":"Three AI helpers, …`), no tool call. Its reasoning ends: "Let me write the submit payload carefully." Code recorded "Planner ended the turn without a valid submit_tech_design (no valid submission); one retry".
+- Not seen with DeepSeek in 12 runs (they sometimes sent broken JSON as arguments, entry 8, but always called the tool).
+- Possible fix (not done): when the final text is a JSON object that passes the same submission check, accept it and record that it came as text; or end the read phase with an explicit "now call submit_tech_design" message.
+
+### 25. The visible retry starts from scratch
+
+- Kind: studio. Seen: same run, trace `0028-…-plan1-t1r.json`: the retry got the original prompt plus "You ended your turn without a valid submit_tech_design. Call it now." in a new turn, without the first turn's reading or answer, so it read the repository again (80 tool calls) and the step hit its 20-minute limit. The Judge's retry (failure review) then succeeded in 14 min (`0029-…`), after two refused submissions (six Features, a browser step `op` outside the schema, check ids `t2`, `t3`, more than six `notTouch` entries).
+- Possible fix (not done): the retry continues the same conversation, or gets the first turn's final text; `notTouch` becomes a soft list like the others.
