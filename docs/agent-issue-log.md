@@ -37,8 +37,8 @@ Rules for this log:
 | 21 | studio | Reviewer | Read-back field `url` passed the design check but not the comparator | fixed, verified |
 | 22 | — | Planner, Reviewer | First runs with detail designs: answer shapes written for every model Feature | observed twice |
 | 23 | misread | Explorer | Clicked "Bulk edit", which is not a plain button; timed out | accepted (recorded, within limits) |
-| 24 | format | Planner (GLM 5.4) | Wrote the whole technical design as plain text instead of calling submit_tech_design | open |
-| 25 | studio | Planner | The visible retry starts a fresh turn, so the model reads the repository again and runs out of the step's time | open |
+| 24 | format | Planner (GLM 5.4) | Wrote the whole technical design as plain text instead of calling submit_tech_design | fixed (text passes the same checks), not yet verified live |
+| 25 | studio | Planner | The visible retry starts a fresh turn, so the model reads the repository again and runs out of the step's time | fixed in the technical design (retry gets the first answer), not yet verified live |
 
 ## Entries
 

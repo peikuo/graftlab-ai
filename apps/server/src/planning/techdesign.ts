@@ -147,6 +147,22 @@ export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | 
   return { ok: true, architecture, breakdown: b.breakdown, checks };
 }
 
+/** The first JSON object in a text (a code fence around it is allowed); undefined when there is none. */
+export function extractJsonObject(text: string): unknown {
+  const t = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  const start = t.indexOf("{");
+  if (start < 0) return undefined;
+  for (let end = t.lastIndexOf("}"); end > start; end = t.lastIndexOf("}", end - 1)) {
+    try {
+      const v = JSON.parse(t.slice(start, end + 1));
+      if (v && typeof v === "object" && !Array.isArray(v)) return v;
+    } catch {
+      // try a shorter span
+    }
+  }
+  return undefined;
+}
+
 export async function runTechDesign(o: TechDesignOptions): Promise<TechDesignResult> {
   const system = sharedSystemPrompt(o.rules, o.context);
   const stats = { retries: 0 };
@@ -167,9 +183,24 @@ export async function runTechDesign(o: TechDesignOptions): Promise<TechDesignRes
     const submit = tools.at(-1)!.name;
     const r = await o.runTurn({ roleId, purpose: "statement", systemPrompt: system, prompt, tools, signal: o.signal, idPrefix: id, thinkingLevel });
     if (accepted() || o.signal.aborted || r.stopReason === "error") return accepted();
+    // Found 2026-11-25 (issue log 24): a model wrote the whole submission as plain text. A JSON object in the final
+    // text goes through the submit tool itself, so exactly the same checks decide; this is recorded, not hidden.
+    const json = extractJsonObject(r.text);
+    const tool = tools.at(-1)!;
+    if (json !== undefined) {
+      const res = (await tool.execute(`${id}-text`, json as never, undefined as never, undefined as never)) as { content?: { text?: string }[]; isError?: boolean };
+      if (accepted()) {
+        await o.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `${NAME[roleId]} wrote its ${submit} as text instead of calling the tool; Studio code passed it through the same checks and accepted it`, evidence: [], evidenceStatus: "none" } });
+        return true;
+      }
+      r.error = `the answer came as text and was not accepted: ${(res.content?.[0]?.text ?? "").slice(0, 300)}`;
+    }
     stats.retries++;
     await o.emit({ type: "failure", actor, payload: { failureClass: "llm_output_format_invalid", source: "llm", detail: `${NAME[roleId]} ended the turn without a valid ${submit} (${r.error ?? (r.toolCalls === 0 ? "it answered without the submit tool" : "no valid submission")}); one retry` } });
-    const r2 = await o.runTurn({ roleId, purpose: "statement", systemPrompt: system, prompt: `${prompt}\n\nYou ended your turn without a valid ${submit}. Call it now.`, tools, signal: o.signal, idPrefix: `${id}r`, thinkingLevel });
+    // The retry is a new turn without the first one's reading (issue log 25), so it gets the first turn's final
+    // answer and is told not to read the repository again.
+    const before = r.text.trim() ? `\n\nYour previous turn ended with this answer instead of a valid ${submit} call${r.error ? ` (${r.error})` : ""}:\n\n${r.text.slice(0, 40_000)}` : "";
+    const r2 = await o.runTurn({ roleId, purpose: "statement", systemPrompt: system, prompt: `${prompt}${before}\n\nYou ended your turn without a valid ${submit}. You have already read the code: do not read the repository again; correct what was refused and call ${submit} now.`, tools, signal: o.signal, idPrefix: `${id}r`, thinkingLevel });
     if (!accepted() && !o.signal.aborted && r2.stopReason !== "error") await o.emit({ type: "failure", actor, payload: { failureClass: "llm_output_format_invalid", source: "llm", detail: `${NAME[roleId]}'s ${submit} failed: ${r2.error ?? "no valid submission"}` } });
     return accepted();
   }

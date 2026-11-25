@@ -205,6 +205,29 @@ describe("runTechDesign", () => {
     const re = { ...architecture.runEnvironment, startCommands: ["uv run manage.py run_huey -f &", ...architecture.runEnvironment.startCommands] };
     expect(checkTechDesign({ architecture: { ...architecture, runEnvironment: re }, features: fs }, { plan, needsRunEnvironment: true, evidence: filesFrom(files), backgroundWorker: w }).ok).toBe(true);
   });
+  it("a design written as text goes through the same checks and is accepted without a retry (issue log 24)", async () => {
+    const plan = await confirmedPlan();
+    const calls: string[] = [];
+    const notes: string[] = [];
+    const fs = [feature("F1", "S1"), feature("F2", "S2", { dependsOn: ["F1"] })];
+    const r = await runTechDesign({
+      rules: skillRules, context: "CTX", decisionMarkdown: "# D", plan, needsRunEnvironment: true, files, evidence: filesFrom(files), signal: new AbortController().signal, idPrefix: "t",
+      emit: async (e) => {
+        if (e.type === "finding_recorded") notes.push((e.payload as { text: string }).text);
+      },
+      runTurn: async (t) => {
+        calls.push(t.roleId);
+        const tools: Tools = new Map(t.tools.map((x) => [x.name, x]));
+        if (t.roleId === "planner") return { stopReason: "stop", text: "Here it is:\n```json\n" + JSON.stringify({ architecture, features: fs }) + "\n```", toolCalls: 0, truncated: false };
+        if (t.roleId === "feasibility") await call(tools, "submit_tech_review", { reviews: [{ featureId: "F1", fits: "yes", sizeRight: true }, { featureId: "F2", fits: "yes", sizeRight: true }] });
+        if (t.roleId === "reviewer") await call(tools, "submit_final_tech_design", { architecture, features: fs, grades: grades(["F1", "F2"]), note: "ok" });
+        return { stopReason: "stop", text: "", toolCalls: 1, truncated: false };
+      },
+    });
+    expect(calls).toEqual(["planner", "feasibility", "reviewer"]);
+    expect(r.ok).toBe(true);
+    expect(notes.some((n) => /as text instead of calling the tool/.test(n))).toBe(true);
+  });
   it("requirements cover every story", async () => {
     const plan = await confirmedPlan();
     const r = checkRequirements({ introduction: "x", items: [{ id: "R1", storyId: "S1", text: "t", acceptance: ["a"] }] }, plan);

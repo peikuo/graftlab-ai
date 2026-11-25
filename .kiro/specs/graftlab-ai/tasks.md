@@ -719,6 +719,7 @@ Conventions:
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 16. Scope decision day (target 2026-12-01)
+  - Decision 2026-11-25 (user): until 2026-11-28, finish the open work as well as possible (fixes from the issue log, the API-operation path, deployment, demos); from 2026-11-28, or earlier when the Kiro credit quota reaches 90 %, switch fully to the presentation work (UI polish, README, Kiro usage write-up, Devpost text, demo video). The user reports the quota; the agent cannot see it.
   - [ ] 16.1 Assess status
     - Run the full test suite and one linkding Task end to end; list each milestone sub-task as done, partial or not started in `docs/status-2026-12-01.md`
     - _Requirements: 23.1_
