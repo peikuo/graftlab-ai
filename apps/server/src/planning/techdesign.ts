@@ -52,6 +52,8 @@ export interface TechDesignOptions {
   expectFields?: { safeParse(v: unknown): { success: boolean } };
   /** The field names to name in the refusal, for example "titleContains, tagsInclude, archived". */
   expectFieldNames?: string;
+  /** R38.12: the target's own worker must be started in the run environment. */
+  backgroundWorker?: { mustMention: string; from: string };
 }
 export type TechDesignResult = { ok: true; design: TechDesign; stats: { retries: number } } | { ok: false; reason: string; stats: { retries: number } };
 
@@ -94,7 +96,7 @@ const gradeP = obj({ featureId: str(), ...Object.fromEntries(RUBRIC.map((k) => [
 export const INSTALL = /\b(uv\s+sync|uv\s+pip\s+install|pip3?\s+install|python3?\s+-m\s+pip\s+install|npm\s+(install|ci|i)\b|pnpm\s+install|yarn\s+install|poetry\s+install|bundle\s+install|apt(-get)?\s+install)/;
 
 /** Checks a submitted architecture and breakdown; the architecture's quotes are checked against the files. */
-export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | "needsRunEnvironment" | "evidence" | "expectFields" | "expectFieldNames"> & { files?: Map<string, string> }): { ok: true; architecture: TechArchitecture; breakdown: FeatureBreakdown; checks: RefinedChecks } | { ok: false; problems: string[] } {
+export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | "needsRunEnvironment" | "evidence" | "expectFields" | "expectFieldNames" | "backgroundWorker"> & { files?: Map<string, string> }): { ok: true; architecture: TechArchitecture; breakdown: FeatureBreakdown; checks: RefinedChecks } | { ok: false; problems: string[] } {
   const x = (a ?? {}) as { architecture?: Record<string, unknown>; features?: unknown[]; checks?: unknown };
   const problems: string[] = [];
   const refined = RefinedChecksSchema.safeParse(x.checks ?? []);
@@ -123,6 +125,8 @@ export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | 
   else if (arch.data.runEnvironment)
     for (const c of [...arch.data.runEnvironment.buildCommands, ...arch.data.runEnvironment.startCommands])
       if (INSTALL.test(c)) problems.push(`architecture: runEnvironment command "${c}" installs packages, but the run container has no internet and the dependencies are preinstalled; leave it out`);
+  if (arch.success && arch.data.runEnvironment && o.backgroundWorker && !arch.data.runEnvironment.startCommands.some((c) => c.includes(o.backgroundWorker!.mustMention)))
+    problems.push(`architecture: the start commands must also start the target's background worker in the background, as ${o.backgroundWorker.from} does (a command with ${o.backgroundWorker.mustMention}, ending with &), before the web server`);
   const features = (x.features ?? []).map((f) => ({ interfaces: [], dependsOn: [], servesChecks: [], ...(f as object), scope: { notTouch: [], ...((f as { scope?: object })?.scope ?? {}) } }));
   const b = checkBreakdown({ features }, backlog, { requireDetail: true });
   if (!b.ok) problems.push(...b.problems);

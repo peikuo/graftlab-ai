@@ -157,7 +157,8 @@ Conventions:
     - `packages/shared/src/redact.ts`: registry of known secret values (refuses values shorter than 8 characters), `redact(event)` over every payload string, the same function for SSE `delta` frames
     - Design: Secret redactor
     - _Requirements: 30.15, 28.4, 30.5_
-  - [ ] 3.2 Create sanitized fixture events
+  - [x] 3.2 Create sanitized fixture events
+    - Done 2026-11-25: `packages/shared/test/fixtures/real-linkding-success.jsonl`, the events of the real run `linkding-mwvnwdgv` (checked for paths, host, account and key strings, secret scan clean); `apps/server/src/fixtures/realRun.test.ts` folds it
     - Status 2026-11-22: a SYNTHETIC fixture (`synthetic-gathering-meeting.jsonl`, labeled as such) drives the Workspace for now. The real spike outputs (pi-coding-agent runner traces, ARIA snapshots) are on the PC; copying them to the Mac needs the user (see the session notes)
     - Turn the spike outputs (pi event traces, runner protocol output) into sanitized Studio event fixtures in `packages/shared/test/fixtures/`, one per stage kind; run the secret scan over them
     - Design: Recorded-event fixture suite
@@ -253,11 +254,13 @@ Conventions:
     - _Requirements: 9.3, 9.4, 10.2, 34.2_
 
 - [ ] 6. F3: PiRuntime, meeting after evidence gathering with streaming, thinking panel, interjection, question cards, evidence checker (target 2026-11-24)
-  - [ ] 6.1 Implement LLM configuration
+  - [x] 6.1 Implement LLM configuration
+    - Done (used in every live run since 2026-11-22): `apps/server/src/llm/config.ts` (profiles, defaults, `GL_MAX_TOKENS`), finish reason check in `runtime/pi.ts`; `config.test.ts`
     - `apps/server/src/llm/`: server default base address and `deepseek-flash` from environment, max_tokens 32768 (`GL_MAX_TOKENS`, raised from 16384 on 2026-11-23), finish reason check, Judge-supplied configuration behind `GL_ALLOW_JUDGE_LLM` (off)
     - Design: LLM configuration and SSRF validation
     - _Requirements: 30.1, 30.2, 30.3, 30.5, 30.12, 30.14_
-  - [ ] 6.2 Implement the Runtime_Rules loader and role prompts
+  - [x] 6.2 Implement the Runtime_Rules loader and role prompts
+    - Done: `apps/server/src/roles/rules.ts`, `runtime-rules/roles/*.md` for every role including Explorer, Test_Agent and Code_Agent, `VERSION` (0.14.1 on 2026-11-25)
     - `runtime-rules/roles/*.md` for the function agents (Reader, Explorer, Facilitator, Planner, Reviewer) and the Meeting_Perspectives (User_Value, Feasibility, Risk); shared behavior rules; `VERSION`; schema export script into `runtime-rules/schemas/`; loader records the version at Task start
     - Design: Repository layout, apps/server modules (`roles/`)
     - _Requirements: 35.2, 35.3, 35.4, 35.6, 35.10_
@@ -266,7 +269,8 @@ Conventions:
     - `apps/server/src/evidence/`: whitespace-normalized snippet match with at least 8 non-whitespace characters, reasons `file_missing`, `not_downloaded`, `snippet_absent`, `snippet_too_short`
     - Design: Evidence checker
     - _Requirements: 24.1, 24.2, 24.3, 24.5, 24.6_
-  - [ ] 6.4 Implement the AgentRuntime interface and PiRuntime
+  - [x] 6.4 Implement the AgentRuntime interface and PiRuntime
+    - Done: `apps/server/src/runtime/pi.ts` (event mapping, progress, deltas as SSE frames only, incomplete plus failure on a break, cache-hit tokens in usage); `pi.test.ts` with pi-ai's faux provider
     - Prompt caching per design "Prompt caching": fixed prompt order (shared rules, Task context, role text, variable part), fixed tool order, append-only transcripts; verify that pi-ai reports DeepSeek's cache-hit tokens and record them in `usage`
     - `packages/shared/src/runtime.ts` types; `apps/server/src/runtime/pi.ts`: event mapping table, `message_progress` every 5 s and at the first delta, deltas as SSE frames only, `message_incomplete` plus `failure` on a break, non-streaming fallback note, `beforeToolCall` whitelist, abort
     - Design: AgentRuntime interface, PiRuntime
@@ -300,17 +304,21 @@ Conventions:
     - Done 2026-11-23: `check.property.test.ts`, 300 runs
     - **Property 9: Evidence check marks**
     - **Validates: Requirements 24.2, 24.3, 24.4, 24.5, 11.5, 11.6, 37.6**
-  - [ ] 6.6 Implement structured output through submit tools
+  - [x] 6.6 Implement structured output through submit tools
+    - Done: submit tools validated by zod in every step, one visible retry, refusals counted; only refused submissions count toward giving up (2026-11-24)
     - zod validation of `submit_<stage>` arguments, missing submit or truncation counted as LLM output format invalid, one visible retry shown as its own attempt, then the role turn fails
     - Design: PiRuntime
     - _Requirements: 11.2, 23.5, 23.6, 30.4, 30.13_
-  - [ ]* 6.7 Write property test for structured output validation
+  - [x]* 6.7 Write property test for structured output validation
+    - Done 2026-11-25: `apps/server/src/runtime/structured.property.test.ts` (Property 17: valid values accepted, missing, wrong-type and extra fields refused; a truncated answer refused and counted once)
     - **Property 17: Structured output validation**
     - **Validates: Requirements 30.4, 30.13, 23.6, 35.6, 15.2, 40.6, 11.2**
-  - [ ]* 6.8 Write unit tests for PiRuntime with a scripted fake model
+  - [x]* 6.8 Write unit tests for PiRuntime with a scripted fake model
+    - Done: `apps/server/src/runtime/pi.test.ts` (stream mapping, blocked tool, truncation, model error)
     - Stream break keeps partial text and records the failure; truncation is discarded; blocked tool recorded as rejected by a safety rule; reasoning persisted with the complete message
     - _Requirements: 3.9, 3.12, 23.7, 30.13_
-  - [ ] 6.9 Implement the reading skim and the meeting
+  - [x] 6.9 Implement the reading skim and the meeting
+    - Done (revision live in every run since 2026-11-23): `apps/server/src/meeting/meeting.ts`, `board.ts`; `meeting.test.ts`
     - Done before the revision (2026-11-23): fixed-order meeting, evidence checker in every finding, timed cards; live on linkding 18 min, 40/40 findings passed, little response between perspectives
     - Revision (decided with the user 2026-11-23): parallel preparation into the Evidence_Pool and the Proposal_Board; discussion by speaking signals with code-picked speakers; non-blocking question cards; end condition and summary by code; prompt order with the role text after the transcript; thinking off for signals; background index paused during the meeting; plain-language display per design table (no ids or paths in statements, quotes behind a fold, board in the Details panel)
     - Tests with a scripted turn runner: speaker rules (addressed role, disagree first, never the previous speaker, missing stance named), board changes validated (unknown proposal, missing evidence), quotes checked into the pool, end condition and limits, non-blocking card answer delivered as Judge input, summary built from the board, ids removed from displayed text
@@ -321,17 +329,20 @@ Conventions:
     - Progress 2026-11-23: implemented (`meeting/board.ts`, `meeting/meeting.ts`, Board and Evidence views, signals on presence cards, non-blocking cards, index pause), 18 meeting tests. Live on linkding: run 1 (no readability limits) 507 s, 7 proposals, every discussion statement responded to someone, an interjection to Risk made Risk speak next, 0 ids in statements, statements 12.8 s on average, signals 0.7 s, 65 % cached input; run 2 (limits) 242 s, 4 proposals with all three views, ended by code, 0 failures, longest reason 146 characters. Open: one duplicate proposal pair was not merged; the Facilitator once talked about tool fields while correcting a refused merge (rule added, to be measured); little disagreement in run 2 (best effort, measured)
     - Design: Meeting
     - _Requirements: 10.2, 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 11.8, 11.9, 11.11, 11.12, 11.13, 5.3, 15.1, 18.1, 18.6_
-  - [ ] 6.10 Implement interjection delivery
+  - [x] 6.10 Implement interjection delivery
+    - Done: Judge messages in the meeting with speaking rounds, queued during gathering and delivered at the meeting start (`#judgeInbox` in the task service); `meeting.test.ts` ("a Judge message addressed to a perspective is delivered and that role speaks next")
     - In the meeting, a Judge message enters the transcript, triggers a speaking round, and the addressed role speaks next (revision 2026-11-23)
     - `POST /api/tasks/:id/messages` acknowledges within 1 s (`GL_ACK_BOUND_MS`); `steer()` to the current speaker or prepend to the addressee's next turn; `judge_message` with `deliveredTo`; delivery failure next to the input; `propose_new_version` card
     - During evidence gathering: the message is acknowledged and recorded with status `queued` ("received, delivered when the meeting starts"), and delivered at the meeting start with `judge_message_delivered`; no question card is opened during gathering
     - Design: Meeting, HTTP API, PiRuntime, Flow_Graph (rules)
     - _Requirements: 5.1, 5.2, 6.1, 6.2, 6.3, 6.4, 11.10, 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
-  - [ ] 6.11 Build the live streaming text and the thinking panel
+  - [x] 6.11 Build the live streaming text and the thinking panel
+    - Done: live text, reasoning fold, waiting and thinking states in `Feed.tsx`; seen in every live walk video
     - Live text with a "live" marker replaced by the complete message; collapsible "model-provided reasoning"; "thinking, N s" when no reasoning arrives; "waiting for LLM, N s"; incomplete mark with reason
     - Design: Web app
     - _Requirements: 2.3, 3.6, 3.8, 3.9, 3.10, 3.12, 3.13_
-  - [ ] 6.12 Wire question cards to the answer endpoint
+  - [x] 6.12 Wire question cards to the answer endpoint
+    - Done: `POST /api/tasks/:id/cards/:cardId/answer`, `card_answered`, non-blocking meeting cards; used by the live walks
     - `POST /api/tasks/:id/cards/:cardId/answer`, `card_answered` delivered to the asking role, resulting state shown
     - Design: HTTP API, Meeting
     - _Requirements: 5.3, 5.6, 6.5_
@@ -526,6 +537,7 @@ Conventions:
     - Design: Web app, Browser_Use
     - _Requirements: 4.2, 14.2_
   - [ ]* 11.5 Write unit tests for Browser_Use and evidence gathering
+    - Partly done 2026-11-25: `apps/server/src/browser/session.test.ts` (route filter, failed action as a result, password never in a result, screenshots); the gathering edges are covered by the flow property tests
     - Route filter blocks another origin; a failed action is recorded before the next one; password never appears in events; an experience timeout and a Sandbox failure each continue to `meeting` with "experience unavailable"; "start the meeting now" gives a partial summary; a Judge message during the experience is queued and delivered at the meeting start; no card is opened during gathering
     - _Requirements: 14.5, 14.6, 13.4, 13.5, 14.13, 14.14, 12.5, 12.6_
   - [ ] 11.6 Demo and verify: evidence gathering and experience
@@ -648,7 +660,8 @@ Conventions:
     - `story_develop`: start or resume the Development_Sandbox, run the Code_Agent, compute changed files and diff with a temporary index, append `code_change`, diff in Engineering details only, budget accounting
     - Design: Flow_Graph (rules), Sandbox and test data, Development stage
     - _Requirements: 13.4, 25.8, 29.5, 38.1, 38.3, 38.5, 39.4, 40.5_
-  - [ ]* 14.7 Write property test for change recording
+  - [x]* 14.7 Write property test for change recording
+    - Done 2026-11-25: `apps/server/src/worktree/change.property.test.ts` (Property 18 over random add, modify, delete and commit sequences in a temporary repository; a finished attempt continues to the review)
     - **Property 18: Every Code_Agent change is recorded and reviewed**
     - **Validates: Requirements 40.5, 38.5**
   - [x] 14.8 Implement the Reviewer review
@@ -684,7 +697,8 @@ Conventions:
     - `api_read` Reviewer loop with `target_api_read` (read-only calls within the Adapter allow-list), `read_file`, `search_repo`, `submit_demo_case`; `api_plan` validation; `api_suggest` and `api_confirm` for purpose B; `apiops/writer.ts` as the only code path that writes to the target (Sandbox origin, allow-list, per item, `api_write` events); `api_try_one`, `api_write_batch`, `api_read_back`; label "designed by Reviewer (LLM judgment)"; checkpoint shows the read-back table
     - Design: Flow_Graph (API-operation sub-path), Development stage (per API-operation story)
     - _Requirements: 15.7, 18.2, 18.3, 18.4, 18.7, 18.9, 18.10, 18.13, 22.1, 40.18_
-  - [ ]* 14.17 Write property test for success only from the Verifier
+  - [x]* 14.17 Write property test for success only from the Verifier
+    - Done 2026-11-25: `packages/shared/src/flow/success.property.test.ts` (Property 3: random walks over the development graph reach success only when the Verifier passed every story and the regression check; approvals and Judge answers never lead to success)
     - **Property 3: Success comes only from the Verifier**
     - **Validates: Requirements 22.3, 40.10, 41.3**
   - [ ] 14.18 Write property test for Demo_Case write constraints

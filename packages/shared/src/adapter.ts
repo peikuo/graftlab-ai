@@ -60,6 +60,8 @@ export const AdapterJsonSchema = z
     testDataNote: text.optional(),
     /** Facts about how the changed software runs here, for the meeting, the plan and the design (for example no background worker). */
     environmentFacts: text.optional(),
+    /** R38.12: a word that the run environment's start commands must contain, so the target's own worker runs (linkding: run_huey). */
+    backgroundWorker: z.object({ mustMention: z.string().regex(/^[A-Za-z0-9_.:-]{2,60}$/), from: text }).strict().optional(),
     /** Where the prewritten AI client library goes in the target (R40.23); the directory is its import name. */
     aiClient: z.object({ language: z.literal("python"), dir: z.string().regex(/^[A-Za-z_][A-Za-z0-9_/]*$/) }).strict().optional(),
     /** The whole suite for the Regression_Check (R22.10): the command, the output parser, the time limit. */

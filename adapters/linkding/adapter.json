@@ -109,10 +109,29 @@
   },
   "testSelectionHint": "Name targeted test files under bookmarks/tests/; the full suite takes about 300 s.",
   "testDataNote": "linkding is a self-hosted bookmark manager. The test user has 10 bookmarks on example.com, example.org and example.net with a few tags; use only these domains when you add one",
-  "environmentFacts": "The changed app runs as its web server only: linkding's background worker (huey) does not run, so work that the person must see right away (for example a model's suggestion shown on the form) has to happen inside the request, with a short time limit; do not plan it as follow-up work after saving",
+  "environmentFacts": "The changed app runs with linkding's own background worker next to the web server, as linkding itself starts it (supervisord-tasks.conf: `python manage.py run_huey -f`); the run environment's start commands must start it in the background (`uv run manage.py run_huey -f &`) before the web server. Background tasks can therefore run, but a result the person must see on the same page right away still has to be computed inside the request, with a short time limit. The app reaches the internet only when the Judge consented to an outside model service",
   "readbackFields": "the key is the bookmark URL; the only fields are titleContains (text the title contains), tagsInclude (a list of tags that must all be present) and archived (true or false); an empty fields object checks only that the bookmark exists",
-  "aiClient": { "language": "python", "dir": "graftlab_ai" },
-  "regression": { "suite": ["uv", "run", "manage.py", "test", "bookmarks.tests", "--parallel", "2"], "format": "django", "timeoutS": 1800 },
+  "aiClient": {
+    "language": "python",
+    "dir": "graftlab_ai"
+  },
+  "regression": {
+    "suite": [
+      "uv",
+      "run",
+      "manage.py",
+      "test",
+      "bookmarks.tests",
+      "--parallel",
+      "2"
+    ],
+    "format": "django",
+    "timeoutS": 1800
+  },
   "testData": "test-data.json",
-  "runtimeRulesChecklist": "runtime-rules/adapters/linkding-checklist.md"
+  "runtimeRulesChecklist": "runtime-rules/adapters/linkding-checklist.md",
+  "backgroundWorker": {
+    "mustMention": "run_huey",
+    "from": "supervisord-tasks.conf"
+  }
 }

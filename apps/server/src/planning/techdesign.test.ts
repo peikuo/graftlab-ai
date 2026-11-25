@@ -195,6 +195,16 @@ describe("runTechDesign", () => {
       expect(noShape.problems.some((p) => /Feature F2: give its detail design/.test(p))).toBe(true);
     }
   });
+  it("requires the target's own background worker in the start commands when the Adapter names one (R38.12)", async () => {
+    const plan = await confirmedPlan();
+    const fs = [feature("F1", "S1"), feature("F2", "S2")];
+    const w = { mustMention: "run_huey", from: "supervisord-tasks.conf" };
+    const without = checkTechDesign({ architecture, features: fs }, { plan, needsRunEnvironment: true, evidence: filesFrom(files), backgroundWorker: w });
+    expect(without.ok).toBe(false);
+    if (!without.ok) expect(without.problems.some((p) => /background worker/.test(p))).toBe(true);
+    const re = { ...architecture.runEnvironment, startCommands: ["uv run manage.py run_huey -f &", ...architecture.runEnvironment.startCommands] };
+    expect(checkTechDesign({ architecture: { ...architecture, runEnvironment: re }, features: fs }, { plan, needsRunEnvironment: true, evidence: filesFrom(files), backgroundWorker: w }).ok).toBe(true);
+  });
   it("requirements cover every story", async () => {
     const plan = await confirmedPlan();
     const r = checkRequirements({ introduction: "x", items: [{ id: "R1", storyId: "S1", text: "t", acceptance: ["a"] }] }, plan);
