@@ -27,6 +27,17 @@ try {
   await p.locator(".nowbar").waitFor({ timeout: 60_000 });
   t0 = Date.now();
   mark("Task started");
+  // WALK_GATHER=1 (tasks.md 11.3, 11.6): during the app trial, send the team a message and start the meeting early.
+  if (process.env.WALK_GATHER === "1") {
+    await p.waitForFunction(() => /Trying the app/.test(document.body.innerText), null, { timeout: 600_000 });
+    await p.waitForTimeout(15_000);
+    await p.locator("#msg").fill("Please keep the AI features off by default.");
+    await p.locator("#msg").press("Enter");
+    mark("message sent during the app trial");
+    await p.waitForTimeout(5000);
+    await p.getByRole("button", { name: "Start the meeting now" }).click();
+    mark("started the meeting early");
+  }
   let answered = false;
   for (let i = 0; i < 600 && !(await p.locator("#decision-review .ritem").count()); i++) {
     await p.waitForTimeout(2000);
