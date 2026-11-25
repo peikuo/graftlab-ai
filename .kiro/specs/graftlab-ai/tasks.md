@@ -425,7 +425,8 @@ Conventions:
   - [ ]* 9.6 Write an end-to-end smoke test against a recorded Replay_File
     - Playwright Test: open a Replay, play, seek, check the label and the final view
     - _Requirements: 26.2, 26.4_
-  - [ ] 9.7 Polish the M1 path
+  - [x] 9.7 Polish the M1 path
+    - Done 2026-11-25: message acknowledgement shows sending, received and delivered (`Chrome.tsx`); new Details items mark their tab without taking focus (the build board is selected once when development starts, as designed); progress is a number only from data, otherwise the step and its reason; a retry chosen in the failure review names the failure it retries in the timeline (`Feed.tsx`), and failures stay in the timeline and the result's "Problems on the way"
     - Acknowledgement timing, notifications without focus steal, indeterminate progress reasons, failure display that keeps the original failure visible across retries
     - Design: Web app, Error Handling
     - _Requirements: 4.3, 6.1, 7.2, 23.1, 23.5_

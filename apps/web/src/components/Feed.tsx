@@ -71,6 +71,12 @@ function toRows(feed: FeedEntry[], events: StudioEvent[]): Row[] {
       continue;
     }
     if (entry.type === "node_entered" && e?.type === "node_entered") {
+      // R23.5, tasks.md 9.7: a retry chosen in the failure review keeps the failure it retries visible.
+      if (e.payload.edgeId.startsWith("retry_")) {
+        const failed = events.slice(0, events.indexOf(e)).findLast((x) => x.type === "failure");
+        rows.push({ kind: "node", key: `n${entry.seq}`, label: `Trying again: ${NODE_SHORT[e.payload.to] ?? e.payload.to}${failed?.type === "failure" ? ` (after: ${failed.payload.detail.slice(0, 160)})` : ""}`, ts: entry.ts });
+        continue;
+      }
       const idx = stepIndex(e.payload.to);
       if (idx !== step && idx >= 0) {
         step = idx;
