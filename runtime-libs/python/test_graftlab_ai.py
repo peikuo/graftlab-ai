@@ -79,6 +79,17 @@ class ClientTest(unittest.TestCase):
         ANSWER["body"] = {"choices": [{"message": {"content": "not json"}}]}
         self.assertFalse(graftlab_ai.ask_json("sys", "hi").ok)
 
+    def test_ask_json_checks_the_answer_shape(self):
+        shape = {"answer": str, "bookmark_ids": [int]}
+        ANSWER["body"] = {"choices": [{"message": {"content": '{"answer": "two", "bookmark_ids": [3, 7]}'}}]}
+        self.assertEqual(graftlab_ai.ask_json("s", "u", expect=shape).data["bookmark_ids"], [3, 7])
+        ANSWER["body"] = {"choices": [{"message": {"content": '{"answer": "two", "ids": [3]}'}}]}
+        r = graftlab_ai.ask_json("s", "u", expect=shape)
+        self.assertFalse(r.ok)
+        self.assertIn("bookmark_ids", r.error)
+        ANSWER["body"] = {"choices": [{"message": {"content": '{"answer": "two", "bookmark_ids": ["3"]}'}}]}
+        self.assertIn("whole number", graftlab_ai.ask_json("s", "u", expect=shape).error)
+
     def test_stub_replaces_the_service_and_records_calls(self):
         with graftlab_ai.stub(lambda messages: "stubbed") as calls:
             self.assertTrue(graftlab_ai.configured())

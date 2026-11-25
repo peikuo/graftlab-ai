@@ -33,6 +33,8 @@ export interface BoardCard {
   phases: FeaturePhase[];
   /** The story has no demo, so only the tests prove it (R21.10). */
   noDemo: boolean;
+  /** R40.24: questions about this Feature; one from the Test_Agent means it found a design gap. */
+  questions: { from: ActorKey; askedParty: "reviewer" | "judge"; open: boolean }[];
 }
 export interface BoardLane {
   storyId: string;
@@ -82,6 +84,7 @@ export function featureBoard(state: UiState): Board | null {
       attempt: st?.attempt ?? 0,
       checks: state.verifierResults.filter((r) => r.storyId === it.id).map((r) => ({ checkId: r.checkId, pass: r.pass })),
       phases: state.featurePhases[it.id] ?? [...PHASE_TRACK],
+      questions: Object.values(state.questions).filter((q) => q.featureId === it.id).map((q) => ({ from: q.from, askedParty: q.askedParty, open: !q.answered })),
       noDemo: !!state.featurePhases[it.id] && !state.featurePhases[it.id]!.includes("demo") && !items.some((x) => x.storyId === it.storyId && x.id !== it.id && state.featurePhases[x.id]?.includes("demo")),
     };
     const size = breakdown.find((f) => f.id === it.id)?.size;

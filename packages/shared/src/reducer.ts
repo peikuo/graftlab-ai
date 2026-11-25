@@ -67,7 +67,7 @@ export interface UiState {
   decisionDocs: { version: number; hash: string; frozen: boolean }[];
   /** Each perspective's signal in the latest speaking round (R11.1); absent for the role that just spoke. */
   signals: Partial<Record<ActorKey, { speak: boolean; kind?: string; intent?: string; seq: number }>>;
-  questions: Record<string, { questionId: string; from: ActorKey; askedParty: "reviewer" | "judge"; ts: string; answered: boolean }>;
+  questions: Record<string, { questionId: string; from: ActorKey; askedParty: "reviewer" | "judge"; ts: string; answered: boolean; featureId?: string }>;
   /** Latest failure and latest other event per actor, for the "blocked" Role_Status rule. */
   lastFailureByActor: Partial<Record<ActorKey, { seq: number; ts: string; detail: string }>>;
   lastOtherByActor: Partial<Record<ActorKey, { seq: number; ts: string }>>;
@@ -362,7 +362,7 @@ export function reduce(state: UiState, e: StudioEvent): UiState {
       const from: ActorKey = e.payload.from;
       s.questions = {
         ...state.questions,
-        [e.payload.questionId]: { questionId: e.payload.questionId, from, askedParty: e.payload.askedParty, ts: e.ts, answered: false },
+        [e.payload.questionId]: { questionId: e.payload.questionId, from, askedParty: e.payload.askedParty, ts: e.ts, answered: false, ...(e.payload.featureId ? { featureId: e.payload.featureId } : {}) },
       };
       break;
     }

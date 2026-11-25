@@ -48,3 +48,26 @@ describe("Replay export", () => {
     );
   });
 });
+describe("Replay screenshots (R26)", () => {
+  it("copies the screenshots the events name next to the Replay_File", async () => {
+    const { mkdtemp, mkdir, writeFile, readdir } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { SecretRegistry } = await import("@graftlab/shared");
+    const { exportReplay, screenshotNames } = await import("./export.ts");
+    const dataDir = await mkdtemp(join(tmpdir(), "gl-rp-"));
+    const publicDir = join(dataDir, "public");
+    await mkdir(join(dataDir, "tasks", "t1", "artifacts", "shots"), { recursive: true });
+    await writeFile(join(dataDir, "tasks", "t1", "artifacts", "shots", "explore-001.jpg"), "x");
+    const base = { v: 1 as const, taskId: "t1", node: "browser_experience" as const, ts: "2026-11-25T00:00:00.000Z" };
+    const events = [
+      { ...base, seq: 1, actor: { kind: "system" as const }, type: "task_created" as const, payload: { url: "u", owner: "o", repo: "r", repoKind: "adapted" as const, runtimeRulesVersion: "1" } },
+      { ...base, seq: 2, actor: { kind: "role" as const, roleId: "explorer" as const }, type: "browser_observation" as const, payload: { snapshotSummary: "s", screenshotRef: "artifacts/shots/explore-001.jpg" } },
+      { ...base, seq: 3, actor: { kind: "role" as const, roleId: "explorer" as const }, type: "browser_observation" as const, payload: { snapshotSummary: "s", screenshotRef: "artifacts/shots/../../x.jpg" } },
+    ];
+    expect(screenshotNames(events as never)).toEqual(["explore-001.jpg", "x.jpg"]);
+    const r = await exportReplay({ events: events as never, repo: "o/r", runtimeRulesVersion: "1", registry: new SecretRegistry(), dataDir, publicDir });
+    expect(r).toMatchObject({ ok: true, shots: 1 });
+    expect(await readdir(join(publicDir, "t1", "shots"))).toEqual(["explore-001.jpg"]);
+  });
+});

@@ -19,6 +19,7 @@ import { runCodeAttempt } from "../runtime/pi-code.ts";
 import type { NodeHandler } from "../tasks/runner.ts";
 import { abandonFeature, addStudioFiles, changedOnMain, commitFeature, createWorktree, discardPaths, mainSummary, pathsAt, pathsOnMain, diffWorktree, mergeFeature, type LineStat, mirrorSourceFromEnv, notIgnored, snapshotWorktree, startFeature, writePatchArtifact, type FeatureBranch, type Worktree } from "../worktree/worktree.ts";
 import { writeFeatureContext } from "./context.ts";
+import { renderDetail } from "../planning/render.ts";
 import { buildFocusPack, readPaths } from "./focus.ts";
 import type { MemoTree } from "../reader/memo.ts";
 import { generateSecretEnv, targetClient } from "../containers/sandbox.ts";
@@ -94,6 +95,8 @@ export class DevStage {
   #branch: FeatureBranch | null = null;
   #lastDiff: { files: string[]; patch: string; testFiles: string[]; testsPatch: string } | null = null;
   #feedback = new Map<string, string[]>();
+  /** R40.24: every question about a Feature and its answer, for the later agents and the Reviewer of that Feature. */
+  #answers = new Map<string, { from: string; question: string; by: string; answer: string }[]>();
   #pendingQuestion: string | null = null;
   /** The provisioned Run_Environment of the current story: generated secrets, credentials, state after the seed. */
   #app: { name: string; secretEnv: Record<string, string>; credentials: Record<string, string>; preState: TargetItem[] } | null = null;
@@ -229,7 +232,7 @@ export class DevStage {
     const tests = this.#tests.get(f.id)!;
     await this.#status(ctx, f, "building");
     const story = this.o.plan().backlog.stories.find((s) => s.id === f.storyId)!;
-    const contextDir = await writeFeatureContext(this.o.dataDir, ctx.task.taskId, { featureId: f.id, plan: this.o.plan(), design: this.o.design(), protectedTests: tests.files, ...(this.o.adapter.aiClient ? { aiClient: this.o.adapter.aiClient.dir } : {}), ...(this.o.requirements() ? { requirements: this.o.requirements()! } : {}), ...(this.#feedback.get(f.id) ? { previousFeedback: this.#feedback.get(f.id)! } : {}) }, roleText(this.o.rules, "code_agent"));
+    const contextDir = await writeFeatureContext(this.o.dataDir, ctx.task.taskId, { featureId: f.id, plan: this.o.plan(), design: this.o.design(), protectedTests: tests.files, ...(this.o.adapter.aiClient ? { aiClient: this.o.adapter.aiClient.dir } : {}), ...(this.#answers.get(f.id)?.length ? { answers: this.#answers.get(f.id)! } : {}), ...(this.o.requirements() ? { requirements: this.o.requirements()! } : {}), ...(this.#feedback.get(f.id) ? { previousFeedback: this.#feedback.get(f.id)! } : {}) }, roleText(this.o.rules, "code_agent"));
     const focus = await this.#focus(f, contextDir);
     await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Feature ${f.id} "${f.title}", attempt ${attempt}: the Code_Agent starts on its own branch`, evidence: [], evidenceStatus: "none" } });
     const tools: { tool: string; inputSummary: string }[] = [];
@@ -276,7 +279,7 @@ export class DevStage {
     let reason: string | null = null;
     for (let tryNo = 1; tryNo <= 2; tryNo++) {
       await this.#status(ctx, f, "testing", tryNo > 1 ? `second try: ${reason}` : undefined);
-      const contextDir = await writeFeatureContext(this.o.dataDir, ctx.task.taskId, { featureId: f.id, plan: this.o.plan(), design: this.o.design(), ...(this.o.adapter.aiClient ? { aiClient: this.o.adapter.aiClient.dir } : {}), ...(this.o.requirements() ? { requirements: this.o.requirements()! } : {}), ...(reason ? { previousFeedback: [reason] } : {}) }, roleText(this.o.rules, "test_agent"), "rules-test.md");
+      const contextDir = await writeFeatureContext(this.o.dataDir, ctx.task.taskId, { featureId: f.id, plan: this.o.plan(), design: this.o.design(), ...(this.o.adapter.aiClient ? { aiClient: this.o.adapter.aiClient.dir } : {}), ...(this.#answers.get(f.id)?.length ? { answers: this.#answers.get(f.id)! } : {}), ...(this.o.requirements() ? { requirements: this.o.requirements()! } : {}), ...(reason ? { previousFeedback: [reason] } : {}) }, roleText(this.o.rules, "test_agent"), "rules-test.md");
       await this.#focus(f, contextDir);
       await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: `Feature ${f.id} "${f.title}": the Test_Agent writes the tests first${tryNo > 1 ? " (second try)" : ""}`, evidence: [], evidenceStatus: "none" } });
       const r = await this.#runAgent(ctx, f, { agent: "test_agent", rulesFile: "rules-test.md", prompt: `Read /context/${f.id}/story.md and write the tests of the Feature it describes. Write only test files; the code does not exist yet.`, tools: [], idPrefix: `${ctx.task.taskId}-${f.id}-t${tryNo}`, budgetMs: Math.min(15, story.featureContract.budgets.maxCodeAgentMinutes) * 60_000 });
@@ -378,7 +381,7 @@ export class DevStage {
   async #answer(ctx: Ctx, f: Feature, q: { questionId: string; kind: "technical" | "feature"; text: string; options?: string[] }, from: "code_agent" | "test_agent" = "code_agent"): Promise<string> {
     const askedParty = q.kind === "technical" ? "reviewer" : "judge";
     const who = from === "test_agent" ? "Test_Agent writing the tests of" : "Code_Agent building";
-    await ctx.emit({ type: "question_opened", actor: { kind: from }, payload: { questionId: q.questionId, from, askedParty, kind: q.kind, text: q.text } });
+    await ctx.emit({ type: "question_opened", actor: { kind: from }, payload: { questionId: q.questionId, from, askedParty, kind: q.kind, text: q.text, featureId: f.id } });
     let answer: string;
     if (q.kind === "technical") {
       let got = "";
@@ -390,6 +393,7 @@ export class DevStage {
       answer = a ? (q.options?.[Number((a.optionId ?? "").slice(1)) - 1] ?? a.text ?? "") : "No answer within 5 minutes; keep the simplest behaviour that meets the Feature_Contract.";
     }
     await ctx.emit({ type: "question_answered", actor: askedParty === "judge" ? { kind: "judge" } : { kind: "role", roleId: "reviewer" }, payload: { questionId: q.questionId, answer } });
+    this.#answers.set(f.id, [...(this.#answers.get(f.id) ?? []), { from: from === "test_agent" ? "Test_Agent" : "Code_Agent", question: q.text.slice(0, 600), by: askedParty === "judge" ? "the Judge" : "Reviewer", answer: answer.slice(0, 800) }]);
     return answer;
   }
 
@@ -450,7 +454,8 @@ export class DevStage {
     ];
     const prompt = [
       `# Your role\n\n${roleText(this.o.rules, "reviewer")}`,
-      `# Feature ${f.id}: ${f.title} (story ${story.id} "${story.title}")\n${f.summary}\n\nPlanned files: ${f.scope.files.join(", ")}\nTests: ${f.tests.files.join(", ")} — command: ${f.tests.command.join(" ")}\nMust not touch: ${f.scope.notTouch.join("; ") || "nothing named"}\nInterfaces: ${f.interfaces.join("; ") || "none named"}`,
+      `# Feature ${f.id}: ${f.title} (story ${story.id} "${story.title}")\n${f.summary}\n\nPlanned files: ${f.scope.files.join(", ")}\nTests: ${f.tests.files.join(", ")} — command: ${f.tests.command.join(" ")}\nMust not touch: ${f.scope.notTouch.join("; ") || "nothing named"}\nInterfaces: ${f.interfaces.join("; ") || "none named"}${f.detail ? `\n\n${renderDetail(f.detail)}\nCheck that tests and code follow this detail design, in particular the answer shapes of the model calls.` : ""}`,
+      ...(this.#answers.get(f.id)?.length ? [`# Questions asked about this Feature and their answers\n${this.#answers.get(f.id)!.map((a) => `- ${a.from}: ${a.question}\n  ${a.by}: ${a.answer}`).join("\n")}`] : []),
       `# Feature_Contract\n${story.featureContract.feature}\nShould do: ${story.featureContract.shouldDo.join("; ")}\nShould not do: ${story.featureContract.shouldNotDo.join("; ")}`,
       `# This attempt (${attempt})\nTests written first by the Test_Agent (review them too): ${d.testFiles.join(", ")}\nChanged by the Code_Agent: ${d.files.join(", ")}\nUnplanned changes found by Studio code: ${unplanned.length ? unplanned.join(", ") : "none"}${changedTests.length ? `\nTests of the Test_Agent changed by the Code_Agent (justify each, or request changes): ${changedTests.join(", ")}` : ""}${ownClients.length ? `\nOwn model client outside graftlab_ai (justify, or request changes so it uses graftlab_ai): ${ownClients.join(", ")}` : ""}`,
       "Read the diff, then submit_review_verdict. Tell the Judge in at most 60 words what you decided.",

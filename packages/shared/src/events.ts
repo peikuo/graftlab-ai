@@ -312,6 +312,8 @@ export const PAYLOADS = {
     askedParty: z.enum(["reviewer", "judge"]),
     kind: z.enum(["technical", "feature"]),
     text: nonEmpty,
+    /** The Feature the question is about (R40.24). */
+    featureId: z.string().optional(),
   }),
   question_answered: z.object({ questionId: id, answer: z.string() }),
   demo_case_validated: z.object({

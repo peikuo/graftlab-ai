@@ -240,6 +240,13 @@ export function createStudio(opts: StudioOptions): Studio {
     if (text === null) return reply.code(404).send({ error: "no such replay" });
     return reply.type("application/json").send(text);
   });
+  // Static screenshots of a Replay_File (R26), next to it; no session needed, like the Replay_File itself.
+  app.get<{ Params: { id: string; file: string } }>("/replays/:id/shots/:file", async (req, reply) => {
+    if (!/^[a-z0-9._-]{1,80}$/i.test(req.params.id) || req.params.id.includes("..") || !/^[A-Za-z0-9_-]{1,80}\.jpg$/.test(req.params.file)) return reply.code(400).send({ error: "invalid name" });
+    const data = await readFile(join(opts.dataDir ?? "data", "replays", req.params.id, "shots", req.params.file)).catch(() => null);
+    if (!data) return reply.code(404).send({ error: "no such screenshot" });
+    return reply.type("image/jpeg").header("cache-control", "public, max-age=86400").send(data);
+  });
   // Read-only: a screenshot of the app trial or a browser check (R4.2, R14.2); the name is checked before the path is built.
   app.get<{ Params: { id: string; file: string } }>("/api/tasks/:id/shots/:file", async (req, reply) => {
     if (!/^[a-z0-9-]{1,80}$/i.test(req.params.id) || !/^[A-Za-z0-9_-]{1,80}\.jpg$/.test(req.params.file)) return reply.code(400).send({ error: "invalid name" });

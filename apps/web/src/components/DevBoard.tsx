@@ -71,6 +71,12 @@ function Card({ card, state, now }: { card: BoardCard; state: UiState; now: numb
       <div className="fcard-facts small muted">
         {card.attempt > 0 && <span>attempt {card.attempt}</span>}
         {card.noDemo && <span>no demo: nothing to show in the app, the tests prove it</span>}
+        {card.questions.filter((q) => q.from === "test_agent").map((q, i) => (
+          <span key={`t${i}`} className="badge amber">found a design gap, {q.open ? "asked" : "answered by"} {q.askedParty === "judge" ? "you" : "the Reviewer"}</span>
+        ))}
+        {card.questions.filter((q) => q.from === "code_agent").map((q, i) => (
+          <span key={`c${i}`} className="badge slate">Code_Agent {q.open ? "asked" : "got an answer from"} {q.askedParty === "judge" ? "you" : "the Reviewer"}</span>
+        ))}
         {card.tests && <span>tests: {card.tests.files} files, +{card.tests.added}</span>}
         {card.change && (
           <span>

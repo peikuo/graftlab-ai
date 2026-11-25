@@ -38,6 +38,7 @@ const feature = (id: string, storyId: string, over: Record<string, unknown> = {}
   size: "S",
   dependsOn: [],
   servesChecks: ["c1"],
+  detail: { usesModel: true, modelCalls: [{ purpose: "suggest tags", input: "title, description, url", answerShape: '["tag1", "tag2"]', onFailure: "no suggestions are shown" }], dataChanges: [], visibleTexts: ["Suggested tags"], errors: [] },
   ...over,
 });
 const architecture = {
@@ -180,6 +181,15 @@ describe("runTechDesign", () => {
     const bad = checkTechDesign({ architecture, features: fs, checks: refined }, { plan, needsRunEnvironment: true, evidence: filesFrom(files), expectFields: ExpectFields });
     expect(bad.ok).toBe(false);
     if (!bad.ok) expect(bad.problems.some((p) => /check c3 reads back fields tag_names/.test(p))).toBe(true);
+  });
+  it("refuses a model-using Feature without an answer shape, and a Feature without a detail design (R19.17)", async () => {
+    const plan = await confirmedPlan();
+    const noShape = checkTechDesign({ architecture, features: [feature("F1", "S1", { detail: { usesModel: true, modelCalls: [] } }), feature("F2", "S2", { detail: undefined })] }, { plan, needsRunEnvironment: true, evidence: filesFrom(files) });
+    expect(noShape.ok).toBe(false);
+    if (!noShape.ok) {
+      expect(noShape.problems.some((p) => /Feature F1: it uses the model/.test(p))).toBe(true);
+      expect(noShape.problems.some((p) => /Feature F2: give its detail design/.test(p))).toBe(true);
+    }
   });
   it("requirements cover every story", async () => {
     const plan = await confirmedPlan();

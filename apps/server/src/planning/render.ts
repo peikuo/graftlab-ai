@@ -1,6 +1,6 @@
 // Markdown of the Agile_Docs and the analyzed-repository documents (layer C, data/tasks/<id>/docs/). Every
 // document states the Frozen Decision_Doc version it is based on (R20.4).
-import { describeCheck, RUBRIC, storyEffort, type DefinitionOfDone, type Plan, type ProductBacklog, type RequirementsDoc, type SprintPlan, type TaskBoard, type TechArchitecture, type TechDesign } from "@graftlab/shared";
+import { describeCheck, RUBRIC, storyEffort, type DefinitionOfDone, type FeatureDetail, type Plan, type ProductBacklog, type RequirementsDoc, type SprintPlan, type TaskBoard, type TechArchitecture, type TechDesign } from "@graftlab/shared";
 
 const header = (title: string, v: number) => `# ${title}\n\nBased on Decision_Doc version ${v}.`;
 const list = (xs: string[]) => (xs.length ? xs.map((x) => `- ${x}`).join("\n") : "- none");
@@ -61,6 +61,20 @@ export function renderArchitecture(a: TechArchitecture): string {
     .join("\n\n") + "\n";
 }
 
+/** The detail design of one Feature (R19.17), shared by the document and the story bundle. */
+export function renderDetail(d: FeatureDetail): string {
+  return [
+    `**Detail design**`,
+    d.usesModel ? "" : "- Uses no model.",
+    ...d.modelCalls.map((c, i) => `- Model call ${i + 1}: ${c.purpose}\n  - Input: ${c.input}\n  - Answer shape: \`${c.answerShape.replace(/\n/g, " ")}\`\n  - On failure: ${c.onFailure}`),
+    d.dataChanges.length ? `- Data changes: ${d.dataChanges.join("; ")}` : "",
+    d.visibleTexts.length ? `- Visible texts: ${d.visibleTexts.map((t) => `"${t}"`).join(", ")}` : "",
+    d.errors.length ? `- On errors: ${d.errors.join("; ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function renderFeatures(d: TechDesign): string {
   const grade = (id: string) => d.grades.find((g) => g.featureId === id);
   const rev = (id: string) => d.review.find((r) => r.featureId === id);
@@ -75,6 +89,7 @@ export function renderFeatures(d: TechDesign): string {
         f.summary,
         `**Scope**\n- Modules: ${f.scope.modules.join(", ")}\n- Files expected to change: ${f.scope.files.map((x) => `\`${x}\``).join(", ")}${f.scope.notTouch.length ? `\n- Must not touch: ${f.scope.notTouch.join("; ")}` : ""}`,
         f.interfaces.length ? `**Interfaces**\n${list(f.interfaces)}` : "",
+        f.detail ? renderDetail(f.detail) : "",
         `**Tests**\n- Files: ${f.tests.files.map((x) => `\`${x}\``).join(", ")}\n- Command: \`${f.tests.command.join(" ")}\``,
         f.dependsOn.length ? `**After:** ${f.dependsOn.join(", ")}` : "",
         f.servesChecks.length ? `**Serves acceptance checks:** ${f.servesChecks.join(", ")}` : "",

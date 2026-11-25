@@ -36,6 +36,22 @@ export const TechArchitectureSchema = z
   .strict();
 export type TechArchitecture = z.infer<typeof TechArchitectureSchema>;
 
+/** R19.17: one model call of a Feature, with the shape of the answer as a JSON example. */
+export const ModelCallSchema = z
+  .object({ purpose: soft(200), input: soft(400), answerShape: text.transform((s) => s.slice(0, 600)), onFailure: soft(300) })
+  .strict();
+export type ModelCall = z.infer<typeof ModelCallSchema>;
+export const FeatureDetailSchema = z
+  .object({
+    usesModel: z.boolean(),
+    modelCalls: upTo(ModelCallSchema, 4).default([]),
+    dataChanges: upTo(soft(300), 6).default([]),
+    /** Button, field and heading texts people and the browser checks use. */
+    visibleTexts: upTo(soft(120), 12).default([]),
+    errors: upTo(soft(300), 6).default([]),
+  })
+  .strict();
+export type FeatureDetail = z.infer<typeof FeatureDetailSchema>;
 export const FEATURE_SIZES = ["XS", "S", "M"] as const;
 export const FeatureSchema = z
   .object({
@@ -50,9 +66,17 @@ export const FeatureSchema = z
     dependsOn: z.array(z.string()).max(4),
     /** Ids of the story's acceptance checks this Feature serves. */
     servesChecks: z.array(z.string()).max(6),
+    /** R19.17: the detail design both the Test_Agent and the Code_Agent work from; absent in designs before 2026-11-25. */
+    detail: FeatureDetailSchema.optional(),
   })
   .strict();
 export type Feature = z.infer<typeof FeatureSchema>;
+/** R19.17: a model-using Feature needs at least one model call with an answer shape. */
+export function detailProblems(f: Pick<Feature, "id" | "detail">): string[] {
+  if (!f.detail) return [`Feature ${f.id}: give its detail design (usesModel, modelCalls with answerShape, dataChanges, visibleTexts, errors)`];
+  if (f.detail.usesModel && !f.detail.modelCalls.some((c) => c.answerShape.trim())) return [`Feature ${f.id}: it uses the model, so name each model call with its input, the answer shape as a JSON example and what happens on failure`];
+  return [];
+}
 export const MAX_FEATURES = 4;
 /** Planned non-test files per size. */
 export const SIZE_FILES: Record<(typeof FEATURE_SIZES)[number], number> = { XS: 1, S: 2, M: 5 };
@@ -84,7 +108,7 @@ export type TechDesign = Omit<z.infer<typeof TechDesignSchema>, "grades"> & { gr
  * The guaranteed checks of a Feature breakdown against the confirmed plan (R19.14). Every problem names its
  * Feature or story. Order rule: a Feature depends only on Features listed before it.
  */
-export function checkBreakdown(input: unknown, backlog: ProductBacklog): { ok: true; breakdown: FeatureBreakdown } | { ok: false; problems: string[] } {
+export function checkBreakdown(input: unknown, backlog: ProductBacklog, opts: { requireDetail?: boolean } = {}): { ok: true; breakdown: FeatureBreakdown } | { ok: false; problems: string[] } {
   const raw = (input ?? {}) as { features?: unknown[] };
   const problems: string[] = [];
   const features: Feature[] = [];
@@ -103,6 +127,7 @@ export function checkBreakdown(input: unknown, backlog: ProductBacklog): { ok: t
     }
     const x = r.data;
     if (seen.has(x.id)) problems.push(`Feature ${x.id}: the id is used twice`);
+    if (opts.requireDetail) problems.push(...detailProblems(x));
     if (!stories.has(x.storyId)) problems.push(`Feature ${x.id}: story ${x.storyId} is not in the confirmed plan`);
     for (const d of x.dependsOn) if (!seen.has(d)) problems.push(`Feature ${x.id}: depends on ${d}, which is not listed before it`);
     // Size by planned non-test files (skill feature-breakdown): XS 1, S up to 2, M up to 5; found by the skill

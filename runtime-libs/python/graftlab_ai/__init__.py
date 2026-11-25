@@ -125,8 +125,44 @@ def ask(system: str, user: str, **kw: Any) -> Result:
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
 
 
-def ask_json(system: str, user: str, **kw: Any) -> Result:
-    """Like ask(), and parses the answer as JSON into ``Result.data`` (a code fence around it is removed)."""
+_TYPES = {str: "text", int: "a whole number", float: "a number", bool: "true or false", list: "a list", dict: "an object"}
+
+
+def _shape_error(data: Any, expect: Any, where: str = "the answer") -> Optional[str]:
+    """None when ``data`` has the shape ``expect``: a dict of key to type (or nested dict, or [type] for a list)."""
+    if isinstance(expect, dict):
+        if not isinstance(data, dict):
+            return f"{where} is not an object"
+        for key, sub in expect.items():
+            if key not in data:
+                return f"{where} has no {key!r}"
+            err = _shape_error(data[key], sub, f"{key!r}")
+            if err:
+                return err
+        return None
+    if isinstance(expect, list):
+        if not isinstance(data, list):
+            return f"{where} is not a list"
+        if expect:
+            for i, item in enumerate(data):
+                err = _shape_error(item, expect[0], f"{where}[{i}]")
+                if err:
+                    return err
+        return None
+    if isinstance(expect, type):
+        ok = isinstance(data, expect) and not (expect is int and isinstance(data, bool))
+        if expect is float:
+            ok = isinstance(data, (int, float)) and not isinstance(data, bool)
+        return None if ok else f"{where} is not {_TYPES.get(expect, expect.__name__)}"
+    return None
+
+
+def ask_json(system: str, user: str, *, expect: Any = None, **kw: Any) -> Result:
+    """Like ask(), and parses the answer as JSON into ``Result.data`` (a code fence around it is removed).
+
+    ``expect`` is the answer shape of the Feature's detail design, for example
+    ``{"answer": str, "bookmark_ids": [int]}``; an answer of another shape is a failed result naming what is wrong.
+    """
     r = ask(system + "\nAnswer with JSON only.", user, **kw)
     if not r.ok:
         return r
@@ -134,6 +170,10 @@ def ask_json(system: str, user: str, **kw: Any) -> Result:
         r.data = _json.loads(_FENCE.sub("", r.text.strip()))
     except ValueError:
         return Result(ok=False, error="the AI answer was not valid JSON", text=r.text, usage=r.usage)
+    if expect is not None:
+        err = _shape_error(r.data, expect)
+        if err:
+            return Result(ok=False, error=f"the AI answer does not have the expected shape: {err}", text=r.text, usage=r.usage, data=r.data)
     return r
 
 

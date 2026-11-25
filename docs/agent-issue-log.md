@@ -14,8 +14,8 @@ Rules for this log:
 
 | # | Kind | Agent | Short | Status |
 |---|---|---|---|---|
-| 1 | rule-break, design-gap | Test_Agent | Searched the whole container from `/` for a design that did not exist, instead of asking | fixed (cap and rule), design part open |
-| 2 | design-gap | Planner, Reviewer | Model answer formats were not designed; agents chose their own | open (Feature detail design) |
+| 1 | rule-break, design-gap | Test_Agent | Searched the whole container from `/` for a design that did not exist, instead of asking | fixed (cap, ask rule, detail design), not yet verified |
+| 2 | design-gap | Planner, Reviewer | Model answer formats were not designed; agents chose their own | fixed (detail design refused by code without answer shapes), not yet verified |
 | 3 | misread | Code_Agent | Put the model call into a background task that never runs in the Run_Environment | fixed, verified |
 | 4 | studio | Planner, Facilitator | Read-back field `tag_names` copied from a wrong Studio hint | fixed, verified |
 | 5 | misread | Code_Agent | Answered a Turbo form POST with a 200 page; the browser showed nothing | rule added, not yet verified |
@@ -29,7 +29,7 @@ Rules for this log:
 | 13 | studio | Code_Agent | A Feature was built on a blocked Feature and ran out of time | fixed, not yet verified |
 | 14 | — | Code_Agent | Changed tests the Test_Agent wrote | behavior accepted (the flow follows the Code_Agent) |
 | 15 | misread | Planner | Browser check passed on a fixed heading, not on the model's answer | fixed (needsAi, proxy count), verified |
-| 16 | rule-break | Test_Agent | Thought about asking, then did not ask | open (see 1) |
+| 16 | rule-break | Test_Agent | Thought about asking, then did not ask | rule tightened, not yet verified |
 | 17 | rule-break | Code_Agent | Special-cased code to pass contradictory tests (spike) | backstop: review and Verifier |
 | 18 | rule-break | all runtimes | Did not ask on an ambiguous request in unattended mode (spike) | backstop: question at the retry limit |
 | 19 | format | Planner, roles | Texts over the length limits were refused and the turn failed | fixed (soft caps), verified |
@@ -54,7 +54,7 @@ Rules for this log:
 - Seen: every run with model-powered Features. In `linkding-mwuzn62i` F3 the interface was only `answer_question(user, question) -> (answer, bookmarks)` with "links filtered against the candidate ids"; how the model names a bookmark was nowhere.
 - Effect: the Test_Agent could not write the filtering test (entry 1); in earlier Features the Code_Agent chose prompt and answer format itself and the Test_Agent guessed.
 - Prompt at the time: `runtime-rules/skills/feature-breakdown.md` asks for scope, interfaces, tests and size; it does not ask for model calls.
-- Fix planned (agreed 2026-11-25): a detail design per Feature with the model calls (input, answer shape, behavior on failure), data changes, visible texts used by checks, and error behavior; code refuses a model-using Feature without an answer shape; `graftlab_ai.ask_json(..., expect=...)` checks the shape.
+- Fix (agreed 2026-11-25, Runtime_Rules 0.14.0): a detail design per Feature with the model calls (input, answer shape, behavior on failure), data changes, visible texts used by checks, and error behavior; code refuses a model-using Feature without an answer shape; `graftlab_ai.ask_json(..., expect=...)` checks the shape.
 
 ### 3. Model call in a background task
 
@@ -131,7 +131,7 @@ Rules for this log:
 ### 16. Thought about asking, did not ask
 
 - Kind: rule-break. Agent: Test_Agent. Seen with entry 1 ("This may warrant ask_question"). The same Test_Agent did ask the Reviewer in F2 of the same run ("The story says bookmarks/services/ai_tag_suggestions._call_model(messages) -> st…"), so asking works when it chooses to.
-- Fix planned: rule "the documents are only in /context/<Feature>/ and /work; a detail you cannot find there is asked, never searched for elsewhere"; answers are kept with the Feature for the later agents; a question from the Test_Agent shows on the board as "found a design gap".
+- Fix (Runtime_Rules 0.14.0): rule "the documents are only in /context/<Feature>/ and /work; a detail you cannot find there is asked, never searched for elsewhere"; answers are kept with the Feature for the later agents; a question from the Test_Agent shows on the board as "found a design gap".
 
 ### 17. Special-cased code to pass contradictory tests (spike, 2026-11-20)
 

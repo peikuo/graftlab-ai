@@ -20,8 +20,11 @@ function tabOf(e: StudioEvent): Tab | null {
   return null;
 }
 
-/** A screenshot of the Task (artifacts/shots/<name>.jpg) through the read-only route. */
-const shotUrl = (taskId: string, ref: string) => `/api/tasks/${encodeURIComponent(taskId)}/shots/${encodeURIComponent(ref.split("/").pop() ?? "")}`;
+/** A screenshot of the Task (artifacts/shots/<name>.jpg): live through the read-only route, in Replay next to the Replay_File. */
+export const shotUrl = (taskId: string, ref: string, replay = false) => {
+  const name = encodeURIComponent(ref.split("/").pop() ?? "");
+  return replay ? `/replays/${encodeURIComponent(taskId)}/shots/${name}` : `/api/tasks/${encodeURIComponent(taskId)}/shots/${name}`;
+};
 const LABEL: Record<Tab, string> = { found: "Findings", app: "App trial", decision: "Decision", plan: "Plan and documents", board: "Build board" };
 
 /** File preview (R4.4): the latest file while reading, or a file the Judge picked. */
@@ -43,7 +46,7 @@ function FilePreview({ path, load }: { path: string; load: (path: string) => Pro
   );
 }
 
-export function ArtifactArea({ state, events, loadFile, now }: { state: UiState; events: StudioEvent[]; loadFile?: (path: string) => Promise<string | null>; now?: number }) {
+export function ArtifactArea({ state, events, loadFile, now, replay }: { state: UiState; events: StudioEvent[]; loadFile?: (path: string) => Promise<string | null>; now?: number; replay?: boolean }) {
   const [tab, setTab] = useState<Tab>("found");
   const [picked, setPicked] = useState<string | null>(null);
   const [unseen, setUnseen] = useState<Set<Tab>>(new Set());
@@ -183,7 +186,7 @@ export function ArtifactArea({ state, events, loadFile, now }: { state: UiState;
               const ref = last?.type === "browser_observation" ? last.payload.screenshotRef : undefined;
               return ref && state.taskId ? (
                 <figure className="trial-live">
-                  <img src={shotUrl(state.taskId, ref)} alt={`The app as the Explorer sees it: ${last?.type === "browser_observation" ? last.payload.snapshotSummary : ""}`} />
+                  <img src={shotUrl(state.taskId, ref, replay)} alt={`The app as the Explorer sees it: ${last?.type === "browser_observation" ? last.payload.snapshotSummary : ""}`} />
                   <figcaption className="muted small">{state.node === "browser_experience" ? "Live: the latest screenshot of the app trial" : "The last screenshot of the app trial"}</figcaption>
                 </figure>
               ) : null;
@@ -203,8 +206,8 @@ export function ArtifactArea({ state, events, loadFile, now }: { state: UiState;
                     <span className="trial-mark" aria-hidden="true">👁</span>
                     <span>{e.payload.snapshotSummary}</span>
                     {e.payload.screenshotRef && state.taskId && (
-                      <a href={shotUrl(state.taskId, e.payload.screenshotRef)} target="_blank" rel="noreferrer" className="trial-thumb">
-                        <img src={shotUrl(state.taskId, e.payload.screenshotRef)} alt="" loading="lazy" />
+                      <a href={shotUrl(state.taskId, e.payload.screenshotRef, replay)} target="_blank" rel="noreferrer" className="trial-thumb">
+                        <img src={shotUrl(state.taskId, e.payload.screenshotRef, replay)} alt="" loading="lazy" />
                       </a>
                     )}
                   </li>

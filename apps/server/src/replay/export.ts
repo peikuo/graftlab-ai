@@ -2,7 +2,7 @@
 // persisted events, after a second secret scan (registered values and common patterns). A hit refuses the export
 // and writes no file; the caller records the failure. A copy goes to the web app's static folder with an index, so
 // a Replay plays while the backend is stopped.
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { findSecretPatterns, type SecretRegistry, type StudioEvent } from "@graftlab/shared";
 
@@ -24,7 +24,12 @@ export interface IndexEntry {
   terminal: string;
   createdAt: string;
 }
-export type ExportResult = { ok: true; file: string } | { ok: false; found: string[] };
+export type ExportResult = { ok: true; file: string; shots: number } | { ok: false; found: string[] };
+/** The screenshot files the events name (`artifacts/shots/<name>.jpg`), by file name. */
+export function screenshotNames(events: readonly StudioEvent[]): string[] {
+  const refs = events.flatMap((e) => (e.type === "browser_observation" && e.payload.screenshotRef ? [e.payload.screenshotRef] : e.type === "artifact_updated" && e.payload.artifactKind === "screenshot" ? [e.payload.ref] : []));
+  return [...new Set(refs.map((r) => r.split("/").pop() ?? "").filter((n) => /^[A-Za-z0-9_-]{1,80}\.jpg$/.test(n)))];
+}
 
 /** The second scan: names of the registered secrets and the patterns that occur, never the values. */
 export function scanForSecrets(text: string, registry: SecretRegistry): string[] {
@@ -49,6 +54,19 @@ export async function exportReplay(o: { events: readonly StudioEvent[]; repo: st
   if (found.length > 0) return { ok: false, found };
   const file = join(o.dataDir, "replays", `${first.taskId}.json`);
   await writeAtomic(file, text);
+  // The screenshots the events name go next to the Replay_File, so a Replay shows the app pages without the Task
+  // directory (R26). Only files an event names are copied; a missing one is skipped.
+  let shots = 0;
+  const targets = [join(o.dataDir, "replays", first.taskId, "shots"), ...(o.publicDir ? [join(o.publicDir, first.taskId, "shots")] : [])];
+  for (const name of screenshotNames(o.events)) {
+    const src = join(o.dataDir, "tasks", first.taskId, "artifacts", "shots", name);
+    let copied = false;
+    for (const dir of targets) {
+      await mkdir(dir, { recursive: true });
+      copied = (await copyFile(src, join(dir, name)).then(() => true, () => false)) || copied;
+    }
+    if (copied) shots++;
+  }
   if (o.publicDir) {
     await writeAtomic(join(o.publicDir, `${first.taskId}.json`), text);
     const indexFile = join(o.publicDir, "index.json");
@@ -57,5 +75,5 @@ export async function exportReplay(o: { events: readonly StudioEvent[]; repo: st
     const entry: IndexEntry = { taskId: first.taskId, repo: o.repo, terminal: terminal?.type === "terminal_reached" ? terminal.payload.terminal : "unknown", createdAt: replay.header.createdAt };
     await writeAtomic(indexFile, JSON.stringify([entry, ...index.filter((x) => x.taskId !== entry.taskId)].slice(0, 50)));
   }
-  return { ok: true, file };
+  return { ok: true, file, shots };
 }

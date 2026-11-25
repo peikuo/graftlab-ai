@@ -6,7 +6,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describeCheck, type Feature, type Plan, type RequirementsDoc, type TechDesign } from "@graftlab/shared";
-import { renderArchitecture } from "../planning/render.ts";
+import { renderArchitecture, renderDetail } from "../planning/render.ts";
 
 export interface FeatureContextInput {
   featureId: string;
@@ -19,6 +19,8 @@ export interface FeatureContextInput {
   protectedTests?: string[];
   /** The import name of the Studio's AI client library in the target (R40.23). */
   aiClient?: string;
+  /** R40.24: questions asked about this Feature and their answers, for every later agent of the Feature. */
+  answers?: { from: string; question: string; by: string; answer: string }[];
 }
 
 const list = (xs: string[]) => (xs.length ? xs.map((x) => `- ${x}`).join("\n") : "- none");
@@ -38,8 +40,10 @@ export function featureContext(i: FeatureContextInput): string {
     `## The Feature (size ${f.size})\n${f.summary}`,
     `### Scope\n- Modules: ${f.scope.modules.join(", ")}\n- Files expected to change:\n${list(f.scope.files.map((x) => `\`${x}\``))}\n- Must not touch:\n${list(f.scope.notTouch)}\n\nChanging a file outside this list needs a reason the Reviewer accepts.`,
     `### Interfaces\n${list(f.interfaces)}`,
+    f.detail ? `### ${renderDetail(f.detail).replace(/^\*\*Detail design\*\*/, "Detail design (decided in the technical design; tests and code both follow it)")}` : "",
+    i.answers?.length ? `### Answers to earlier questions about this Feature\n${i.answers.map((a) => `- Q (${a.from}): ${a.question}\n  A (${a.by}): ${a.answer}`).join("\n")}` : "",
     i.aiClient
-      ? `### Calling the model: use \`${i.aiClient}\` (Studio-provided, already in the code)\nEvery model call goes through this library; do not write your own client and do not read GL_AI_* yourself.\n- \`${i.aiClient}.configured()\`: an address and a model are set\n- \`${i.aiClient}.ask(system, user, max_tokens=None, timeout=None)\` and \`${i.aiClient}.chat(messages, ...)\`: return \`Result(ok, text, error, usage)\`; never raise\n- \`${i.aiClient}.ask_json(system, user)\`: the parsed answer in \`Result.data\`\n- Tests: \`with ${i.aiClient}.stub(lambda messages: "answer") as calls:\` replaces the service (return a \`Result(ok=False, error=...)\` or raise to simulate a failure)\n- Call it inside the request when the person must see the answer; background tasks do not run here.`
+      ? `### Calling the model: use \`${i.aiClient}\` (Studio-provided, already in the code)\nEvery model call goes through this library; do not write your own client and do not read GL_AI_* yourself.\n- \`${i.aiClient}.configured()\`: an address and a model are set\n- \`${i.aiClient}.ask(system, user, max_tokens=None, timeout=None)\` and \`${i.aiClient}.chat(messages, ...)\`: return \`Result(ok, text, error, usage)\`; never raise\n- \`${i.aiClient}.ask_json(system, user, expect={...})\`: the parsed answer in \`Result.data\`; pass the answer shape of the detail design as \`expect\` (for example \`{"answer": str, "bookmark_ids": [int]}\`) and an answer of another shape comes back as a failed result\n- Tests: \`with ${i.aiClient}.stub(lambda messages: "answer") as calls:\` replaces the service (return a \`Result(ok=False, error=...)\` or raise to simulate a failure)\n- Call it inside the request when the person must see the answer; background tasks do not run here.`
       : "",
     i.protectedTests
       ? `### Tests (written first by the Test_Agent)\n${list(i.protectedTests.map((x) => `\`${x}\``))}\n- Run them with: \`${f.tests.command.join(" ")}\`\n\nMake these tests pass. Change one only when it is wrong against the Feature_Contract or the design, and name it and the reason in your final reply; the Reviewer checks every such change. You may add tests in new files. The Verifier runs exactly this command after your attempt.`

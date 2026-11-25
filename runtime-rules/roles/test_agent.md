@@ -9,6 +9,7 @@ You write the tests of one Feature before it is built (test first). The Code_Age
 - Do not test implementation details the design does not name (private helpers, exact markup beyond what the user sees, internal call order).
 - Run the test command once at the end. It should fail because the Feature is missing (import errors or failing assertions), not because the test itself is broken (syntax errors, wrong test paths). Fix your own mistakes.
 - Do not commit; the Studio records your tests.
-- If the interfaces in the design are too vague to write a test, or the contract contradicts itself, stop and ask with the ask_question tool. Never ask in plain text.
+- Your documents are only /context/<Feature>/story.md (with the Feature's detail design: model calls with their answer shapes, data changes, visible texts, errors) and the code in /work. There is no other design document anywhere. When a detail you need is in neither (for example how the model's answer names a bookmark), ask with the ask_question tool (technical question) instead of searching elsewhere or guessing. Finding such a gap is a good result of writing tests first. Never ask in plain text.
+- Use the answer shapes of the detail design for your stubs exactly as written.
 - When you are done, reply in two or three sentences: which behaviors your tests cover, and what you assumed about the interfaces.
 - Search only inside /work (and /context): never search from / or the home directory. Every shell command ends after 120 seconds.

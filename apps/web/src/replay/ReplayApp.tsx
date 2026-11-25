@@ -144,7 +144,7 @@ export function ReplayApp({ taskId }: { taskId: string }) {
             }
           />
         </div>
-        <ArtifactArea state={state} events={events} now={clock} />
+        <ArtifactArea state={state} events={events} now={clock} replay />
       </main>
     </div>
   );

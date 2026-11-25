@@ -77,6 +77,13 @@ const featureP = obj({
   size: oneOf(["XS", "S", "M"] as const),
   dependsOn: opt(arr(str())),
   servesChecks: opt(arr(str())),
+  detail: obj({
+    usesModel: bool(),
+    modelCalls: opt(arr(obj({ purpose: str(), input: str(), answerShape: str(), onFailure: str() }))),
+    dataChanges: opt(arr(str())),
+    visibleTexts: opt(arr(str())),
+    errors: opt(arr(str())),
+  }),
 });
 const gradeP = obj({ featureId: str(), ...Object.fromEntries(RUBRIC.map((k) => [k, oneOf(["pass", "concern"] as const)])), note: str() } as Record<string, ReturnType<typeof str>>);
 
@@ -117,7 +124,7 @@ export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | 
     for (const c of [...arch.data.runEnvironment.buildCommands, ...arch.data.runEnvironment.startCommands])
       if (INSTALL.test(c)) problems.push(`architecture: runEnvironment command "${c}" installs packages, but the run container has no internet and the dependencies are preinstalled; leave it out`);
   const features = (x.features ?? []).map((f) => ({ interfaces: [], dependsOn: [], servesChecks: [], ...(f as object), scope: { notTouch: [], ...((f as { scope?: object })?.scope ?? {}) } }));
-  const b = checkBreakdown({ features }, backlog);
+  const b = checkBreakdown({ features }, backlog, { requireDetail: true });
   if (!b.ok) problems.push(...b.problems);
   // R19.16: every test check runs something that exists or that a Feature adds.
   if (b.ok && o.files) {

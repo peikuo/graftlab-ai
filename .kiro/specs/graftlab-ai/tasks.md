@@ -619,7 +619,7 @@ Conventions:
   - [x] 14.32 Prewritten AI client library
     - `runtime-libs/python/graftlab_ai/` with its own tests; Adapter `aiClient`; added to `main` at `target_check` as a Studio-provided commit; rules and story bundle name the API; code flag on own model clients in the review
     - _Requirements: 40.23_
-  - [ ] 14.33 Feature detail design, questions kept per Feature, answer shapes in the AI client, Replay screenshots
+  - [x] 14.33 Feature detail design, questions kept per Feature, answer shapes in the AI client, Replay screenshots
     - `detail` on every Feature with model calls and answer shapes, refused by code when missing; skill and documents; ask rule for the Test_Agent and the Code_Agent; questions and answers per Feature in later bundles and the review; "found a design gap" on the board; `ask_json(expect=...)`; screenshots exported with the Replay_File
     - _Requirements: 19.17, 40.23, 40.24, 26_
   - [x] 14.1 Implement the context builder and the development rules

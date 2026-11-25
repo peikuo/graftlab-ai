@@ -14,6 +14,13 @@ Use this in the technical design step, after the Judge confirmed the stories. A 
 - Testable on its own: name the test files to add or change, following the project's test layout, and the exact command that runs only those tests. The Verifier runs exactly that command.
 - Honest about interfaces: list each function, endpoint, setting, form field or template block it adds or changes, with its shape in one line.
 - Ordered: it depends only on Features that come before it. Risky Features come early.
+## The detail design of each Feature
+Tests are written before the code from this, so write down what the tests and the code must agree on:
+- `usesModel`: whether the Feature calls the model.
+- `modelCalls`: for each call, its purpose, the input sent (which fields, how many items), the answer shape as a JSON example (for example `{"answer": "text", "bookmark_ids": [3, 7]}`), and what the app does when the call fails or the answer does not match. Studio code refuses a model-using Feature without an answer shape.
+- `dataChanges`: new fields, defaults, migrations.
+- `visibleTexts`: the button, field and heading texts a person sees and the browser checks use, exactly as they will appear.
+- `errors`: what the person sees when something goes wrong.
 
 ## The Technical Architecture
 - Say which existing parts are affected and how, with quotes from the code.
@@ -26,4 +33,5 @@ Use this in the technical design step, after the Judge confirmed the stories. A 
 - Every story has one to three Features; the sprint has at most four.
 - Every acceptance check of every story is served by at least one Feature.
 - No Feature is larger than M, lacks a test command, or depends on a later Feature.
+- Every Feature has a detail design, and every model call has an answer shape.
 - Nothing in a Feature goes beyond its story's Feature_Contract.
