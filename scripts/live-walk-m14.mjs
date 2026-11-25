@@ -58,13 +58,14 @@ try {
       await p.waitForFunction(() => !!document.querySelector("#decision-review .ritem-options input[type=radio]:checked"), null, { timeout: 30_000 });
     }
     await p.waitForTimeout(1500);
-    for (let guard = 0; guard < 12; guard++) {
+    for (let guard = 0; guard < 20; guard++) {
       const pending = box.locator(".ritem.pending").first();
       if (!(await pending.count())) break;
-      await pending.scrollIntoViewIfNeeded();
+      await pending.scrollIntoViewIfNeeded().catch(() => {});
       await p.waitForTimeout(1200);
-      await pending.getByRole("button", { name: "Accept" }).click();
-      await p.waitForTimeout(800);
+      // The item leaves "pending" only after the server confirmed it; a click on an item that just left is skipped.
+      await pending.getByRole("button", { name: "Accept" }).click({ timeout: 5000 }).catch(() => {});
+      await p.waitForTimeout(1200);
     }
     await p.getByRole("button", { name: /Freeze the decision/ }).click();
     mark("frozen");
