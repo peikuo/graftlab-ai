@@ -645,6 +645,7 @@ Conventions:
     - Design: "Demonstration at the confirmation point"
     - _Requirements: 21.2, 21.11, 22.2_
   - [ ] 14.36 Open execution behind a switch (R42)
+    - Built 2026-11-26 (`apps/server/src/open/`, `env_check`, owner unlock, test-only plans); unit tests; the build chain checked on the PC with jarun/buku (tarball 48 s, image 130 s, tests run offline against /work: 351 passed, 1 needs the internet). Open: one owner Task through development
     - Switch and owner session; eligibility from the tree; buildability in the meeting facts; `env_check` with the proposal card, tarball mirror, image build, failure analysis and one retry; generated Adapter into the development stage; test-only plans; the switch-off note
     - Design: "Open execution"
     - _Requirements: 42_
