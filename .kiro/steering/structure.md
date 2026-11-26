@@ -12,8 +12,10 @@ adapters/<adapterId>/   One Adapter per target: adapter.json, hooks, test-data.j
 docker/dev-sandbox/     Image layer for Development_Sandbox, Run_Environment, Verifier tests, LLM_Proxy
 docker/llm-proxy/       LLM_Proxy container entry and README
 scripts/                Repository scripts (secret scan, hook runner, image transfer helpers)
+deploy/                 Front-end image (nginx) and the deployment guide for a public site
 docs/                   Project notes outside the product spec (docs/kiro-usage.md: how we use Kiro; docs/agent-issue-log.md: agent mistakes seen in runs)
 data/                   Runtime state, gitignored
+ops/                    The team's own hosted instance (deployment files, site facts), gitignored
 .kiro/specs/graftlab-ai Requirements, design, tasks, reference documents, UI mocks (ui/)
 .kiro/steering/         These steering files
 .kiro/hooks/            Kiro hooks

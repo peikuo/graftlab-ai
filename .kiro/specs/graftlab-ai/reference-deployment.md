@@ -1,11 +1,11 @@
 # Reference: deployment
 
-> Purpose: where and how the Studio is deployed (the developer's PC first, a hosted front end later) and the environment facts found by the spikes.
+> Purpose: how the Studio is deployed (the backend host and a public front end) and the environment facts found by the spikes.
 > Status: Reference, not a decision record; [design.md](design.md) is authoritative.
 > Implements these design.md sections: "Deployment model", "Containers", "Network policy", "Images", "Worktree manager", "Initial values" (container memory limits) and the "Backend unreachable" row of "Error Handling". Target-specific facts are in [reference-target-linkding.md](reference-target-linkding.md).
 > Sources: the spike notes in `spike/results/` (`S-node.md`, `S-mirrors.md`, `S-linkding-image.md`, `S-docker-network.md`, `S-linkding-source.md`) recorded on 2026-11-21 by tasks 1.1-1.6 in [tasks.md](tasks.md). Development deployment is not the goal of the hackathon entry; it only has to work.
 
-## First deployment: the developer's Windows PC
+## Backend host (first measured on a Windows host with Docker Desktop)
 
 ### Backend and containers
 
@@ -15,7 +15,7 @@
 
 ### Node
 
-- The PC had Node 22.14; pi needs Node >=22.19. A portable Node 24.22.3 was installed beside the system Node (SHA-256 checked against the nodejs.org `SHASUMS256.txt`); the system Node and `PATH` were not changed (Open item 47, task 1.1).
+- The backend host had Node 22.14; pi needs Node >=22.19. A portable Node 24.22.3 was installed beside the system Node (SHA-256 checked against the nodejs.org `SHASUMS256.txt`); the system Node and `PATH` were not changed (Open item 47, task 1.1).
 - The Studio start script must call the portable Node explicitly.
 - Measured with this Node: pi-ai and pi-agent-core 1.5.2 ran streaming plus a tool call in 1.6 s (first delta after 730 ms), and abort stopped the run at 4.0 s.
 
@@ -33,7 +33,7 @@
 | LLM_Proxy (and the relay it hosts) | 64 MB |
 
 - Only one Task runs at a time and containers that are not needed are stopped, so the peak is the Run_Environment or the test container plus the LLM_Proxy and, for API-operation stories, the Sandbox. Measured so far: the linkding Sandbox idles at about 85 MiB, and the linkding full test suite ran under 768 MiB without an OOM kill. Worst case measured in task 1.9 (2026-11-22): the Sandbox, a Run_Environment running linkding from source, the LLM_Proxy and the Code_Agent runner doing a story, all at once: peaks Sandbox 98 MiB, Run_Environment 120 MiB, LLM_Proxy 35 MiB, runner 110 MiB; the WSL VM (1971 MiB) peaked at 917 MiB used; no OOM kill. `docker stats` takes several seconds per sample (19 samples), so the peaks are approximate. The full test suite was not run at the same time; it ran alone under 768 MiB without an OOM kill (task 1.6).
-- Playwright on the PC (task 1.10): `npm install playwright` from registry.npmmirror.com took 18 s; `npx playwright install chromium` with `PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright` took 44 s.
+- Playwright on the backend host (task 1.10): `npm install playwright` from registry.npmmirror.com took 18 s; `npx playwright install chromium` with `PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright` took 44 s.
 
 ### Docker Desktop facts (spike 1.4)
 
@@ -48,12 +48,12 @@
 
 ## Network facts (spikes 1.2 and 1.6)
 
-Measured from the PC during `docker build` unless stated otherwise:
+Measured from the backend host during `docker build` unless stated otherwise:
 
 | Source | Result |
 |---|---|
-| Docker Hub (`registry-1.docker.io`) | Not reachable from the PC or from the second machine |
-| `ghcr.io` with `docker pull` | Failed on the PC (blob downloads retried, never finished) and on the second machine (the daemon uses the system proxy, EOF) |
+| Docker Hub (`registry-1.docker.io`) | Not reachable from the backend host or from a second machine |
+| `ghcr.io` with `docker pull` | Failed on the backend host (blob downloads retried, never finished) and on the second machine (the daemon uses the system proxy, EOF) |
 | `deb.debian.org`, `files.pythonhosted.org` | About 0.01 MB/s, unusable |
 | `mirrors.aliyun.com` (apt) | About 7.6 MB/s |
 | `pypi.tuna.tsinghua.edu.cn` (Python packages) | About 7.3 MB/s |
@@ -77,20 +77,39 @@ Integrity comes from signatures and hashes, not from the transport, so a mirror 
 ## Image transfer
 
 - Source registry: `ghcr.io` (the official linkding image is published there; values in [reference-target-linkding.md](reference-target-linkding.md), section "Version pin").
-- Method that worked (task 1.3): on a machine with a direct connection, `scripts/fetch-oci.mjs` downloads the image by index digest into an OCI layout and checks every blob's sha256; `scripts/make-docker-load-manifest.mjs` adds the `manifest.json` that `docker load` needs; the directory is packed as a tar without macOS extended attributes; the tar is copied to the PC; `docker load` loads it; the image ID equals the config digest.
+- Method that worked (task 1.3): on a machine with a direct connection, `scripts/fetch-oci.mjs` downloads the image by index digest into an OCI layout and checks every blob's sha256; `scripts/make-docker-load-manifest.mjs` adds the `manifest.json` that `docker load` needs; the directory is packed as a tar without macOS extended attributes; the tar is copied to the backend host; `docker load` loads it; the image ID equals the config digest.
 - What did not work: `docker pull` on both machines; `docker load` of a plain OCI layout (it needs `manifest.json`); `docker load` of a macOS tar that carries extended attributes.
-- The Development_Sandbox image is built locally on the PC from the loaded base image with the package sources above.
+- The Development_Sandbox image is built locally on the backend host from the loaded base image with the package sources above.
 
-## Later deployment: front end on k3s with Cloudflare
+## Public deployment
 
-- A front-end Pod in the k3s cluster serves the static web build and the Replay_Files under the Cloudflare domain.
-- A Cloudflare tunnel started on the PC exposes the backend. The same public hostname routes `/api` to the tunnel, so the web app stays same-origin and the Judge-facing link does not change when the backend moves (R32.7). Exact setup is done in the deployment task (milestone 17).
-- SSE through the tunnel is TO VERIFY (buffering and idle timeouts; task 17.1, TO VERIFY 14). The server sends comment heartbeats every 15 s. Fallback: long polling of `/api/tasks/:id/events?after=<seq>`.
-- Replay_Files are uploaded to the front-end Pod as static files by a deployment script, so they play while the PC is off (R27.13).
-- The SSRF validator for Judge-supplied base addresses also rejects the k3s default pod and service ranges (design.md, "LLM configuration and SSRF validation").
+How to run the Studio as a public site. The files are in `deploy/` (see `deploy/README.md`); where a team hosts its own instance is not part of the product.
 
-## Consequence of PC uptime
+### Shape
 
-- Live execution (F4, F5 and F10) needs the container engine on the PC. After the front end moves to the cluster, live execution is available only while the PC and its tunnel are up.
-- Otherwise Judges can use analysis only if a backend is hosted elsewhere, plus the labeled Replays. A backend container without container-engine access is possible (R32.2) and runs with `GL_EXECUTION_ENABLED=false`; the home page then states that live execution is unavailable, and an Adapted_Repo Task ends in `failed` "not executed" at the pre-execution target check (R25.8).
-- Whether this is acceptable for the "free until 2027-01-30" rule stays open: requirements Open items 20, 21 and 46.
+- The backend runs on a host with a Docker engine (above) and listens on a private interface only.
+- A front end serves the static web build and the published Replays and proxies `/api` to the backend on the same origin, so commands stay same-origin (R28.6) and the public link does not change when the backend moves (R32.7). `deploy/front/` holds an nginx image for this; `BACKEND_UPSTREAM` names the backend.
+- TLS is terminated in front of the front end (a CDN or a TLS reverse proxy).
+- Live execution (F4, F5 and F10) needs the backend host and its container engine; while the backend is down, the site shows "backend unreachable" and the published Replays still play (R27.13). A backend without a container engine runs with `GL_EXECUTION_ENABLED=false`; the home page then states that live execution is unavailable, and an Adapted_Repo Task ends in `failed` "not executed" at the pre-execution target check (R25.8).
+
+### Requirements on the front end and anything in front of it
+
+- SSE: `text/event-stream` responses are not buffered and not compressed, and idle connections of at least 60 s are allowed. The backend sends a visible `hb` event every 15 s; the client reconnects after 45 s without a frame and resumes with `Last-Event-ID` or `?last=` (R27.14).
+- A down backend is answered with a JSON error (`503 {"error": ...}`) instead of an HTML page, so the web app can show it next to the input and in the banner. 503 is used because some CDNs replace an origin's 502 and 504 bodies with their own page.
+- `/api/dev/` is refused (403); the development routes are for local work only.
+- The front end sets `X-GL-Public: https` on proxied requests (the backend then sets `Secure` on the session cookie) and `X-Forwarded-For` to the visitor's address (the access-code back-off counts per address). Behind a CDN, nginx's real-IP setting must make `$remote_addr` the visitor.
+- Caching: hashed build assets, Replay_Files and screenshots are immutable; `index.html` and `replays/index.json` are not cached. JSON, scripts and styles are compressed at the origin.
+- Security headers on every response: a strict Content-Security-Policy (only same-origin scripts, styles, images and connections; no framing), `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `X-Frame-Options: DENY`. A script a CDN injects (for example an analytics beacon) is blocked by this policy.
+
+### Operating a public instance
+
+- Access codes (R28.7): `GL_ACCESS_CODES` on the backend; watching needs no code; each code may start `GL_ACCESS_CODE_DAILY_TASKS` Tasks per day. The codes for the Judges go into the submission's testing instructions.
+- `GL_ADMIN_TOKEN` enables closing and opening the queue and an admin Sandbox restore.
+- Published Replays (17.6): `scripts/replay-publish.ts` checks each chosen Replay_File (the "Replay" label, secret patterns, local paths, private addresses and the values of an optional private-values file) and writes the set with its screenshots and `index.json` to a folder the front end serves at `/replays/`.
+- Privacy rule (user, 2026-11-25): facts about a team's own hosting (host names and addresses, network setup, other services on the same machines) are not committed. The team's own instance is described only in its local, gitignored notes.
+
+### Verified behaviour (2026-11-25, tasks 17.1 and 17.3)
+
+- Through a CDN in front of the nginx front end: the first SSE frame arrives at once, the `hb` event arrives every 14 to 16 s without buffering, an idle stream stayed open for the full 11-minute test, and resume works with `Last-Event-ID` and with `?last=`. Live events arrived a median 0.44 s (at most 1.9 s) later than on a direct connection to the backend. The long-polling fallback is not needed.
+- With the backend stopped, the banner appeared after 8.8 s and went away 27 s after the backend was started again; the published Replays kept playing.
+- Compression at the origin cut a 1.5 MB Replay_File from 5 to 7 s to 1.5 to 1.9 s when the link between the origin and the CDN was slow.

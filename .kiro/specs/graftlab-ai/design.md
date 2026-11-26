@@ -105,6 +105,7 @@ What can go wrong in the same story, and what the Judge sees instead:
 - Live execution needs a backend with container engine access. A backend without it runs with `GL_EXECUTION_ENABLED=false`: analysis and documents still work, and an Adapted_Repo Task ends in `failed` "not executed" at the pre-execution target check (R25.8).
 - Where the Studio runs first, where it runs later, the container memory values and the measured host facts (networks, mounts, package sources, image transfer) are in reference-deployment.md.
 
+Public deployment (decided by the user 2026-11-25; reference-deployment.md, "Public deployment"): a front end serves the static build and the published Replays with their screenshots without the backend, caches what never changes (build assets, Replay_Files, screenshots) and proxies `/api` (commands, session, queue, status and the Event_Stream) to the backend on the same origin. When the backend is unreachable the web app shows "backend unreachable" with the time since the drop, and the Replays still play. Operating needs an access code (R28); watching does not.
 ### Component diagram
 
 ```mermaid
@@ -453,6 +454,7 @@ All command endpoints require the operator lease and a same-origin request (R28.
 |---|---|---|
 | `POST /api/session` | Create or refresh the anonymous session cookie (`HttpOnly`, `SameSite=Lax`, `Secure` behind https) | R28 |
 | `POST /api/queue/join`, `POST /api/queue/heartbeat`, `POST /api/queue/leave` | Queue and lease | R28.1-R28.5 |
+| `POST /api/access` `{ code }` | Unlock operating for this session with an access code; same-origin; 429 with `retry-after` while backed off | R28.7 |
 | `POST /api/tasks` `{ url }` | Validate the URL, check GitHub, create the Task | R9 |
 | `GET /api/tasks/current/stream` | SSE: event frames, delta frames, queue frames, in-progress buffers on connect | R2, R3, R28.3 |
 | `GET /api/tasks/:id/events` | All persisted events as JSON | R26, R27 |
@@ -892,6 +894,7 @@ Plain TypeScript, no LLM (R22.9). Each Acceptance_Check produces a per-item resu
 - During an active Task the lease stays with that Task's Judge until the Task reaches a terminal; idle release after 120 s without a heartbeat applies only while no Task is active. On Task end the next queued session is promoted (R28.5).
 - Viewers receive the same SSE stream read-only; command endpoints reject any session that is not the lease holder with HTTP 403, regardless of the UI (R28.3, R28.6).
 - An admin switch closes the queue to new operators.
+- Access codes (R28.7): `GL_ACCESS_CODES` holds comma-separated codes of at least 8 characters, registered as secrets; when it is empty, access codes are off (local work). When on, `POST /api/queue/join` refuses a session that has not been unlocked (403 "an access code is needed to operate"); watching, the stream and Replays need no code. A code is compared in constant time against every configured code; the session remembers only the code's index, which is the only thing that appears in logs ("code 2"). Back-off: after 5 wrong codes from one client address (`X-Forwarded-For` set by the front-end Pod, else the socket address) within 15 minutes, further tries are refused for 15 minutes. Daily cap: each code may create at most `GL_ACCESS_CODE_DAILY_TASKS` Tasks (default 3) per UTC day; `POST /api/tasks` then answers 429 with the limit in the message. Unlocked sessions and counts are kept in memory (a backend restart asks for the code again and resets the counts). `GET /api/status` reports `access: { required, unlocked }` for the calling session; the home page shows a code field only when a code is required and not yet entered.
 
 ### Web app (R1-R8, R26)
 

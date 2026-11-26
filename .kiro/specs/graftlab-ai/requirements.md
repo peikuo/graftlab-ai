@@ -878,6 +878,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 4. THE Studio SHALL keep every key and token out of every view, including the Viewer view and the Event_Stream.
 5. WHEN the active Task ends, THE Studio SHALL promote the next queued person.
 6. THE Studio backend SHALL enforce the queue and the single-operator rule server-side, and SHALL reject operation requests from a queued or watching person even when the UI hides the controls.
+7. WHERE the Studio runs on a public address, THE Studio SHALL let anyone watch (public Replays and the current Task read-only) and SHALL let only a person who entered a valid access code join the queue as an operator (decided by the user 2026-11-25; kept simple, no accounts): the codes live only in server-side environment variables, are compared in constant time, repeated wrong codes are refused for a while, each code may start at most a set number of Tasks per day, and the admin token keeps its controls. The codes for the Judges go into the submission's testing instructions.
 
 ### Requirement 29: Data isolation and recovery
 
@@ -952,7 +953,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 3. THE Studio SHALL keep its state in one directory or one SQLite database.
 4. THE Studio SHALL run without Windows-specific features.
 5. THE Studio web page SHALL read the same Event_Stream regardless of where the backend runs.
-6. THE Studio SHALL first run on the user's Windows PC; hosting (k3s, Cloudflare domain) is done last and is UNDECIDED.
+6. THE Studio SHALL first run on the user's Windows PC; the public site (a static front end proxying `/api` to the backend, reference-deployment.md "Public deployment") is done last (decided by the user 2026-11-25).
 7. WHEN the backend is migrated, THE Studio SHALL keep the Judge-facing link unchanged by changing only the backend.
 
 Note (hosting consequence, Open item 46): live execution (flow steps F4-F10) needs the Docker engine on the developer's Windows PC. After the front end moves to the cluster, live execution is available only while the PC and its tunnel are up; otherwise Judges can use analysis (if the backend is hosted) and labeled Replays.
@@ -1163,7 +1164,7 @@ Nothing here may be assumed:
 3. CLOSED (verified by a live test on 2026-11-20): DeepSeek function calling works.
 4. CLOSED (verified by a live test on 2026-11-20): deepseek-flash accepts image input (a solid red image was identified as red). Screenshot reading quality on real pages is tracked in item 45; page-structure operation stays the primary Browser_Use method (Requirement 14).
 5. CLOSED (verified by a live test on 2026-11-20): the DeepSeek base address https://api.deepseek.com and the model name deepseek-flash are valid; the models endpoint lists deepseek-flash and deepseek-v4-pro.
-6. UNDECIDED: Source of the Judge's LLM key: Judge-supplied, hosted key with a cap, or both.
+6. DECIDED (user, 2026-11-26): the hosted key only, capped by access codes (R28.7: a daily Task cap per code). Judge-supplied keys stay off (R30 feature flag), so the base-address validator (Property 13, task 17.5) is not needed.
 7. UNDECIDED: Hosting domain and public entry.
 8. UNDECIDED: Network path from the PC to the TTS_Service; TO BE CONFIRMED: the TTS_Service facts in Requirement 31.
 9. DECIDED (user, 2026-11-22): Decision-step UI form is draft, item-by-item accept or reject with a reason, then final freeze (Requirement 5.7; screenshots in design.md, "UI design").
@@ -1177,7 +1178,7 @@ Nothing here may be assumed:
 17. TO BE CONFIRMED: Remotion free-license conditions for an individual developer.
 18. UNDECIDED: Final-week scope decision. If the project cannot be finished, the user wants the UI (Requirements 1-8) and the requirement-analysis stage (flow steps F1-F6, ending with the frozen Decision_Doc) protected first. The decision is made in the last week before the deadline; until then work proceeds at the normal pace. No priority tiers are defined now.
 19. TO BE CONFIRMED: Whether the Kiroween 2026 judging criteria match the 2025 edition (potential value, implementation of Kiro, creativity), and whether 2026 has extra prize categories.
-20. UNDECIDED: Judge trial path without the Judge needing their own LLM key (hosted capped key, a labeled Replay of a real recorded run, or both), to be settled before the last week.
+20. DECIDED (user, 2026-11-26): both. Anyone can watch the labeled public Replays of real recorded runs and the current Task; a Judge with an access code from the testing instructions can run one live Task on the hosted key.
 21. TO BE CONFIRMED: Hosting the first version on the developer's PC during judging is not allowed by the "free until 2027-01-30" requirement; hosting migration is required before submission. Confirm against the official rules.
 22. CLOSED (verified by a live test on 2026-11-20): the default model and endpoint support streamed responses (Requirement 30). The model streams thinking text separately before the answer text.
 23. CLOSED (verified by a live test on 2026-11-20): function calling and image input of the default model (Requirements 14 and 30). Items 3 and 4 above record the same result.

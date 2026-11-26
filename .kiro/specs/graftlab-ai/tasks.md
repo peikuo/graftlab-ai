@@ -422,7 +422,8 @@ Conventions:
     - Terminal summary from `terminal_reached`: Verifier results, counts per Failure_Class, Unconfirmed marks, Analysis only or Docs only label
     - Design: Error Handling, Web app
     - _Requirements: 23.3, 25.1, 25.2, 26.1, 26.5_
-  - [ ]* 9.6 Write an end-to-end smoke test against a recorded Replay_File
+  - [x]* 9.6 Write an end-to-end smoke test against a recorded Replay_File
+    - Done 2026-11-26 as a React Testing Library test (`apps/web/src/replay/ReplayApp.test.tsx`) on the committed real run `real-linkding-success.jsonl`, so it runs in every `npm test`; the browser walk `scripts/replay-walk.mjs` stays for manual checks
     - Playwright Test: open a Replay, play, seek, check the label and the final view
     - _Requirements: 26.2, 26.4_
   - [x] 9.7 Polish the M1 path
@@ -732,35 +733,38 @@ Conventions:
     - Record it in requirements.md Open item 18 and in this file (cut tasks marked as cut); switch off cut stages by configuration (for example `GL_EXECUTION_ENABLED=false`) so the Judge sees honest labels
     - _Requirements: 25.8, 35.5_
 
-- [ ] 17. Deployment: front end on k3s with Cloudflare, tunnel, queue, Judge trial path, static Replay_Files (target 2026-12-02)
-  - [ ] 17.1 Spike: SSE through the Cloudflare tunnel (TO VERIFY 14)
-    - Stream a test Task through the tunnel for 10 minutes with 15 s heartbeats
-    - Pass: events arrive without buffering and the stream survives idle periods. Fail fallback: long polling of `/api/tasks/:id/events?after=<seq>` (implement it in this task if the spike fails)
-    - Design: Deployment model, TO VERIFY list; reference-deployment.md (Later deployment)
+- [ ] 17. Deployment: public front end, queue, Judge trial path, static Replay_Files (target 2026-12-02)
+  - [x] 17.1 Spike: SSE through a CDN in front of the front end (TO VERIFY 14)
+    - Done 2026-11-25: passed (first frame at once, heartbeats every 14 to 16 s, 11 min idle, resume with `Last-Event-ID` and `?last=`, median 0.44 s extra latency); results in reference-deployment.md ("Verified behaviour")
+    - Pass: events arrive without buffering and the stream survives idle periods. Fail fallback: long polling of `/api/tasks/:id/events?after=<seq>`
     - _Requirements: 32.5, 32.7_
-  - [ ] 17.2 Write the front-end Pod manifests
-    - k3s Deployment and Service that serve the static web build and the Replay_Files; routing of `/api` on the same hostname to the tunnel; no secrets in manifests
-    - Note: the user creates the Cloudflare tunnel credentials and the DNS entry
-    - Design: Deployment model; reference-deployment.md (Later deployment)
+  - [x] 17.2 Write the front-end deployment files
+    - Done 2026-11-26: `deploy/front/` (nginx image: static build, published Replays, `/api` proxied to `BACKEND_UPSTREAM`, immutable caching, security headers) and `deploy/README.md`; no secrets and no site facts in the repository
+    - Design: Deployment model; reference-deployment.md ("Public deployment")
     - _Requirements: 32.2, 32.6, 32.7, 27.13_
-  - [ ] 17.3 Add the tunnel configuration and the unreachable-backend handling
-    - Tunnel configuration template without credentials; "backend unreachable" banner; SSE reconnect with `Last-Event-ID`; commands fail visibly next to the input
-    - Design: Deployment model, Error Handling; reference-deployment.md (Later deployment)
+  - [x] 17.3 Unreachable-backend handling
+    - Done 2026-11-26: banner after 8 s without a live connection (`apps/web/src/backend.tsx`), session and status fetched again until they succeed; the front end answers a down backend with a JSON 503; verified on the public site by stopping the backend (banner after 8.8 s, gone 27 s after the restart)
+    - Design: Deployment model, Error Handling; reference-deployment.md ("Public deployment")
     - _Requirements: 6.4, 32.7_
-  - [ ] 17.4 Implement the Judge trial path chosen by the user (Open items 6 and 20)
-    - Note: the user settles Open items 6 and 20 first (hosted capped key, a labeled Replay of a real recorded run, or both)
-    - Implement the chosen path: hosted key with a cap, and/or a Replay list on the home page; if Judge-supplied keys are enabled, implement the SSRF validator and the per-Task key handling
-    - Design: LLM configuration and SSRF validation, Replay_File
+  - [x] 17.4 Implement the Judge trial path chosen by the user (Open items 6 and 20)
+    - Done 2026-11-26: decided as public Replays plus one live Task per access code on the hosted key; implemented by 17.6 and 17.8
     - _Requirements: 26.8, 30.2, 30.8, 30.17_
-  - [ ]* 17.5 Write property test for base-address validation
+  - [x]* 17.5 Write property test for base-address validation
+    - WITHDRAWN 2026-11-26: Judge-supplied keys stay off (Open item 6)
     - **Property 13: Judge base-address validation**
     - **Validates: Requirements 30.17**
-  - [ ] 17.6 Write the static Replay_File upload script
-    - Upload exported Replay_Files to the front-end Pod after the secret scan; list them on the home page with the "Replay" label
-    - Design: Deployment model, Replay_File; reference-deployment.md (Later deployment)
+  - [x] 17.6 Write the static Replay_File publishing script
+    - Done 2026-11-26: `scripts/replay-publish.ts` (checks in `scripts/replayPublish.ts`): a chosen set of labeled Replays is written with screenshots and `index.json` for the front end; refused on a secret pattern or a private fact (local paths, private VPN addresses, e-mail addresses, values of an optional private-values file), named by rule only; published a successful and a failed linkding run
     - _Requirements: 26.8, 27.13_
-  - [ ] 17.7 Demo and verify: deployment
-    - Show the user the public link with a live Task through the tunnel, a second browser queued, and a Replay that plays with the PC backend stopped; check the Judge-facing link is unchanged after restarting the backend
+  - [x] 17.8 Access codes for operating
+    - Done 2026-11-25: `apps/server/src/queue/access.ts`, `POST /api/access`, home page code field; codes only in the backend's environment (`GL_ACCESS_CODES`); verified on the public site (join without code 403, wrong code 401, right code unlocks)
+    - Watch without a code; join the queue as an operator only with a valid code (constant-time compare, back-off after wrong codes, a daily Task cap per code); admin token unchanged; kept simple, no accounts
+    - _Requirements: 28.7_
+  - [x] 17.9 Front-end cache and live relay
+    - Step 1 done 2026-11-26 (immutable caching and compression at the origin). Step 2 (SSE relay in the front end) WITHDRAWN 2026-11-26 by the user: the public site is a demo with a few viewers, and a relay would not reduce the per-viewer traffic
+    - _Requirements: 27.13, 32.7, 28_
+  - [ ] 17.7 Demo and verify: deployment (after the polish, decided by the user 2026-11-26)
+    - Show the user the public link with a live Task, a second browser queued, and a Replay that plays with the backend stopped; check the public link is unchanged after restarting the backend
     - _Requirements: 28.2, 27.13, 32.7_
 
 - [ ] 18. Halloween avatar effects, UI polish and submission materials (target 2026-12-03)
