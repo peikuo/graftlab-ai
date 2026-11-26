@@ -92,6 +92,8 @@ export interface TaskState {
     queuedJudgeMessages: string[];
   };
   targetCheckPassed: boolean;
+  /** R42: open execution for a repository without an Adapter (allowed by the switch and the owner; ready after a confirmed build). */
+  open?: { allowed: boolean; ready: boolean; declined: boolean };
   /** Set by the runner, with the failure event, before a failure edge into failure_review (R36.6). */
   failure?: { node: NodeId; storyId?: string; failureClass: FailureClass; detail: string };
   flags: { prototypeEnabled: boolean; judgeLlm: boolean };

@@ -43,6 +43,7 @@ export const taskStateArb: fc.Arbitrary<TaskState> = fc
     stories: storiesArb,
     currentIndex: fc.nat({ max: 4 }),
     targetCheckPassed: fc.boolean(),
+    open: fc.option(fc.record({ allowed: fc.boolean(), ready: fc.boolean(), declined: fc.boolean() }), { nil: undefined }),
     partial: fc.boolean(),
     prototypeEnabled: fc.boolean(),
     // Half of the states satisfy every execution prerequisite, so story and API edges are exercised.
@@ -78,6 +79,7 @@ export const taskStateArb: fc.Arbitrary<TaskState> = fc
       failuresByClass: {},
       gathering: { partial: r.partial, queuedJudgeMessages: [] },
       targetCheckPassed: r.targetCheckPassed,
+      ...(r.open ? { open: r.open } : {}),
       flags: { prototypeEnabled: r.prototypeEnabled, judgeLlm: false },
       limits: { storyAttempts: 3, demoCaseRetries: 1 },
       startedAt: "2026-11-22T10:00:00.000Z",

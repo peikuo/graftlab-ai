@@ -29,6 +29,10 @@ import { runTechDesign } from "../planning/techdesign.ts";
 import { MirrorSource } from "../reader/mirror.ts";
 import { mirrorSourceFromEnv } from "../worktree/worktree.ts";
 import { DevStage, type DevStageOptions } from "../dev/stage.ts";
+import { openAdapter } from "../open/adapter.ts";
+import { buildOpenImage, prepareSource } from "../open/build.ts";
+import { detectOpen, proposalCardBody, proposalProblem, renderDockerfile, renderSetup, type EnvironmentProposal, type OpenFacts } from "../open/env.ts";
+import { proposeEnvironment } from "../open/propose.ts";
 import { runExperience } from "../browser/explorer.ts";
 import { Sandbox } from "../containers/sandbox.ts";
 import type { SandboxService } from "../containers/sandboxService.ts";
@@ -74,6 +78,8 @@ export interface TaskServiceOptions {
   };
   /** Live development (R38, R39): containers and the real LLM settings for the LLM_Proxy; absent means not built here. */
   execution?: { manager: ContainerManager; devImage: string; llm: DevStageOptions["llm"]; adapters: DevStageOptions["adapter"][]; sandbox?: SandboxService; traces?: DevStageOptions["traces"] };
+  /** R42: open execution on the owner's machine (GL_OPEN_EXECUTION); the host's development image is the base. */
+  open?: { enabled: boolean; baseImage: string; buildArgs: Record<string, string> };
   /** The meeting roles' LLM side (R11); without it the meeting stops honestly. */
   meeting?: {
     rules: RuntimeRules;
@@ -99,6 +105,9 @@ export class TaskService {
   #decision: { draft?: { draftId: string; number: number; content: DecisionDocContent; items: ReviewItemData[] }; verdicts: Map<string, Verdict>; selected?: string | null; rejections?: { itemId: string; title: string; reason: string }[]; desk?: DecisionDesk; frozen: number } = { verdicts: new Map(), frozen: 0 };
   /** The planning step of the current Task (R19, R20): the current plan, and the Judge's reason after a send back. */
   #dev: DevStage | null = null;
+  /** R42: what Studio code found in the tree, and the built environment of the current Task. */
+  #openFacts: OpenFacts | null = null;
+  #open: { proposal: EnvironmentProposal; image: string; source: { path: string; commit: string } } | null = null;
   /** The Sandbox of the current Task (evidence gathering, API-operation stories). */
   #sandboxRef: Sandbox | null = null;
   #plan: { current?: { planId: string; number: number; plan: Plan }; design?: TechDesign; requirements?: RequirementsDoc; count: number; agenda?: string; docs: Map<OutputDocKind, { version: number; file: string }> } = { count: 0, docs: new Map() };
@@ -130,7 +139,7 @@ export class TaskService {
     return n;
   }
 
-  async create(input: string): Promise<CreateResult> {
+  async create(input: string, opts: { owner?: boolean } = {}): Promise<CreateResult> {
     const parsed = parseRepoUrl(input);
     if (!parsed.ok) return { ok: false, status: 400, error: parsed.error };
     if (this.active) return { ok: false, status: 409, error: "A Task is already running. Wait until it ends." };
@@ -160,6 +169,10 @@ export class TaskService {
       startedAt: startedAt.toISOString(),
       deadlineAt: new Date(startedAt.getTime() + timeoutMs).toISOString(),
     });
+    // R42.1: open execution only with the switch on, a container engine, no Adapter, and the owner's session.
+    if (!adapter) task.open = { allowed: !!this.#o.open?.enabled && !!this.#o.execution && opts.owner === true, ready: false, declined: false };
+    this.#openFacts = null;
+    this.#open = null;
     await store.append({
       type: "task_created",
       node: "reading",
@@ -468,7 +481,7 @@ export class TaskService {
       decisionMarkdown: frozen.markdown,
       decision: frozen.content,
       decisionVersion: frozen.version,
-      ...(ctx.task.adapterId ? { checkHints: await this.#checkHints(ctx.task.adapterId) } : {}),
+      ...(ctx.task.adapterId ? { checkHints: await this.#checkHints(ctx.task.adapterId) } : this.#open ? { checkHints: `# How the Verifier can check this repository (open execution, no Adapter)\nThe app is not started. Every acceptance check is a test_suite check run in /work without internet, for example: ${this.#open.proposal.test.join(" ")}.`, testsOnly: true } : {}),
       files: read.files,
       emit: ctx.emit,
       runTurn: (t) => m.runTurn({ ...t, emit: ctx.emit }),
@@ -588,6 +601,7 @@ export class TaskService {
       decisionMarkdown: frozen.markdown,
       plan: p,
       needsRunEnvironment: ctx.task.repoKind === "adapted" && p.backlog.stories.some((s) => s.featureContract.executionKind === "source_change"),
+      ...(this.#open ? { testsOnly: true, environmentNote: `Open execution without an Adapter (R42): the app is not started; the tests run in /work without internet, for example \`${this.#open.proposal.test.join(" ")}\`; the dependencies are preinstalled from the confirmed environment.` } : {}),
       ...(ctx.task.adapterId ? { environmentNote: await this.#environmentNote(ctx.task.adapterId) } : {}),
       files: read.files,
       evidence: read.evidence,
@@ -621,10 +635,68 @@ export class TaskService {
     return "done";
   }
 
+  /** env_check (R42.4, R42.5): propose the environment, ask the owner, build it; at most two builds. */
+  async #envStep(ctx: Parameters<NodeHandler>[0]): Promise<"done"> {
+    const facts = this.#openFacts;
+    const read = this.#read;
+    const m = this.#o.meeting;
+    const x = this.#o.execution;
+    const op = this.#o.open;
+    const meta = this.#meta;
+    const note = (text: string) => ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text, evidence: [], evidenceStatus: "none" } });
+    const stop = async (text: string): Promise<"done"> => {
+      await note(`${text} The Task continues with the documents only.`);
+      ctx.patch({ open: { allowed: true, ready: false, declined: true } });
+      return "done";
+    };
+    if (!facts || !read || !m || !x || !op || !meta) return stop("Open execution is not available on this server.");
+    if (facts.notPossible) return stop(`Open execution is not possible: ${facts.notPossible}.`);
+    const configTexts: { path: string; text: string }[] = [];
+    for (const p of [...facts.containerConfig, ...facts.dependencyFiles].slice(0, 8)) {
+      const t = read.files.get(p) ?? (await this.fileText(ctx.task.taskId, p));
+      if (t) configTexts.push({ path: p, text: t });
+    }
+    await note(`Open execution (no Adapter): the Feasibility perspective proposes the simplest environment for ${facts.language}${facts.containerConfig.length ? `, reading ${facts.containerConfig.join(", ")}` : ""}. Nothing is built before you confirm.`);
+    let previous: { proposal: EnvironmentProposal; log: string[] } | undefined;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const proposal = await proposeEnvironment({ rules: m.rules, context: this.#contextFor(ctx, read), facts, configTexts, files: read.files, ...(previous ? { previous } : {}), emit: ctx.emit, runTurn: (t) => m.runTurn({ ...t, emit: ctx.emit }), signal: ctx.signal, idPrefix: `${ctx.task.taskId}-env${attempt}` });
+      if (ctx.signal.aborted) return "done";
+      if (!proposal) return stop("No valid environment proposal was submitted.");
+      const problem = proposalProblem(proposal, facts);
+      if (problem) return stop(`Open execution stops: ${problem}.`);
+      const dockerfile = renderDockerfile(op.baseImage, proposal);
+      const setup = renderSetup(proposal);
+      const lastLine = previous?.log.filter((l) => l.trim()).at(-1);
+      const a = await ctx.askJudge({ kind: "confirm", title: attempt === 1 ? "Build this environment on this machine?" : "The build failed. Build the changed environment?", body: proposalCardBody(proposal, facts, dockerfile, setup, lastLine), options: [{ id: "build", label: "Build it" }, { id: "skip", label: "Do not build" }], allowFreeText: false });
+      if (a.optionId !== "build") return stop("You chose not to build the environment.");
+      await note(`Studio code downloads the source at commit ${meta.sha.slice(0, 12)} and builds the image (attempt ${attempt} of 2; this can take several minutes).`);
+      const tag = `graftlab/open-${ctx.task.taskId}:latest`.toLowerCase();
+      let r: { ok: boolean; log: string[] };
+      let source: { path: string; commit: string } | null = null;
+      try {
+        source = await prepareSource(this.#o.dataDir, { owner: ctx.task.owner, repo: ctx.task.repo, sha: meta.sha });
+        r = await buildOpenImage(x.manager.docker, { dir: join(this.#o.dataDir, "tasks", ctx.task.taskId, "env", `build-${attempt}`), repo: source.path, commit: source.commit, dockerfile, setup, tag, buildArgs: op.buildArgs });
+      } catch (e) {
+        r = { ok: false, log: [(e as Error).message] };
+      }
+      if (ctx.signal.aborted) return "done";
+      if (r.ok && source) {
+        this.#open = { proposal, image: tag, source };
+        ctx.patch({ open: { allowed: true, ready: true, declined: false } });
+        await note(`The environment is built (${tag}). Development continues without an Adapter and is verified by the repository's tests only.`);
+        return "done";
+      }
+      const tail = r.log.filter((l) => l.trim()).slice(-6).join(" | ").slice(0, 600);
+      await ctx.emit({ type: "failure", actor: { kind: "system" }, payload: { failureClass: "interface_call_failure", source: "docker", detail: `the environment build failed (attempt ${attempt} of 2): ${tail || "no log"}` } });
+      previous = { proposal, log: r.log };
+    }
+    return stop("The environment build failed twice, so open execution stops here.");
+  }
   #devStage(ctx: Parameters<NodeHandler>[0]): DevStage | null {
     const x = this.#o.execution;
     const m = this.#o.meeting;
-    const adapter = x?.adapters.find((a) => a.id === ctx.task.adapterId);
+    const open = this.#open;
+    const adapter = x?.adapters.find((a) => a.id === ctx.task.adapterId) ?? (open && ctx.task.open?.ready ? openAdapter({ owner: ctx.task.owner, repo: ctx.task.repo, commit: open.source.commit, image: open.image, proposal: open.proposal }) : undefined);
     if (!x || !m || !adapter || !this.#plan.current || !this.#plan.design || !this.#read) return null;
     const read = this.#read;
     this.#dev = new DevStage({
@@ -632,7 +704,8 @@ export class TaskService {
       dataDir: this.#o.dataDir,
       manager: x.manager,
       secrets: this.#o.secrets,
-      devImage: x.devImage,
+      devImage: open && !ctx.task.adapterId ? open.image : x.devImage,
+      ...(open && !ctx.task.adapterId ? { proxyImage: x.devImage, mirrorSource: open.source.path } : {}),
       adapter,
       llm: x.llm,
       rules: m.rules,
@@ -743,7 +816,9 @@ export class TaskService {
             const f = this.#o.execution?.adapters.find((a) => a.id === ctx.task.adapterId)?.environmentFacts;
             return f ? ` ${f}.` : "";
           })()}`
-        : "## Environment facts\nThe Studio does not run this software; say where its AI would get its model in the user's own deployment.",
+        : ctx.task.open?.allowed && this.#openFacts && !this.#openFacts.notPossible
+          ? `## Environment facts (open execution, R42)\nThe owner can let the Studio build this repository here without an Adapter: after the freeze the Studio proposes the simplest container environment (${this.#openFacts.language}; the repository's own container configuration: ${this.#openFacts.containerConfig.join(", ") || "none"}), the owner confirms it, and development is verified by the repository's tests only (the app is not started, no demonstration). The Feasibility perspective says whether it can be built here (simple, medium or hard) and names the risks (for example a database, other services, secrets, native packages). A service without its own container configuration is not built. Say where its AI would get its model in the user's own deployment.`
+          : "## Environment facts\nThe Studio does not run this software; say where its AI would get its model in the user's own deployment.",
     ].filter(Boolean).join("\n\n");
   }
 
@@ -795,6 +870,8 @@ export class TaskService {
           await ctx.fail("interface_call_failure", "github", message);
           return "failed";
         }
+        // R42.2: eligibility for open execution from the tree (every path read or skipped).
+        if (ctx.task.repoKind === "other") this.#openFacts = detectOpen([...read.files.map((f) => f.path), ...read.skipped.map((x) => x.path), ...lateSkipped]);
         return this.#readerStep(ctx, meta, read.files, [...read.skipped.map((s) => s.path), ...lateSkipped]);
       },
       adapter_branch: async () => "done",
@@ -823,11 +900,19 @@ export class TaskService {
         ctx.patch({ backlogValid: false, planConfirmed: false, docsComplete: false, stories: [], planSentBackReason: undefined } as Partial<TaskState>);
         return "done";
       },
+      env_check: (ctx) => this.#envStep(ctx),
       planning: (ctx) => this.#planningStep(ctx),
       plan_review: (ctx) => this.#planReviewStep(ctx),
       documenting: (ctx) => this.#documentingStep(ctx),
       tech_design: (ctx) => this.#techDesignStep(ctx),
-      adapter_branch_2: async () => "done",
+      adapter_branch_2: async (ctx) => {
+        const f = this.#openFacts;
+        // R42.7: with the switch off, a repository that would qualify is told so honestly.
+        if (ctx.task.repoKind === "other" && !ctx.task.open?.ready && !ctx.task.open?.allowed && f && !f.notPossible && !this.#o.open?.enabled)
+          await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: "This server does not build repositories without an Adapter (its machine is too small for that). To continue to development, download the Studio and run it on your own machine with open execution on; it proposes an environment for you to confirm.", evidence: [], evidenceStatus: "none" } });
+        if (ctx.task.open?.ready) await ctx.emit({ type: "finding_recorded", actor: { kind: "system" }, payload: { kind: "note", text: "Open execution (no Adapter): development is verified by the repository's tests only; the app is not started and there is no demonstration.", evidence: [], evidenceStatus: "none" } });
+        return "done";
+      },
       ...(this.#o.execution
         ? {
             target_check: async (ctx) => {

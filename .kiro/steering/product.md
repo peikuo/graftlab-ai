@@ -31,6 +31,6 @@ Best effort, and measured instead of promised: the quality of role statements, d
 
 ## Scope
 
-- Analysis: any public GitHub repository, read-only. Repository code is never run.
-- Execution: adapted targets only (linkding in the first version), always in containers.
+- Analysis: any public GitHub repository, read-only. Repository code is not run during analysis.
+- Execution: adapted targets (linkding), always in containers. Open execution (R42): on the owner's machine only, behind a switch and the owner's confirmation, Python or Node repositories without an Adapter, verified by tests only.
 - No computer use in the first version.

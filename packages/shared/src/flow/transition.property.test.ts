@@ -75,7 +75,8 @@ describe("transition", () => {
         if (POST_FREEZE.includes(to)) expect(task.frozenVersion).not.toBeNull();
         if (EXECUTION.includes(to)) {
           expect(task.docsComplete).toBe(true);
-          expect(task.repoKind).toBe("adapted");
+          // R42: an Other_Repo executes only with a built open-execution environment.
+          expect(task.repoKind === "adapted" || task.open?.ready === true).toBe(true);
           expect(task.targetCheckPassed).toBe(true);
         }
         const judgeRetry = task.node === "failure_review" && edgeId === `retry_${to}`;

@@ -80,6 +80,12 @@ const tasks = new TaskService({
     ? { execution: { manager: containers, devImage: process.env.GL_DEV_IMAGE ?? "graftlab/dev-sandbox-linkding:latest", llm: { baseUrl: llm.baseUrl, apiKey: llm.apiKey, model: llm.model, reasoningParam: llm.reasoningParam, reasoningEffort: llm.reasoningEffort }, adapters, sandbox, ...(process.env.GL_TRACE !== "0" ? { traces } : {}) } }
     : {}),
   adaptersDir: join(root, "adapters"),
+  // R42: open execution, on unless GL_OPEN_EXECUTION is 0 or false; owner only; FROM the host's development image.
+  open: {
+    enabled: !["0", "false"].includes((process.env.GL_OPEN_EXECUTION ?? "").toLowerCase()),
+    baseImage: process.env.GL_OPEN_BASE_IMAGE ?? process.env.GL_DEV_IMAGE ?? "graftlab/dev-sandbox-linkding:latest",
+    buildArgs: { PYPI_INDEX: process.env.GL_PYPI_INDEX ?? "https://pypi.org/simple", NPM_REGISTRY: process.env.GL_NPM_REGISTRY ?? "https://registry.npmjs.org" },
+  },
   replayPublicDir: join(root, "apps/web/public/replays"),
   runtimeRulesVersion,
   llm: { profile: llm.profile, model: llm.model, ...(llmPrice ? { price: llmPrice } : {}) },

@@ -100,7 +100,7 @@ export function ReplayApp({ taskId }: { taskId: string }) {
           <span className="brand-mark" aria-hidden="true">🧪</span> GraftLab <b>AI</b>
         </span>
         <span className="chip mono">{file.header.repo}</span>
-        {state.repo?.repoKind === "other" && <span className="badge">Analysis only</span>}
+        {state.repo?.repoKind === "other" && (events.some((e) => e.type === "node_entered" && e.payload.to === "target_check") ? <span className="badge">No Adapter · tests only</span> : <span className="badge">Analysis only</span>)}
         <span className="spacer" />
         <span className="badge slate replay-badge">▶ Replay · recorded {new Date(file.header.createdAt).toLocaleString()}</span>
         <a className="btn" href="/">Back to the Studio</a>

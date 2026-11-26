@@ -33,6 +33,10 @@ export interface DevStageOptions {
   manager: ContainerManager;
   secrets: SecretRegistry;
   devImage: string;
+  /** The image the LLM_Proxy runs in (R42: the host's development image when devImage is an open-execution image). */
+  proxyImage?: string;
+  /** Where the Worktree's mirror comes from instead of `GL_MIRROR_SOURCE_<ID>` (R42: the local repository made from the tarball). */
+  mirrorSource?: string;
   adapter: Adapter;
   /** The real LLM settings; only the LLM_Proxy container receives the key. */
   llm: { baseUrl: string; apiKey: string; model: string; reasoningParam: string; reasoningEffort: string };
@@ -147,7 +151,7 @@ export class DevStage {
     try {
       if (!(await m.docker.ping())) throw new Error("no container engine answered");
       await step("Checking the development image", () => m.verifyImage(this.o.devImage));
-      const src = mirrorSourceFromEnv(this.o.adapter.id);
+      const src = this.o.mirrorSource ?? mirrorSourceFromEnv(this.o.adapter.id);
       await step("Preparing a private copy of the code at the reviewed commit", async () => {
         this.#wt = await createWorktree(this.o.dataDir, ctx.task.taskId, { adapterId: this.o.adapter.id, upstreamUrl: this.o.adapter.source.upstreamUrl, commit: this.o.adapter.source.commit, ...(src ? { source: src } : {}) });
         const bad = await notIgnored(this.#wt, this.o.adapter.devSandbox.prebuilt);
@@ -166,7 +170,7 @@ export class DevStage {
       await step("Starting the LLM_Proxy (the only holder of the model key)", async () => {
         this.#credential = issueProxyCredential(this.o.secrets);
         this.#appCredential = issueProxyCredential(this.o.secrets, PROXY_APP_SECRET_NAME);
-        const p = await m.startProxy(ctx.task.taskId, { image: this.o.devImage, credential: this.#credential, appCredential: this.#appCredential, upstreamUrl: this.o.llm.baseUrl, upstreamKey: this.o.llm.apiKey, ...(port ? { relayTarget: `app:${port}` } : {}) });
+        const p = await m.startProxy(ctx.task.taskId, { image: this.o.proxyImage ?? this.o.devImage, credential: this.#credential, appCredential: this.#appCredential, upstreamUrl: this.o.llm.baseUrl, upstreamKey: this.o.llm.apiKey, ...(port ? { relayTarget: `app:${port}` } : {}) });
         this.#relayPort = p.relayHostPort;
       });
       await step("Starting the Development_Sandbox", async () => {

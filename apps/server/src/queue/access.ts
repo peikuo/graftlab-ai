@@ -27,6 +27,7 @@ export class AccessCodes {
   #windowMs: number;
   #now: () => number;
   #unlocked = new Map<string, number>(); // sessionId -> code index
+  #owners = new Set<string>(); // sessions unlocked with the admin token (R42: the owner)
   #wrong = new Map<string, { count: number; firstAt: number; blockedUntil: number }>();
   #used = new Map<string, number>(); // `${day}:${index}` -> Tasks created
   constructor(opts: AccessOptions) {
@@ -40,7 +41,14 @@ export class AccessCodes {
     return this.#codes.length > 0;
   }
   unlocked(sessionId: string | undefined): boolean {
-    return !this.required || (!!sessionId && this.#unlocked.has(sessionId));
+    return !this.required || (!!sessionId && (this.#unlocked.has(sessionId) || this.#owners.has(sessionId)));
+  }
+  /** R42: the owner unlocked with the admin token (no daily cap); without access codes every session is the owner. */
+  unlockOwner(sessionId: string): void {
+    this.#owners.add(sessionId);
+  }
+  isOwner(sessionId: string | undefined): boolean {
+    return !this.required || (!!sessionId && this.#owners.has(sessionId));
   }
   unlock(sessionId: string, given: string, client: string): UnlockResult {
     const now = this.#now();
@@ -63,7 +71,7 @@ export class AccessCodes {
   }
   /** Counts a Task against the session's code; refuses when the code reached its daily cap. */
   takeTask(sessionId: string | undefined): TaskAllowance {
-    if (!this.required) return { ok: true };
+    if (!this.required || (sessionId !== undefined && this.#owners.has(sessionId))) return { ok: true };
     const index = sessionId === undefined ? undefined : this.#unlocked.get(sessionId);
     if (index === undefined) return { ok: false, status: 403, error: "an access code is needed to operate" };
     const key = `${new Date(this.#now()).toISOString().slice(0, 10)}:${index}`;

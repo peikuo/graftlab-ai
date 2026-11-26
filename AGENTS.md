@@ -20,9 +20,9 @@ This file holds constraints and an index only. Details live in `.kiro/specs/graf
 ## Scope
 
 - Analysis: any public GitHub repository (read-only).
-- Execution: linkding only (sandboxed run, browser use, development, independent verification). Development may include source changes to a copy of linkding inside an isolated per-Task git worktree.
+- Execution: linkding through its Adapter (sandboxed run, browser use, development, independent verification). Development may include source changes to a copy of the target inside an isolated per-Task git worktree. Open execution (R42): on the owner's own machine, behind the `GL_OPEN_EXECUTION` switch and the owner's confirmation, a Python or Node repository without an Adapter may be built and developed in containers, verified by tests only.
 - Confine the code agent's file writes to the per-Task worktree (the code agent runs inside one container per Task, which provides the write confinement; network is limited only if the container policy sets it). The Studio repository never contains modified target code; linkding is only an unmodified external dependency.
-- Never run arbitrary repository code. The first version has no computer use.
+- Never run repository code without an Adapter, except open execution (R42) after the owner confirmed the environment; always in containers. The first version has no computer use.
 - Never read `.env` files.
 
 ## Three document layers

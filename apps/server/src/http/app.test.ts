@@ -186,3 +186,23 @@ describe("session cookie (R28)", () => {
     expect(String(pub.headers["set-cookie"])).toContain("; Secure");
   });
 });
+
+describe("owner unlock with the admin token (R42)", () => {
+  it("unlocks the owner, passes owner to Task creation, and is never an access code", async () => {
+    const seen: (boolean | undefined)[] = [];
+    const tasks = { create: async (_u: string, o?: { owner?: boolean }) => (seen.push(o?.owner), { ok: true as const, taskId: "t" }) };
+    const studio = createStudio({ secrets: new SecretRegistry(), heartbeatMs: 60_000, adminToken: "admin-token-123456", access: new AccessCodes({ codes: ["judge-code-1"] }), tasks: tasks as never });
+    cleanups.push(() => studio.app.close());
+    const mk = async () => String((await studio.app.inject({ method: "POST", url: "/api/session", headers: { origin: ORIGIN, host: "localhost:8080" } })).headers["set-cookie"]).split(";")[0]!;
+    const owner = await mk();
+    expect((await post(studio, "/api/access", owner, { code: "admin-token-123456" })).json()).toMatchObject({ ok: true, owner: true });
+    expect((await post(studio, "/api/queue/join", owner, {})).json().role).toBe("operator");
+    await post(studio, "/api/tasks", owner, { url: "https://github.com/a/b" });
+    await post(studio, "/api/queue/leave", owner, {});
+    const judge = await mk();
+    expect((await post(studio, "/api/access", judge, { code: "judge-code-1" })).json()).not.toHaveProperty("owner");
+    expect((await post(studio, "/api/queue/join", judge, {})).json().role).toBe("operator");
+    await post(studio, "/api/tasks", judge, { url: "https://github.com/a/c" });
+    expect(seen).toEqual([true, false]);
+  });
+});

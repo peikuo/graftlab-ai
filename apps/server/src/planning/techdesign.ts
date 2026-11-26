@@ -40,6 +40,8 @@ export interface TechDesignOptions {
   plan: Plan;
   /** Adapted_Repo with a source-change story: the architecture needs a run environment from the target's files. */
   needsRunEnvironment: boolean;
+  /** R42: open execution (no Adapter): refined checks must stay test_suite checks. */
+  testsOnly?: boolean;
   environmentNote?: string;
   files: Map<string, string>;
   evidence: EvidenceFiles;
@@ -96,7 +98,7 @@ const gradeP = obj({ featureId: str(), ...Object.fromEntries(RUBRIC.map((k) => [
 export const INSTALL = /\b(uv\s+sync|uv\s+pip\s+install|pip3?\s+install|python3?\s+-m\s+pip\s+install|npm\s+(install|ci|i)\b|pnpm\s+install|yarn\s+install|poetry\s+install|bundle\s+install|apt(-get)?\s+install)/;
 
 /** Checks a submitted architecture and breakdown; the architecture's quotes are checked against the files. */
-export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | "needsRunEnvironment" | "evidence" | "expectFields" | "expectFieldNames" | "backgroundWorker"> & { files?: Map<string, string> }): { ok: true; architecture: TechArchitecture; breakdown: FeatureBreakdown; checks: RefinedChecks } | { ok: false; problems: string[] } {
+export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | "needsRunEnvironment" | "evidence" | "expectFields" | "expectFieldNames" | "backgroundWorker" | "testsOnly"> & { files?: Map<string, string> }): { ok: true; architecture: TechArchitecture; breakdown: FeatureBreakdown; checks: RefinedChecks } | { ok: false; problems: string[] } {
   const x = (a ?? {}) as { architecture?: Record<string, unknown>; features?: unknown[]; checks?: unknown };
   const problems: string[] = [];
   const refined = RefinedChecksSchema.safeParse(x.checks ?? []);
@@ -110,6 +112,10 @@ export function checkTechDesign(a: unknown, o: Pick<TechDesignOptions, "plan" | 
     for (const c of st.featureContract.acceptanceChecks)
       if (c.kind === "browser_check" && c.needsAi && !c.steps.some((x) => x.op === "click" && (x.role === "checkbox" || x.role === "switch")))
         problems.push(`story ${st.id}: check ${c.id} uses the model but never switches the feature on; the AI switches are off by default, so open the settings page, click the switch (role checkbox) and save before the feature's steps (refine it in \`checks\`)`);
+  if (o.testsOnly)
+    for (const st of backlog.stories)
+      for (const c of st.featureContract.acceptanceChecks)
+        if (c.kind !== "test_suite") problems.push(`story ${st.id}: check ${c.id} is a ${c.kind}, but this repository runs without an Adapter, so every check must be a test_suite check (refine it in \`checks\`)`);
   // An api_readback check can only use the fields the Adapter's comparator knows.
   if (o.expectFields)
     for (const s of backlog.stories)

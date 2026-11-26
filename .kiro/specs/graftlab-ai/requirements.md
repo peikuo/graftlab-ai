@@ -1156,6 +1156,22 @@ Note (hosting consequence, Open item 46): live execution (flow steps F4-F10) nee
 - Running arbitrary submitted repositories (only linkding is executed, including its source changes inside a Task Worktree).
 - Executing non-adapted repositories, and the vetting and stronger isolation that would require (future).
 
+### Requirement 42: Open execution on the owner's machine (switch)
+
+**User Story:** As the person running my own Studio, I want to continue from the Decision_Doc to development on a repository that has no Adapter, so that I can try the Studio on my own projects, knowing that the build may fail.
+
+**Priority:** Should-have (decided by the user 2026-11-26; the simplest version that works, stability not promised)
+
+#### Acceptance Criteria
+
+1. THE Studio SHALL have a switch `GL_OPEN_EXECUTION`, on by default in the repository and turned off on the public competition site. WHILE the switch is on, open execution SHALL be available only to the owner: on a server that requires access codes, only a session unlocked with the admin token; on a server without access codes, the local user. No access code SHALL unlock it.
+2. THE Studio SHALL offer open execution only for a repository in Python or Node that either ships its own container configuration (`Dockerfile`, a Compose file or `.devcontainer/devcontainer.json`) or is a library or middleware component (not a service). A service without its own container configuration, or another language, SHALL stay analysis only, with the reason shown.
+3. DURING the meeting, THE Feasibility perspective SHALL assess whether the repository can be built here (simple, medium or hard) and name the risks.
+4. AFTER the Decision_Doc is frozen and before planning, THE Studio SHALL propose the simplest environment (written by an LLM from the repository's files; the Dockerfile itself is built by code from a template) and SHALL show it in a confirm card with the warning that the repository's code will run in containers on this machine and that the build may fail. Nothing SHALL be built without the owner's confirmation.
+5. IF the build fails, THEN THE Studio SHALL show the failure with the end of the build log, let an LLM analyze it and propose a changed environment, and ask again; after the second failed build it SHALL stop open execution and continue as analysis only. Every build attempt is a visible event.
+6. WHERE open execution is used, every Acceptance_Check SHALL be a test run; the app is not started, there is no demonstration, and the Verifier decides success by the tests' exit codes. The result SHALL be labeled "no Adapter: tests only".
+7. WHERE the switch is off and a repository would qualify, THE Studio SHALL say so honestly when the documents are done: this server does not build other repositories; download the Studio and run it on your own machine.
+
 ## Open Items
 
 Nothing here may be assumed:
@@ -1286,6 +1302,7 @@ Nothing here may be assumed:
 | 38 Worktree development | A, B | Example tests: the code-Agent runtime, tools and toolchains run inside one container per Task, a write outside the Worktree does not reach the host and a detected attempt is recorded as rejected by a safety rule, diff recorded and shown only in the Engineering details view, Patch_Artifact stored, nothing committed to the Studio repository, budget-exceeded failure shown, Worktree created only for Adapted_Repo; check that the Development_Sandbox, the Run_Environment and the Verifier test container share the same network policy |
 | 39 Environment separation | A, B | Integration test: clean start of the Development_Sandbox container and Run_Environment, no shared writable state except the Worktree handoff; example test that a failure to start the modified target is shown honestly and the Task ends in the Terminal_State failed; check that the Adapter holds no start procedure for the modified target (only the pinned baseline image and its documented configuration) and the Studio holds no fallback start recipe; check that each environment starts clean when the flow first needs it; check that the start commands come from the `runEnvironment` section of the Output_Docs and run only inside the Run_Environment container |
 | 40 Feature_Contract, Reviewer review, stop and ask | A, B, C | Property test: for all Code_Agent changes, the change and its changed-file list are recorded in the Event_Stream and routed to the Reviewer review; schema validation that a Feature_Contract has the required parts and no path list, and that a backlog without one is invalid; example tests for the three Review_Verdict routes (request changes back to the Code_Agent, escalate to the Facilitator and Judge in feature words, approve is not success), the "reviewed by Reviewer (LLM judgment)" label, stop-and-ask after the retry limit with a "waiting for answer" status, an unanswered question past its wait time marks the story Unconfirmed-blocked and continues with the next story or ends in `failed`, routing of technical versus feature questions, widening only through a new Decision_Doc version; example test that an API-operation story is assigned to the Reviewer with read-only tools and the Demo_Case submission only, and that its Demo_Case passes schema validation before any write; Runtime_Rules rule with a test check (layer B); review quality is a Best_Effort_Goal measured in the benchmark |
+| 42 Open execution behind a switch | A, B | Example tests: owner-only (admin token, never an access code), eligibility from the tree, Dockerfile from the template, test-only plans, Flow_Graph edges into and out of env_check; checked once on a real repository on the owner's machine |
 | 41 Prototype in the requirement meeting | A, B, C | Example tests: "Prototype" label on every view, Prototype never counted as execution result or success, artifacts stored per Task, Decision_Doc freeze not bypassed, failure shown honestly; confinement check shared with Requirement 38 |
 
 Process note: each feature in our own tasks will include a "demo and verify" item (to be honored by the design and tasks phases).

@@ -267,6 +267,8 @@ stateDiagram-v2
     awaiting_confirmation --> frozen: confirmed, exactly one approach
     awaiting_confirmation --> analysis_only: Other_Repo, Judge ends before freeze
     frozen --> planning: version, hash, who, when recorded
+    frozen --> env_check: R42 open execution offered
+    env_check --> planning: built, declined, not possible or failed twice
     planning --> plan_review: F7 plan valid
     plan_review --> documenting: Judge confirms the plan
     documenting --> tech_design: requirements written
@@ -353,6 +355,7 @@ Node table:
 | deciding | agent_loop | `read_file`, `search_repo`, `ask_judge`, `submit_decision_draft` | 20 min | R15, R37 |
 | awaiting_confirmation | wait_user | none (Judge card only) | Task timeout only; no automatic confirmation | R15.3, R15.4 |
 | frozen | auto | none | 5 s | R15.3, R16 |
+| env_check | wait_user | submit_environment | 40 min | R42 |
 | planning | agent_loop | Planner `read_file`, `search_repo`, `submit_plan`; Feasibility and Risk `submit_plan_assessment`; Facilitator `submit_final_plan` | 15 min | R19, R20, R40.1 |
 | plan_review | wait_user | none (Judge card: confirm, or send back with a reason) | Task timeout only; no automatic confirmation | R19.11, R19.12 |
 | documenting | agent_loop | Planner `submit_requirements` | 10 min | R19.2, R20 |
@@ -1518,6 +1521,17 @@ Would build: the `prototype` node, enabled by a flag, running the Code_Agent in 
 - The confirm card then opens; its body names the result ("the Verifier ran N steps in the changed app: M passed") and the Workspace shows the steps with their screenshots inside the card (Live and Replay). A failed step is shown as failed; the card still opens, and the failed check still fails the story at verification.
 - At `verifying` the browser checks are not run again for the same Feature attempt; their recorded results count. Test suites and API read-backs run there as before, in this order after the browser checks, so a read-back sees the changes the browser steps made once.
 - Feedback from the Judge sends the Feature back to development; the next attempt runs its demonstration again.
+
+## Open execution (R42)
+
+The simplest version that works; stability is not promised.
+
+- Switch and owner: `GL_OPEN_EXECUTION` (on unless `0` or `false`). Allowed for a Task when the switch is on, the repository has no Adapter, and the creating session is the owner: entering the admin token in the access-code field unlocks the session as owner (no daily cap); without access codes configured, every local session is the owner. Stored as `TaskState.open = { allowed, ready, declined }`.
+- Eligibility (code, from the repository tree): Python (`pyproject.toml`, `setup.py`, `setup.cfg`, `requirements*.txt`) or Node (`package.json`); container configuration found (`Dockerfile`, `compose.yaml`, `docker-compose.yml`, `.devcontainer/devcontainer.json`). Without container configuration only a library qualifies; the LLM's proposal says which kind the repository is, and a service without container configuration stops there.
+- Meeting: the environment facts tell the roles that open execution is possible here and ask the Feasibility perspective to assess buildability and risks.
+- Node `env_check` (after `frozen`, before `planning`, entered only when allowed and not yet ready or declined): Studio code reads the container configuration and the dependency files; the Environment duty (the Feasibility role, one structured turn `submit_environment`) proposes `{kind, language, install commands, test command, risks, difficulty}`; code renders the Dockerfile from a fixed template: `FROM` the host's development image (Python 3.13, Node 24, git and the runner, so no public registry is needed), the source at `/opt/target-src`, the install commands as one setup script (Python into a fresh venv at `/opt/open-venv`, `PYTHONPATH=/work/src:/work` so tests import the changed code; Node `npm` dependencies prebuilt and copied into the Worktree), `WORKDIR /work`. The confirm card shows the Dockerfile, the commands, the difficulty and the risks. On confirmation: the source is downloaded as the commit's tarball and committed into a local git repository (the mirror source), the context is built through the engine API, and the log tail is kept. On failure: a `failure` event with the log tail, one LLM analysis turn proposes a changed environment, and the card asks again; two builds at most.
+- After a successful build the Task keeps `repoKind: "other"` and `open.ready = true`; a generated Adapter (no browser login, no API, no regression suite, no AI client library, hooks that do nothing) feeds the existing development stage. Planning allows only `test_suite` checks (code refuses others), every story has no demo, and `adapter_branch_2` goes to `target_check` when `open.ready`.
+- With the switch off, a qualifying repository gets the note at `adapter_branch_2` that this server does not build other repositories.
 
 ## Deferred for later
 

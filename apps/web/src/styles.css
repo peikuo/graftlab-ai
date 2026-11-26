@@ -213,7 +213,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .icard.answered .icard-head { color: var(--muted); }
 .icard-avatar { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--surface); }
 .icard-title { margin: 8px 0 2px; font-size: 16.5px; font-weight: 600; line-height: 1.45; }
-.icard-body { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
+.icard-body { margin: 0 0 8px; color: var(--muted); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow-y: auto; }
 .icard-options { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 8px; }
 .icard-free { display: flex; gap: 8px; }
 .icard-free input { flex: 1; }

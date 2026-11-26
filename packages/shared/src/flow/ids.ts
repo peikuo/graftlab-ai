@@ -15,6 +15,8 @@ export const NODE_IDS = [
   "deciding",
   "awaiting_confirmation",
   "frozen",
+  // open execution (R42): the environment proposal and build after the freeze
+  "env_check",
   // planning and documents
   "planning",
   "plan_review",

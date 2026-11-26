@@ -23,6 +23,8 @@ export interface PlanningOptions {
   decisionVersion: number;
   /** How the Verifier can check this target (adapted repositories only). */
   checkHints?: string;
+  /** R42: open execution (no Adapter): every Acceptance_Check must be a test_suite check. */
+  testsOnly?: boolean;
   files: Map<string, string>;
   emit: Emit;
   runTurn: (o: Pick<TurnOptions, "roleId" | "purpose" | "systemPrompt" | "prompt" | "tools" | "signal" | "idPrefix" | "thinkingLevel">) => Promise<TurnResult>;
@@ -84,6 +86,10 @@ export async function runPlanning(o: PlanningOptions): Promise<PlanningResult> {
     if (!built.ok) return { ok: false as const, message: built.problems.slice(0, 6).join("; ") };
     const wrong = built.backlog.stories.filter((s) => !kinds.has(s.featureContract.executionKind)).map((s) => s.id);
     if (wrong.length) return { ok: false as const, message: `the chosen approach allows only ${[...kinds].join(" or ")} stories; change ${wrong.join(", ")}` };
+    if (o.testsOnly) {
+      const app = built.backlog.stories.flatMap((s) => s.featureContract.acceptanceChecks.filter((c) => c.kind !== "test_suite").map((c) => `${s.id} ${c.id} (${c.kind})`));
+      if (app.length) return { ok: false as const, message: `this repository runs without an Adapter, so the app is not started and every acceptance check must be a test_suite check; change ${app.join(", ")}` };
+    }
     return { ok: true as const, built };
   };
   const readTools: AgentTool<any>[] = [

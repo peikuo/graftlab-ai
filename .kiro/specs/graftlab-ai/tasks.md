@@ -644,6 +644,10 @@ Conventions:
     - The Verifier's browser checks run at `story_checkpoint` with a screenshot per step; the card shows steps, results and screenshots (Live and Replay); not repeated at `verifying`; checkpoint node timeout 240 s
     - Design: "Demonstration at the confirmation point"
     - _Requirements: 21.2, 21.11, 22.2_
+  - [ ] 14.36 Open execution behind a switch (R42)
+    - Switch and owner session; eligibility from the tree; buildability in the meeting facts; `env_check` with the proposal card, tarball mirror, image build, failure analysis and one retry; generated Adapter into the development stage; test-only plans; the switch-off note
+    - Design: "Open execution"
+    - _Requirements: 42_
   - [x] 14.1 Implement the context builder and the development rules
     - Done 2026-11-23: `apps/server/src/dev/context.ts` (one Feature, its story and contract, the architecture, summaries of the Features it builds on); `runtime-rules/roles/code_agent.md` updated
     - `apps/server/src/dev/context.ts` writes only the story, its Feature_Contract and the referenced documents; Runtime_Rules rules "small scope per Agent" and "no decision power, stop and ask, reviewed by the Reviewer"

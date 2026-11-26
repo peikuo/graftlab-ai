@@ -22,6 +22,11 @@ export const not =
 export const isAdapted: Guard = (t) => t.repoKind === "adapted";
 export const isOther: Guard = (t) => t.repoKind === "other";
 export const isFrozen: Guard = (t) => t.frozenVersion !== null;
+/** R42: open execution is offered (allowed, not built yet, not declined). */
+export const openOffer: Guard = (t) => t.repoKind === "other" && !!t.open?.allowed && !t.open.ready && !t.open.declined;
+/** R42: an Other_Repo whose environment was built: it goes to development like an Adapted_Repo. */
+export const openReady: Guard = (t) => t.repoKind === "other" && !!t.open?.ready;
+const executable: Guard = (t) => isAdapted(t) || openReady(t);
 export const briefReady: Guard = (t) => t.briefReady;
 
 export const belowRetryLimit: Guard = (t) => (currentStory(t)?.attempts ?? Infinity) < t.limits.storyAttempts;
@@ -62,6 +67,7 @@ export const reviewSendBack: Guard = (t) =>
 // They keep the honest-flow rules true no matter which edge is used (design.md, "Rules that keep the graph honest").
 const POST_FREEZE: readonly NodeId[] = [
   "frozen",
+  "env_check",
   "planning",
   "plan_review",
   "documenting",
@@ -89,9 +95,10 @@ export function entryInvariant(target: NodeId, t: TaskState): string | null {
   if ((target === "plan_review" || target === "documenting") && !t.backlogValid) return "Product_Backlog not valid (R20)";
   if (target === "documenting" && !t.planConfirmed) return "the Judge has not confirmed the plan (R19.11)";
   if ((AFTER_DOCS.includes(target) || EXECUTION.includes(target)) && !t.docsComplete) return "Output_Docs incomplete (R19.4)";
-  if (target === "target_check" && !isAdapted(t)) return "not an Adapted_Repo (R25)";
+  if (target === "target_check" && !executable(t)) return "not an Adapted_Repo and no open execution environment (R25, R42)";
+  if (target === "env_check" && !openOffer(t)) return "open execution is not offered (R42)";
   if (EXECUTION.includes(target)) {
-    if (!isAdapted(t)) return "not an Adapted_Repo (R25)";
+    if (!executable(t)) return "not an Adapted_Repo and no open execution environment (R25, R42)";
     if (!t.targetCheckPassed) return "target_check has not passed (R13.4)";
   }
   if (target === "failure_review" && t.failure?.node !== t.node)

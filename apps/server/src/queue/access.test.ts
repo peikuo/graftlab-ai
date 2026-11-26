@@ -56,3 +56,16 @@ describe("access codes (R28.7)", () => {
     expect(a.takeTask("s1")).toEqual({ ok: true });
   });
 });
+
+describe("the owner (R42)", () => {
+  it("is every session without access codes, and only an owner-unlocked session with them; no daily cap", () => {
+    expect(new AccessCodes({ codes: [] }).isOwner("s")).toBe(true);
+    const a = new AccessCodes({ codes: ["aaaaaaaa"], dailyTasks: 1 });
+    a.unlock("s1", "aaaaaaaa", "ip");
+    expect(a.isOwner("s1")).toBe(false);
+    a.unlockOwner("s2");
+    expect(a.isOwner("s2")).toBe(true);
+    expect(a.unlocked("s2")).toBe(true);
+    for (let i = 0; i < 3; i++) expect(a.takeTask("s2")).toEqual({ ok: true });
+  });
+});

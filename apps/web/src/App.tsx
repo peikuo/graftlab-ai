@@ -185,7 +185,7 @@ export function App() {
           <span className="brand-mark" aria-hidden="true">🧪</span> GraftLab <b>AI</b>
         </span>
         {state.repo && <span className="chip mono">{`${state.repo.owner}/${state.repo.repo}`}</span>}
-        {state.repo?.repoKind === "other" && <span className="badge">Analysis only</span>}
+        {state.repo?.repoKind === "other" && (events.some((e) => e.type === "node_entered" && e.payload.to === "target_check") ? <span className="badge">No Adapter · tests only</span> : <span className="badge">Analysis only</span>)}
         <span className="spacer" />
         <span className="muted small">
           {live.queue?.role === "operator" && "You are the operator"}

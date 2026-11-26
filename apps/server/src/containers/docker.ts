@@ -106,6 +106,48 @@ export class DockerClient {
     });
   }
 
+  /**
+   * Builds an image from a tar build context (R42: open execution). The engine streams JSON lines; the result is
+   * the success and the last lines of the log (the `stream` texts and any `error`), never the build arguments.
+   */
+  build(context: Buffer, tag: string, buildArgs: Record<string, string>, timeoutMs = 20 * 60_000): Promise<{ ok: boolean; log: string[] }> {
+    const path = `/build?t=${encodeURIComponent(tag)}&rm=1&forcerm=1&buildargs=${encodeURIComponent(JSON.stringify(buildArgs))}`;
+    return new Promise((resolve, reject) => {
+      const log: string[] = [];
+      let error: string | null = null;
+      let rest = "";
+      const take = (chunk: string) => {
+        rest += chunk;
+        const lines = rest.split("\n");
+        rest = lines.pop() ?? "";
+        for (const l of lines) {
+          if (!l.trim()) continue;
+          try {
+            const j = JSON.parse(l) as { stream?: string; error?: string; status?: string };
+            if (j.error) error = j.error;
+            const t = (j.stream ?? j.error ?? j.status ?? "").trimEnd();
+            if (t) log.push(...t.split("\n"));
+          } catch {
+            log.push(l);
+          }
+          if (log.length > 400) log.splice(0, log.length - 400);
+        }
+      };
+      const req = request({ socketPath: this.socketPath, path, method: "POST", timeout: timeoutMs, headers: { "content-type": "application/x-tar", "content-length": context.length } }, (res) => {
+        res.setEncoding("utf8");
+        res.on("data", (c: string) => take(c));
+        res.on("end", () => {
+          take("\n");
+          const ok = (res.statusCode ?? 0) < 300 && error === null;
+          resolve({ ok, log: log.slice(-80) });
+        });
+        res.on("error", reject);
+      });
+      req.on("timeout", () => req.destroy(new Error(`container engine: image build timed out after ${Math.round(timeoutMs / 60_000)} min`)));
+      req.on("error", (e) => reject(e.message.startsWith("container engine") ? e : new Error("container engine unreachable (POST /build)")));
+      req.end(context);
+    });
+  }
   async ping(): Promise<boolean> {
     return this.#raw("GET", "/_ping").then(
       (r) => r.status === 200,

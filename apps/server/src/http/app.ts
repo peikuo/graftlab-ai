@@ -15,7 +15,7 @@ import { ensureSession, readSession, sameOrigin, tokenEquals } from "./session.t
 
 /** The Task operations the HTTP layer needs (implemented by TaskService). */
 export interface TaskApi {
-  create(url: string): Promise<{ ok: true; taskId: string } | { ok: false; status: number; error: string }>;
+  create(url: string, opts?: { owner?: boolean }): Promise<{ ok: true; taskId: string } | { ok: false; status: number; error: string }>;
   /** null when the Task is not the runner's Task; false when the card is not open. */
   answer(taskId: string, cardId: string, a: { optionId?: string; text?: string }): boolean | null;
   abort(taskId: string): boolean;
@@ -123,6 +123,12 @@ export function createStudio(opts: StudioOptions): Studio {
     const sid = ensureSession(req, reply, secureFor(req));
     const fwd = req.headers["x-forwarded-for"];
     const client = (Array.isArray(fwd) ? fwd[0] : fwd)?.split(",")[0]?.trim() || req.ip;
+    // R42: the admin token entered as a code unlocks the owner (open execution, no daily cap); it is not an access code.
+    if (opts.adminToken && tokenEquals(body.data.code, opts.adminToken)) {
+      access.unlockOwner(sid);
+      req.log.info({ msg: "owner unlocked with the admin token" });
+      return { ok: true, required: true, owner: true };
+    }
     const r = access.unlock(sid, body.data.code, client);
     if (!r.ok) {
       if (r.retryAfterS) reply.header("retry-after", String(r.retryAfterS));
@@ -220,7 +226,7 @@ export function createStudio(opts: StudioOptions): Studio {
     const sid = readSession(req);
     const allowed = access.takeTask(sid);
     if (!allowed.ok) return reply.code(allowed.status).send({ error: allowed.error });
-    const r = await opts.tasks.create(body.data.url);
+    const r = await opts.tasks.create(body.data.url, { owner: access.isOwner(sid) });
     if (!r.ok) {
       access.returnTask(sid);
       return reply.code(r.status).send({ error: r.error });
