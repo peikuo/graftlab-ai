@@ -41,8 +41,6 @@ export type NodeId = (typeof NODE_IDS)[number];
 export type TerminalId = (typeof TERMINAL_IDS)[number];
 
 export const GATHERING_NODES = ["sandbox_start", "browser_experience"] as const satisfies readonly NodeId[];
-export const EVIDENCE_GATHERING_NODES = ["reading", ...GATHERING_NODES] as const satisfies readonly NodeId[];
-
 export function isTerminal(node: NodeId): node is TerminalId {
   return (TERMINAL_IDS as readonly string[]).includes(node);
 }

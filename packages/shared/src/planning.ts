@@ -162,10 +162,6 @@ export function buildPlan(input: unknown, decisionVersion: number): BuildPlanRes
 }
 
 /** The Task_Board is built by code from the confirmed stories (R20.8). */
-export function initialTaskBoard(backlog: ProductBacklog): TaskBoard {
-  return { decisionVersion: backlog.decisionVersion, items: backlog.stories.map((s) => ({ id: `T-${s.id}`, storyId: s.id, title: s.title, status: "to_do" as const })) };
-}
-
 /** Effort of a story as Feasibility assessed it (or "not assessed"). */
 export function storyEffort(plan: Pick<Plan, "assessments">, storyId: string): string {
   return plan.assessments.feasibility.find((a) => a.storyId === storyId)?.effort ?? "not assessed";

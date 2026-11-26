@@ -7,6 +7,7 @@ import { SecretRegistry } from "@graftlab/shared";
 import { EventStore } from "../events/store.ts";
 import { SandboxService } from "../containers/sandboxService.ts";
 import type { SandboxResult } from "../containers/sandbox.ts";
+import { AccessCodes } from "../queue/access.ts";
 import { createStudio, type Studio } from "./app.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -126,5 +127,62 @@ describe("sandbox restore (R29.2)", () => {
     const admin = await studio.app.inject({ method: "POST", url: "/api/sandbox/restore", headers: { host: "localhost:8080", "x-admin-token": "admin-token-123456" } });
     expect(admin.statusCode).toBe(200);
     expect(resets).toBe(2);
+  });
+});
+
+describe("access codes (R28.7)", () => {
+  const tasks = (calls: string[]) => ({
+    create: async (url: string) => (calls.push(url), url.includes("bad") ? { ok: false as const, status: 400, error: "no such repository" } : { ok: true as const, taskId: "t9" }),
+  });
+  it("lets anyone watch, needs a code to join, and caps Tasks per code", async () => {
+    const calls: string[] = [];
+    const studio = createStudio({ secrets: new SecretRegistry(), heartbeatMs: 60_000, access: new AccessCodes({ codes: ["judge-code-1"], dailyTasks: 1 }), tasks: tasks(calls) as never });
+    cleanups.push(() => studio.app.close());
+    const s = await studio.app.inject({ method: "POST", url: "/api/session", headers: { origin: ORIGIN, host: "localhost:8080" } });
+    const cookie = String(s.headers["set-cookie"]).split(";")[0]!;
+    const status = await studio.app.inject({ method: "GET", url: "/api/status", headers: { cookie } });
+    expect(status.json().access).toEqual({ required: true, unlocked: false });
+    expect((await post(studio, "/api/queue/join", cookie, {})).statusCode).toBe(403);
+    expect((await post(studio, "/api/access", cookie, { code: "judge-code-1" }, "https://evil.example")).statusCode).toBe(403);
+    const wrong = await post(studio, "/api/access", cookie, { code: "not-the-code" });
+    expect(wrong.statusCode).toBe(401);
+    expect(JSON.stringify(wrong.json())).not.toContain("judge-code-1");
+    expect((await post(studio, "/api/access", cookie, { code: "judge-code-1" })).statusCode).toBe(200);
+    expect((await studio.app.inject({ method: "GET", url: "/api/status", headers: { cookie } })).json().access).toEqual({ required: true, unlocked: true });
+    expect((await post(studio, "/api/queue/join", cookie, {})).json().role).toBe("operator");
+    // A failed creation does not use up the day's Task.
+    expect((await post(studio, "/api/tasks", cookie, { url: "https://github.com/a/bad" })).statusCode).toBe(400);
+    expect((await post(studio, "/api/tasks", cookie, { url: "https://github.com/a/b" })).statusCode).toBe(200);
+    const capped = await post(studio, "/api/tasks", cookie, { url: "https://github.com/a/c" });
+    expect(capped.statusCode).toBe(429);
+    expect(capped.json().error).toMatch(/daily limit/);
+    expect(calls).toEqual(["https://github.com/a/bad", "https://github.com/a/b"]);
+  });
+  it("answers 429 with retry-after after 5 wrong codes from one address", async () => {
+    const studio = createStudio({ secrets: new SecretRegistry(), heartbeatMs: 60_000, access: new AccessCodes({ codes: ["judge-code-1"] }) });
+    cleanups.push(() => studio.app.close());
+    const send = (code: string) =>
+      studio.app.inject({ method: "POST", url: "/api/access", payload: { code }, headers: { origin: ORIGIN, host: "localhost:8080", "content-type": "application/json", "x-forwarded-for": "203.0.113.7" } });
+    for (let i = 0; i < 5; i++) expect((await send("nope-nope")).statusCode).toBe(401);
+    const blocked = await send("judge-code-1");
+    expect(blocked.statusCode).toBe(429);
+    expect(Number(blocked.headers["retry-after"])).toBeGreaterThan(800);
+  });
+  it("is off when no code is configured", async () => {
+    const studio = createStudio({ secrets: new SecretRegistry(), heartbeatMs: 60_000 });
+    cleanups.push(() => studio.app.close());
+    const r = await studio.app.inject({ method: "POST", url: "/api/queue/join", headers: { origin: ORIGIN, host: "localhost:8080" } });
+    expect(r.json().role).toBe("operator");
+  });
+});
+
+describe("session cookie (R28)", () => {
+  it("is Secure when the public front end relays the request, and not for local http", async () => {
+    const studio = createStudio({ secrets: new SecretRegistry(), heartbeatMs: 60_000 });
+    cleanups.push(() => studio.app.close());
+    const local = await studio.app.inject({ method: "POST", url: "/api/session", headers: { origin: ORIGIN, host: "localhost:8080" } });
+    expect(String(local.headers["set-cookie"])).not.toContain("Secure");
+    const pub = await studio.app.inject({ method: "POST", url: "/api/session", headers: { origin: ORIGIN, host: "localhost:8080", "x-gl-public": "https" } });
+    expect(String(pub.headers["set-cookie"])).toContain("; Secure");
   });
 });

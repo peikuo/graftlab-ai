@@ -48,11 +48,6 @@ export const lastOfStory: Guard = (t) => {
 export const lastWithDemo: Guard = (t) => lastOfStory(t) && currentStory(t)?.demo !== false;
 export const noNextStory: Guard = (t) => nextPendingStory(t) === undefined;
 
-export const currentPurposeIs =
-  (purpose: "A" | "B"): Guard =>
-  (t) =>
-    currentStory(t)?.purpose === purpose;
-
 /** Every story other than the current one is verified, so success needs only the current story to pass. */
 export const othersVerified: Guard = (t) =>
   t.stories.length > 0 && t.stories.every((s) => s.storyId === t.currentStoryId || s.status === "verified");
@@ -62,8 +57,6 @@ export const reviewAllAccepted: Guard = (t) =>
 
 export const reviewSendBack: Guard = (t) =>
   !!t.review && t.review.total > 0 && t.review.accepted + t.review.rejected === t.review.total && t.review.rejected > 0;
-
-export const demoCaseRetryLeft: Guard = (t) => (currentStory(t)?.demoCaseRejections ?? Infinity) <= t.limits.demoCaseRetries;
 
 // Entry invariants, checked by transition() for every edge into the node, in addition to the edge guard.
 // They keep the honest-flow rules true no matter which edge is used (design.md, "Rules that keep the graph honest").

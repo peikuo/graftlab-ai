@@ -22,6 +22,11 @@ try {
   await p.goto(BASE);
   await p.waitForTimeout(1500);
   await p.locator("#url").fill(REPO);
+  // R28.7: when the backend requires an access code, the walk enters the one from WALK_CODE.
+  if (await p.locator("#access-code").count()) {
+    if (!process.env.WALK_CODE) throw new Error("the backend requires an access code: set WALK_CODE");
+    await p.locator("#access-code").fill(process.env.WALK_CODE);
+  }
   await p.waitForTimeout(800);
   await p.getByRole("button", { name: "Start" }).click();
   await p.locator(".nowbar").waitFor({ timeout: 60_000 });

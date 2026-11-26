@@ -16,7 +16,7 @@ async function post<T>(url: string, body?: unknown): Promise<{ ok: true; data: T
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const data = (await res.json().catch(() => ({}))) as T & { error?: string };
-    if (!res.ok) return { ok: false, status: res.status, error: data.error ?? `HTTP ${res.status}` };
+    if (!res.ok) return { ok: false, status: res.status, error: data.error ?? (res.status === 502 || res.status === 504 ? "the Studio backend is not reachable right now" : `HTTP ${res.status}`) };
     return { ok: true, data };
   } catch (e) {
     return { ok: false, status: 0, error: `network error: ${(e as Error).message}` };
@@ -38,6 +38,7 @@ export const api = {
     },
   )),
   join: () => post<QueueView>("/api/queue/join"),
+  access: (code: string) => post<{ ok: boolean }>("/api/access", { code }),
   heartbeat: () => post<QueueView>("/api/queue/heartbeat"),
   leave: () => post<QueueView>("/api/queue/leave"),
   message: (taskId: string, to: string, text: string) => post<{ accepted: boolean; clientMsgId: string }>(`/api/tasks/${encodeURIComponent(taskId)}/messages`, { to, text }),
@@ -49,7 +50,7 @@ export const api = {
   decision: (taskId: string, action: "review" | "select" | "send-back" | "freeze" | "end", body: Record<string, string>) =>
     post<{ accepted: boolean }>(`/api/tasks/${encodeURIComponent(taskId)}/decision/${action}`, body),
   endGathering: (taskId: string) => post<{ accepted: boolean }>(`/api/tasks/${encodeURIComponent(taskId)}/gathering/end`),
-  async status(): Promise<{ liveExecution: boolean; reason?: string; creating: boolean } | null> {
+  async status(): Promise<{ liveExecution: boolean; reason?: string; creating: boolean; access?: { required: boolean; unlocked: boolean } } | null> {
     try {
       const r = await fetch("/api/status", { credentials: "same-origin" });
       return r.ok ? await r.json() : null;

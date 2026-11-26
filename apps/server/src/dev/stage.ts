@@ -233,7 +233,6 @@ export class DevStage {
     this.#branch = await startFeature(wt, f.id);
     const tests = this.#tests.get(f.id)!;
     await this.#status(ctx, f, "building");
-    const story = this.o.plan().backlog.stories.find((s) => s.id === f.storyId)!;
     const contextDir = await writeFeatureContext(this.o.dataDir, ctx.task.taskId, { featureId: f.id, plan: this.o.plan(), design: this.o.design(), protectedTests: tests.files, ...(this.o.adapter.aiClient ? { aiClient: this.o.adapter.aiClient.dir } : {}), ...(this.#answers.get(f.id)?.length ? { answers: this.#answers.get(f.id)! } : {}), ...(this.o.requirements() ? { requirements: this.o.requirements()! } : {}), ...(this.#feedback.get(f.id) ? { previousFeedback: this.#feedback.get(f.id)! } : {}) }, roleText(this.o.rules, "code_agent"));
     const focus = await this.#focus(f, contextDir);
     await this.o.traces?.attemptInputs(ctx.task.taskId, contextDir, `${f.id}-code_agent-a${attempt}`).catch(() => undefined);

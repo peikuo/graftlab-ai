@@ -15,18 +15,32 @@ import { useStudio } from "./useStudio.ts";
 import { parsePlan, PlanStories } from "./components/Plan.tsx";
 import { FinalView } from "./components/FinalView.tsx";
 import { ReplayList } from "./replay/ReplayApp.tsx";
+import { BackendBanner, useBackendDown } from "./backend.tsx";
 
-function Home({ onCreated, status }: { onCreated: () => void; status: Awaited<ReturnType<typeof api.status>> }) {
+function Home({ onCreated, status, down }: { onCreated: () => void; status: Awaited<ReturnType<typeof api.status>>; down: number | null }) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [code, setCode] = useState("");
+  const [unlocked, setUnlocked] = useState(false);
   const parsed = url.trim() ? parseRepoUrl(url) : null;
+  // R28.7: watching is free; operating on the public site needs an access code.
+  const needsCode = !!status?.access?.required && !status.access.unlocked && !unlocked;
 
   const submit = async () => {
     const p = parseRepoUrl(url);
     if (!p.ok) return setError(p.error);
+    if (needsCode && !code.trim()) return setError("Enter your access code to start a Task. Without one you can watch the current Task and the Replays.");
     setBusy(true);
     setError(null);
+    if (needsCode) {
+      const a = await api.access(code.trim());
+      if (!a.ok) {
+        setBusy(false);
+        return setError(a.error);
+      }
+      setUnlocked(true);
+    }
     const joined = await api.join();
     if (!joined.ok || joined.data.role !== "operator") {
       setBusy(false);
@@ -40,6 +54,7 @@ function Home({ onCreated, status }: { onCreated: () => void; status: Awaited<Re
 
   return (
     <div className="home">
+      <BackendBanner seconds={down} />
       <h1>
         GraftLab <span className="accent">AI</span>
       </h1>
@@ -53,11 +68,18 @@ function Home({ onCreated, status }: { onCreated: () => void; status: Awaited<Re
       >
         <label className="sr-only" htmlFor="url">GitHub repository URL</label>
         <input id="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={EXPECTED_FORM} autoFocus />
+        {needsCode && (
+          <>
+            <label className="sr-only" htmlFor="access-code">Access code</label>
+            <input id="access-code" className="home-code" type="password" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Access code" />
+          </>
+        )}
         <button type="submit" disabled={busy || !url.trim()}>{busy ? "Starting…" : "Start"}</button>
       </form>
       <p className={`home-check ${error ? "home-error" : parsed?.ok ? "ok" : "bad"}`} aria-live="polite">
         {error ?? (parsed ? (parsed.ok ? `✓ ${parsed.owner}/${parsed.repo}` : parsed.error) : `Any public repository, for example https://github.com/sissbruecker/linkding`)}
       </p>
+      {needsCode && <p className="home-note">Starting a Task needs an access code (the Judges' codes are in the submission's testing instructions). Watching the current Task and the Replays below needs none.</p>}
       {status && !status.liveExecution && (
         <p className="home-note">Live execution is not available on this server ({status.reason}). Reading and the meeting still work; building and checking need it.</p>
       )}
@@ -88,17 +110,26 @@ export function App() {
   const [status, setStatus] = useState<Awaited<ReturnType<typeof api.status>>>(null);
   const live = useStudio(ready);
   const { state, events } = live;
+  const down = useBackendDown(live.connected, live.now);
   const taskId = state.taskId;
 
   useEffect(() => {
-    void api.session().then(() => setReady(true));
-    void api.status().then(setStatus);
+    // The session and status are fetched again until they succeed, so a backend that comes back is picked up.
+    let stop = false;
+    const start = async () => {
+      const r = await api.session();
+      setReady(true);
+      setStatus(await api.status());
+      if (!r.ok && !stop) setTimeout(() => void start(), 5000);
+    };
+    void start();
     const t = setInterval(() => void api.heartbeat(), 30_000);
     const leave = () => {
       void fetch("/api/queue/leave", { method: "POST", keepalive: true, credentials: "same-origin" });
     };
     window.addEventListener("pagehide", leave);
     return () => {
+      stop = true;
       clearInterval(t);
       window.removeEventListener("pagehide", leave);
     };
@@ -131,7 +162,7 @@ export function App() {
   const [deciding, setDeciding] = useState(false);
   const [decisionError, setDecisionError] = useState<string | null>(null);
 
-  if (!taskId || (home && state.terminal)) return <Home status={status} onCreated={() => setHome(false)} />;
+  if (!taskId || (home && state.terminal)) return <Home status={status} down={down} onCreated={() => setHome(false)} />;
 
   const isOperator = live.queue?.role === "operator";
   const reviewing = state.node === "awaiting_confirmation" && !!decision.draft;
@@ -179,6 +210,7 @@ export function App() {
         detail={detail}
         onGo={() => document.getElementById(openCard ? `card-${openCard.cardId}` : "decision-review")?.scrollIntoView({ behavior: "smooth", block: "center" })}
       />
+      <BackendBanner seconds={down} />
       {live.error && <div className="banner failure-text" role="alert">{live.error}</div>}
       {gathering && isOperator && (
         <div className="gather-bar">

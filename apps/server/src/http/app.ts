@@ -8,6 +8,7 @@ import { z } from "zod";
 import { RoleIdSchema, type SecretRegistry } from "@graftlab/shared";
 import type { SandboxService } from "../containers/sandboxService.ts";
 import type { EventStore } from "../events/store.ts";
+import { AccessCodes } from "../queue/access.ts";
 import { Lease } from "../queue/lease.ts";
 import { SseHub } from "../sse/hub.ts";
 import { ensureSession, readSession, sameOrigin, tokenEquals } from "./session.ts";
@@ -37,6 +38,8 @@ export interface StudioOptions {
   adminToken?: string;
   heartbeatMs?: number;
   lease?: Lease;
+  /** Access codes for operating (R28.7); off when absent or empty. */
+  access?: AccessCodes;
   logger?: boolean;
   /** The current Task's Sandbox, for POST /api/sandbox/restore (R29.2). */
   sandbox?: SandboxService;
@@ -54,10 +57,15 @@ export interface Studio {
 const MessageBody = z.object({ to: z.union([z.literal("all"), RoleIdSchema]), text: z.string().trim().min(1).max(4000) });
 const AnswerBody = z.object({ optionId: z.string().min(1).optional(), text: z.string().max(4000).optional() });
 const AdminQueueBody = z.object({ open: z.boolean() });
+const AccessBody = z.object({ code: z.string().trim().min(1).max(200) });
 
 export function createStudio(opts: StudioOptions): Studio {
   const { secrets } = opts;
   const lease = opts.lease ?? new Lease();
+  const access = opts.access ?? new AccessCodes({ codes: [] });
+  // The public front end is served only over https and marks every request it relays with X-GL-Public: https,
+  // so its session cookie gets Secure while local http work keeps working. A forged header only adds Secure.
+  const secureFor = (req: FastifyRequest) => !!opts.secureCookie || req.headers["x-gl-public"] === "https";
 
   // First guard: no headers, bodies or environment in logs (Fastify's default serializers log method, url and
   // status only). Second guard: every finished log line passes the redactor before it is written; a hit is a
@@ -106,15 +114,33 @@ export function createStudio(opts: StudioOptions): Studio {
     return null;
   };
 
+  // R28.7: unlock operating for this session. The client address comes from the front-end Pod's X-Forwarded-For.
+  app.post("/api/access", async (req, reply) => {
+    if (!sameOrigin(req, opts.allowedOrigins ?? [])) return reply.code(403).send({ error: "cross-origin request refused" });
+    if (!access.required) return { ok: true, required: false };
+    const body = AccessBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "an access code is required" });
+    const sid = ensureSession(req, reply, secureFor(req));
+    const fwd = req.headers["x-forwarded-for"];
+    const client = (Array.isArray(fwd) ? fwd[0] : fwd)?.split(",")[0]?.trim() || req.ip;
+    const r = access.unlock(sid, body.data.code, client);
+    if (!r.ok) {
+      if (r.retryAfterS) reply.header("retry-after", String(r.retryAfterS));
+      return reply.code(r.status).send({ error: r.error });
+    }
+    req.log.info({ msg: "access code accepted", code: `code ${r.codeIndex + 1}` });
+    return { ok: true, required: true };
+  });
   app.post("/api/session", async (req, reply) => {
-    const sid = ensureSession(req, reply, !!opts.secureCookie);
+    const sid = ensureSession(req, reply, secureFor(req));
     return { ok: true, queue: lease.view(sid) };
   });
 
   for (const action of ["join", "heartbeat", "leave"] as const) {
     app.post(`/api/queue/${action}`, async (req, reply) => {
       if (!sameOrigin(req, opts.allowedOrigins ?? [])) return reply.code(403).send({ error: "cross-origin request refused" });
-      const sid = ensureSession(req, reply, !!opts.secureCookie);
+      const sid = ensureSession(req, reply, secureFor(req));
+      if (action === "join" && !access.unlocked(sid)) return reply.code(403).send({ error: "an access code is needed to operate" });
       if (action === "join") return lease.join(sid);
       if (action === "heartbeat") return lease.heartbeat(sid);
       lease.leave(sid);
@@ -191,8 +217,14 @@ export function createStudio(opts: StudioOptions): Studio {
     if (!opts.tasks) return reply.code(503).send({ error: "Task creation is not available on this server" });
     const body = z.object({ url: z.string().max(400) }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "a repository address is required" });
+    const sid = readSession(req);
+    const allowed = access.takeTask(sid);
+    if (!allowed.ok) return reply.code(allowed.status).send({ error: allowed.error });
     const r = await opts.tasks.create(body.data.url);
-    if (!r.ok) return reply.code(r.status).send({ error: r.error });
+    if (!r.ok) {
+      access.returnTask(sid);
+      return reply.code(r.status).send({ error: r.error });
+    }
     return { taskId: r.taskId };
   });
 
@@ -263,9 +295,10 @@ export function createStudio(opts: StudioOptions): Studio {
     return { path, text: text.length > 60_000 ? text.slice(0, 60_000) : text, truncated: text.length > 60_000 };
   });
 
-  app.get("/api/status", async () => {
+  app.get("/api/status", async (req) => {
     const live = (await opts.liveExecution?.()) ?? { available: false, reason: "not checked" };
-    return { liveExecution: live.available, ...(live.reason ? { reason: live.reason } : {}), creating: !!opts.tasks, ...(opts.llm ? { llm: opts.llm } : {}) };
+    const accessView = { required: access.required, unlocked: access.unlocked(readSession(req)) };
+    return { liveExecution: live.available, ...(live.reason ? { reason: live.reason } : {}), creating: !!opts.tasks, access: accessView, ...(opts.llm ? { llm: opts.llm } : {}) };
   });
 
   // Restore (R29.2): the operator (lease holder) or the admin only; same procedure as reset, Verifier equality.

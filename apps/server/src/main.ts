@@ -21,6 +21,7 @@ import { SecretRegistry } from "@graftlab/shared";
 import { z } from "zod";
 import { EventStore } from "./events/store.ts";
 import { loadFixture, playFixture } from "./dev/fixturePlayer.ts";
+import { AccessCodes, parseAccessCodes } from "./queue/access.ts";
 import { createStudio } from "./http/app.ts";
 import { readSession } from "./http/session.ts";
 
@@ -32,6 +33,9 @@ const llm = resolveLlmConfig(process.env);
 const secrets = new SecretRegistry();
 // Every LLM key of every profile is registered, so none can leak even if the profile is switched later.
 for (const k of llm.allKeys) secrets.register(k.name, k.value);
+// R28.7: access codes are secrets like keys; a code that reached a log would be redacted and reported.
+const accessCodes = parseAccessCodes(process.env.GL_ACCESS_CODES);
+accessCodes.forEach((c, i) => secrets.register(`access_code_${i + 1}`, c));
 for (const [name, key] of [["github_token", "GITHUB_TOKEN"], ["admin_token", "GL_ADMIN_TOKEN"]] as const) {
   const v = process.env[key];
   if (v) secrets.register(name, v);
@@ -125,6 +129,7 @@ const studio = createStudio({
   logger: true,
   allowedOrigins: (process.env.GL_ALLOWED_ORIGINS ?? "").split(",").filter(Boolean),
   secureCookie: process.env.GL_SECURE_COOKIE === "1",
+  access: new AccessCodes({ codes: accessCodes, ...(process.env.GL_ACCESS_CODE_DAILY_TASKS ? { dailyTasks: Number(process.env.GL_ACCESS_CODE_DAILY_TASKS) } : {}) }),
   ...(process.env.GL_ADMIN_TOKEN ? { adminToken: process.env.GL_ADMIN_TOKEN } : {}),
 });
 const { app } = studio;

@@ -17,7 +17,6 @@ export const ROLE_IDS = [
   "feasibility",
   "risk",
 ] as const;
-export const MEETING_PERSPECTIVES = ["user_value", "feasibility", "risk"] as const satisfies readonly (typeof ROLE_IDS)[number][];
 export const RoleIdSchema = z.enum(ROLE_IDS);
 /** Phases of a Feature on the development whiteboard (R1.10). */
 export const FEATURE_PHASES = ["todo", "testing", "building", "reviewing", "running", "demo", "verifying", "merged", "failed", "blocked"] as const;
