@@ -23,6 +23,10 @@ function VerifierCard({ card, state }: { card: RoleCard; state: UiState }) {
           Verifier <span className="badge slate">code, no AI</span>
         </div>
         <div className="agent-status">{summary}</div>
+        {/* R21.11: while the demonstration runs (its last step is newer than the last result), the step just done. */}
+        {state.node === "story_checkpoint" && state.lastBrowserByActor.verifier && state.lastBrowserByActor.verifier.seq > (state.verifierResults.at(-1)?.seq ?? 0) && (
+          <div className="agent-status working-text">showing: {state.lastBrowserByActor.verifier.what}</div>
+        )}
         {items.length > 0 && (
           <ul className="vchecks">
             {items.map((i, n) => (

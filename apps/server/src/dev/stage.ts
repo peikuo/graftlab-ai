@@ -568,7 +568,16 @@ export class DevStage {
     const shot = join(this.o.dataDir, "tasks", ctx.task.taskId, "artifacts", "shots", `${f.id}-${c.id}.jpg`);
     const counting = this.o.aiRuntime()?.source === "studio_service";
     const before = counting ? lastCallNumber(parseProxyLog(await this.o.manager.proxyLog(ctx.task.taskId).catch(() => ""))) : 0;
-    const r = await runBrowserCheck({ baseUrl, check: c, screenshot: shot, ...(demo ? { stepShot: (n: number) => join(this.o.dataDir, "tasks", ctx.task.taskId, "artifacts", "shots", `${f.id}-${c.id}-s${n}.jpg`) } : {}), ...(l ? { login: { path: l.path, usernameLabel: l.usernameLabel, passwordLabel: l.passwordLabel, submitLabel: l.submitLabel, username: app.secretEnv[l.usernameEnv] ?? "", password: app.secretEnv[l.passwordEnv] ?? "" } } : {}) }).catch((e: unknown) => ({ items: [{ item: "start the browser", pass: false, expected: "browser runs", actual: (e as Error).message.split("\n")[0]!.slice(0, 200) }], screenshot: null, steps: [] }));
+    const r = await runBrowserCheck({ baseUrl, check: c, screenshot: shot, ...(demo
+      ? {
+          stepShot: (n: number) => join(this.o.dataDir, "tasks", ctx.task.taskId, "artifacts", "shots", `${f.id}-${c.id}-s${n}.jpg`),
+          // R21.11: every step is shown as it happens: the action (Verifier status, feed) and its screenshot.
+          onStep: async (st: { item: string; pass: boolean }, n: number) => {
+            await ctx.emit({ type: "browser_action", actor: { kind: "verifier" }, payload: { action: `step ${n}: ${st.item}`, target: `(check ${c.id})`, ok: st.pass } });
+            await ctx.emit({ type: "artifact_updated", actor: { kind: "verifier" }, payload: { artifactKind: "screenshot", ref: `artifacts/shots/${f.id}-${c.id}-s${n}.jpg`, title: `Step ${n} of check ${c.id}: ${st.item} (${st.pass ? "passed" : "failed"})` } });
+          },
+        }
+      : {}), ...(l ? { login: { path: l.path, usernameLabel: l.usernameLabel, passwordLabel: l.passwordLabel, submitLabel: l.submitLabel, username: app.secretEnv[l.usernameEnv] ?? "", password: app.secretEnv[l.passwordEnv] ?? "" } } : {}) }).catch((e: unknown) => ({ items: [{ item: "start the browser", pass: false, expected: "browser runs", actual: (e as Error).message.split("\n")[0]!.slice(0, 200) }], screenshot: null, steps: [] }));
     if (counting) {
       // R22.11: the app's own model calls during the steps, counted by the LLM_Proxy (code, not the page text).
       await new Promise((res) => setTimeout(res, 500));
@@ -578,8 +587,6 @@ export class DevStage {
       r.items.push({ item: "the app called the AI service (counted by the LLM_Proxy)", pass: !need || u.ok > 0, expected: need ? "at least one successful call" : "counted", actual: `${u.calls} ${u.calls === 1 ? "call" : "calls"}${u.calls ? ` (status ${u.statuses.join(", ")})` : ""}, ${u.inputTokens} input and ${u.outputTokens} output tokens` });
     }
     const ok = r.items.every((i) => i.pass);
-    for (const [i, st] of r.steps.entries())
-      await ctx.emit({ type: "artifact_updated", actor: { kind: "verifier" }, payload: { artifactKind: "screenshot", ref: `artifacts/shots/${f.id}-${c.id}-s${i + 1}.jpg`, title: `Step ${i + 1} of check ${c.id}: ${st.item} (${st.pass ? "passed" : "failed"})` } });
     if (r.screenshot && r.steps.length === 0) await ctx.emit({ type: "artifact_updated", actor: { kind: "verifier" }, payload: { artifactKind: "screenshot", ref: `artifacts/shots/${f.id}-${c.id}.jpg`, title: `Browser check ${c.id}` } });
     await ctx.emit({ type: "verifier_result", actor: { kind: "verifier" }, payload: { storyId: f.id, checkId: c.id, pass: ok, items: r.items } });
     return ok;
@@ -594,7 +601,11 @@ export class DevStage {
     const attempt = currentStory(ctx.task)!.attempts;
     const results = new Map<string, boolean>();
     const browserChecks = story.featureContract.acceptanceChecks.filter((c): c is Extract<AcceptanceCheckSpec, { kind: "browser_check" }> => c.kind === "browser_check" && c.target === "run_environment");
-    if (this.#app && this.#relayPort) for (const c of browserChecks) results.set(c.id, await this.#browserCheck(ctx, f, c, true));
+    if (this.#app && this.#relayPort)
+      for (const c of browserChecks) {
+        await ctx.emit({ type: "finding_recorded", actor: { kind: "verifier" }, payload: { kind: "note", text: `The Verifier shows "${story.title}" in the changed app: check ${c.id}, ${c.steps.length} steps after its own login`, evidence: [], evidenceStatus: "none" } });
+        results.set(c.id, await this.#browserCheck(ctx, f, c, true));
+      }
     this.#demo = { featureId: f.id, attempt, results };
     const passed = [...results.values()].filter(Boolean).length;
     const shown = results.size === 0 ? "" : `The Verifier just ran ${results.size === 1 ? "its browser check" : `its ${results.size} browser checks`} in the changed app (${passed} of ${results.size} passed); every step and its screenshot is below.\n\n`;

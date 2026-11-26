@@ -478,3 +478,4 @@ pre.diff .hunk { color: var(--thinking); display: block; }
 .demo-grid img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; object-position: top; border: 1px solid var(--border); border-radius: 6px; }
 .demo-grid li.bad img { border-color: var(--failure); }
 .demo-grid li.bad span { color: var(--failure); }
+.agent-status.working-text { color: var(--working); }

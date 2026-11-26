@@ -24,7 +24,7 @@ export interface StepShot {
   pass: boolean;
   file: string;
 }
-export async function runBrowserCheck(o: { baseUrl: string; check: BrowserCheck; login?: BrowserLogin; screenshot: string; timeoutMs?: number; stepShot?: (n: number) => string }): Promise<{ items: ItemResult[]; screenshot: string | null; steps: StepShot[] }> {
+export async function runBrowserCheck(o: { baseUrl: string; check: BrowserCheck; login?: BrowserLogin; screenshot: string; timeoutMs?: number; stepShot?: (n: number) => string; onStep?: (step: StepShot, n: number) => Promise<void> }): Promise<{ items: ItemResult[]; screenshot: string | null; steps: StepShot[] }> {
   const { chromium } = await import("playwright");
   const timeout = o.timeoutMs ?? 15_000;
   const origin = new URL(o.baseUrl).origin;
@@ -43,7 +43,11 @@ export async function runBrowserCheck(o: { baseUrl: string; check: BrowserCheck;
       const file = o.stepShot(steps.length + 1);
       await mkdir(dirname(file), { recursive: true });
       const ok = await page.screenshot({ path: file, type: "jpeg", quality: 70 }).then(() => true, () => false);
-      if (ok) steps.push({ item: last.item, pass: last.pass, file });
+      if (!ok) return;
+      const step = { item: last.item, pass: last.pass, file };
+      steps.push(step);
+      // Live: the caller shows each step as soon as it is done (R21.11), not after the whole check.
+      await o.onStep?.(step, steps.length).catch(() => undefined);
     };
     if (o.login) {
       try {

@@ -92,7 +92,7 @@ const NOW: Partial<Record<NodeId, string>> = {
   story_review: "The Reviewer checks the change against the story contract.",
   story_ask: "Development stopped to ask a question.",
   story_run: "Starting the changed app.",
-  story_checkpoint: "The new feature is ready to look at.",
+  story_checkpoint: "The new feature runs in its own copy of the app.",
   verifying: "The Verifier (code, no AI) is checking the result.",
   regression_check: "The Verifier runs the whole test suite on the changed code and compares it with the original.",
   failure_review: "Something failed. You decide what happens next.",

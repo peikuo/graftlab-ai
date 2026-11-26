@@ -640,7 +640,7 @@ Conventions:
     - Trace sink for every model turn (full prompts, tools, messages, tool calls and results, redacted) into `data/tasks/<id>/traces/`; per-attempt copies of the in-container agents' inputs; `scripts/trace.ts` to read them; not in events, Replay or git
     - _Requirements: 35_
   - [x] 14.35 Demonstration at the confirmation point (R21.11)
-    - Done 2026-11-26: `runBrowserCheck` with `stepShot`, `DevStage.checkpoint` runs the story's browser checks first and `verify` reuses their results, `components/DemoSteps.tsx` in the card (Live and Replay); tests on a local page and for the event selection; checked visually on a Replay preview. Not yet seen in a live run (next real run)
+    - Done 2026-11-26: `runBrowserCheck` with `stepShot`, `DevStage.checkpoint` runs the story's browser checks first and `verify` reuses their results, `components/DemoSteps.tsx` in the card (Live and Replay); tests on a local page and for the event selection; each step is shown as it happens (Verifier card and "now" line); checked visually on Replay previews. Not yet seen in a live run (next real run)
     - The Verifier's browser checks run at `story_checkpoint` with a screenshot per step; the card shows steps, results and screenshots (Live and Replay); not repeated at `verifying`; checkpoint node timeout 240 s
     - Design: "Demonstration at the confirmation point"
     - _Requirements: 21.2, 21.11, 22.2_

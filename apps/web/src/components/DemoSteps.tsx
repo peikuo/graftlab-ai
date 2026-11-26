@@ -1,7 +1,7 @@
 // Demonstration at the confirmation point (R21.11; design.md, "Demonstration at the confirmation point"): the
 // Verifier's browser-check steps in the running changed app, each with its result and screenshot, shown inside the
 // confirm card. Derived from events only, so Live and Replay show the same.
-import type { StudioEvent } from "@graftlab/shared";
+import type { StudioEvent, UiState } from "@graftlab/shared";
 import { shotUrl } from "./Artifacts.tsx";
 
 export interface DemoStep {
@@ -24,6 +24,13 @@ export function demoSteps(events: readonly StudioEvent[], cardId: string): DemoS
     if (m) steps.push({ ref: e.payload.ref, label: `${m[1]}. ${m[3]}`, pass: m[4] === "passed" });
   }
   return steps;
+}
+
+/** The "now" line while the demonstration runs: the step the Verifier just did (newer than its last result). */
+export function demoNow(state: UiState): string | null {
+  const b = state.lastBrowserByActor.verifier;
+  if (state.node !== "story_checkpoint" || !b || b.seq <= (state.verifierResults.at(-1)?.seq ?? 0)) return null;
+  return `The Verifier is showing the feature in the changed app: ${b.what}`;
 }
 
 export function DemoSteps({ events, cardId, taskId, replay = false }: { events: readonly StudioEvent[]; cardId: string; taskId: string; replay?: boolean }) {

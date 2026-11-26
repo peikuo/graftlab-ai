@@ -13,7 +13,7 @@ type Tab = "found" | "app" | "decision" | "plan" | "board";
 
 function tabOf(e: StudioEvent): Tab | null {
   if (e.type === "file_read" || e.type === "finding_recorded" || e.type === "evidence_summary" || e.type === "reading_planned" || e.type === "repo_brief" || e.type === "meeting_summary" || e.type === "board_updated") return "found";
-  if (e.type === "browser_action" || e.type === "browser_observation") return "app";
+  if ((e.type === "browser_action" || e.type === "browser_observation") && e.actor.kind !== "verifier") return "app";
   if (e.type === "decision_doc_version" || e.type === "decision_doc_frozen" || e.type === "artifact_updated") return "decision";
   if (e.type === "plan_proposed" || e.type === "output_doc") return "plan";
   if (e.type === "feature_status" || e.type === "regression_result") return "board";
@@ -83,7 +83,8 @@ export function ArtifactArea({ state, events, loadFile, now, replay }: { state: 
   // Studio notes about the download (plan, skipped parts) are not findings of the team.
   const studioNotes = findings.filter((e) => e.actor.kind === "system");
   const agentFindings = findings.filter((e) => e.actor.kind !== "system");
-  const browser = events.filter((e) => e.type === "browser_action" || e.type === "browser_observation");
+  // The App trial is the Explorer's; the Verifier's demonstration steps are shown in the confirm card (R21.11).
+  const browser = events.filter((e) => (e.type === "browser_action" || e.type === "browser_observation") && e.actor.kind !== "verifier");
   const docs = events.filter((e) => e.type === "artifact_updated");
   const tools = events.filter((e) => e.type === "tool_started" || e.type === "tool_finished" || e.type === "code_change" || e.type === "review_verdict");
   const lastTs = events.at(-1)?.ts;

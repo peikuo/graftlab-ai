@@ -16,7 +16,7 @@ import { parsePlan, PlanStories } from "./components/Plan.tsx";
 import { FinalView } from "./components/FinalView.tsx";
 import { ReplayList } from "./replay/ReplayApp.tsx";
 import { BackendBanner, useBackendDown } from "./backend.tsx";
-import { DemoSteps } from "./components/DemoSteps.tsx";
+import { demoNow, DemoSteps } from "./components/DemoSteps.tsx";
 
 function Home({ onCreated, status, down }: { onCreated: () => void; status: Awaited<ReturnType<typeof api.status>>; down: number | null }) {
   const [url, setUrl] = useState("");
@@ -175,7 +175,7 @@ export function App() {
     setDeciding(false);
     if (!r.ok) setDecisionError(r.error);
   };
-  const detail = state.node === "reading" ? readingPhase(events, filesRead, planned) : null;
+  const detail = state.node === "reading" ? readingPhase(events, filesRead, planned) : demoNow(state);
   const gathering = state.node === "sandbox_start" || state.node === "browser_experience";
 
   return (

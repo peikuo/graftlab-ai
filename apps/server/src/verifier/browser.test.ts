@@ -36,19 +36,23 @@ afterAll(async () => {
 });
 const login = { path: "/login", usernameLabel: "User", passwordLabel: "Pass", submitLabel: "Sign in", username: "u", password: "pw-0123456789" };
 describe.skipIf(!chromiumOk)("runBrowserCheck with step screenshots", () => {
-  it("saves a screenshot after the login and after every step, with the step's result", async () => {
+  it("saves a screenshot after the login and after every step, with the step's result, and reports each step live", async () => {
+    const live: string[] = [];
     const dir = await mkdtemp(join(tmpdir(), "gl-demo-"));
     const r = await runBrowserCheck({
       baseUrl: base,
       login,
       screenshot: join(dir, "final.jpg"),
       stepShot: (n) => join(dir, `s${n}.jpg`),
+      onStep: async (st, n) => void live.push(`${n} ${st.item} ${existsSync(st.file)}`),
       timeoutMs: 3000,
       check: { id: "c1", kind: "browser_check", target: "run_environment", steps: [{ op: "goto", path: "/form" }, { op: "fill", role: "textbox", name: "URL", value: "https://example.com" }, { op: "click", role: "button", name: "Suggest" }, { op: "expectText", text: "Suggested: recipes" }] },
     });
     expect(r.items.every((i) => i.pass)).toBe(true);
     expect(r.steps.map((s) => s.item)).toEqual(["log in (Studio code)", "open /form", 'type into "URL"', 'click the button "Suggest"', 'see "Suggested: recipes"']);
     for (const s of r.steps) expect(existsSync(s.file)).toBe(true);
+    // Each step was reported as it happened, with its screenshot already on disk.
+    expect(live).toEqual(r.steps.map((s, i) => `${i + 1} ${s.item} true`));
     expect(JSON.stringify(r)).not.toContain(login.password);
   });
   it("marks a failed step, and steps after it get no screenshot", async () => {

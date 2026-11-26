@@ -10,7 +10,7 @@ import { FinalView } from "../components/FinalView.tsx";
 import { NowBar, Stepper } from "../components/Guide.tsx";
 import { PresenceColumn } from "../components/Presence.tsx";
 import { deriveDecision } from "../liveDecision.ts";
-import { DemoSteps } from "../components/DemoSteps.tsx";
+import { demoNow, DemoSteps } from "../components/DemoSteps.tsx";
 import { parsePlan, PlanStories } from "../components/Plan.tsx";
 
 interface ReplayFile {
@@ -126,7 +126,7 @@ export function ReplayApp({ taskId }: { taskId: string }) {
         </span>
       </div>
       <Stepper state={state} unavailable={events.some((e) => e.type === "evidence_summary" && e.payload.experienceUnavailable) ? ["try"] : []} />
-      <NowBar state={state} yourTurn={null} />
+      <NowBar state={state} yourTurn={null} detail={demoNow(state)} />
       <main className="workspace">
         <PresenceColumn state={state} now={clock} />
         <div className="center">
