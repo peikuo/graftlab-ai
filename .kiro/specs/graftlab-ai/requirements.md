@@ -864,6 +864,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 12. THE Replay_File SHALL contain no key and no token.
 13. THE Replay_File SHALL be servable as a static file by the front-end host, so that a Replay can be viewed while the backend is offline, and THE Studio SHALL label it "Replay".
 14. FOR ALL ordered event sequences, rendering the UI state live and rendering it from the Replay_File SHALL produce the same UI state.
+15. WHERE `GL_PUBLISH_REPLAYS` is on (decided by the user 2026-11-26 for the public site), THE Studio SHALL say on the home page before a Task starts that every Task is published as a public Replay when it ends, and SHALL list each exported Replay_File on the home page after a privacy check (secret patterns, local paths, private addresses, e-mail addresses); a Replay that fails the check is not published and the Task records why. Requests from the public front end SHALL see only published Replays.
 
 ### Requirement 28: Queue and watching
 

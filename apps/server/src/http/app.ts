@@ -9,6 +9,7 @@ import { RoleIdSchema, type SecretRegistry } from "@graftlab/shared";
 import type { SandboxService } from "../containers/sandboxService.ts";
 import type { EventStore } from "../events/store.ts";
 import { AccessCodes } from "../queue/access.ts";
+import { publishedReplays } from "../replay/export.ts";
 import { Lease } from "../queue/lease.ts";
 import { SseHub } from "../sse/hub.ts";
 import { ensureSession, readSession, sameOrigin, tokenEquals } from "./session.ts";
@@ -38,6 +39,8 @@ export interface StudioOptions {
   adminToken?: string;
   heartbeatMs?: number;
   lease?: Lease;
+  /** R27.15: finished Tasks are published; requests from the public front end see only published Replays. */
+  publishReplays?: boolean;
   /** Access codes for operating (R28.7); off when absent or empty. */
   access?: AccessCodes;
   logger?: boolean;
@@ -271,9 +274,13 @@ export function createStudio(opts: StudioOptions): Studio {
   });
 
   // Static Replay_Files (R27.13): read-only, no session needed; the id is checked before the path is built.
+  // R27.15: the public front end (X-GL-Public) gets only the Replays on the published list.
+  const hidden = async (req: FastifyRequest, id: string) => req.headers["x-gl-public"] === "https" && !(await publishedReplays(opts.dataDir ?? "data")).some((r) => r.taskId === id);
+  app.get("/api/replays", async () => (opts.publishReplays ? publishedReplays(opts.dataDir ?? "data") : []));
   app.get<{ Params: { file: string } }>("/replays/:file", async (req, reply) => {
     const m = /^([a-z0-9._-]{1,80})\.json$/.exec(req.params.file);
     if (!m || m[1]!.includes("..")) return reply.code(400).send({ error: "invalid replay name" });
+    if (await hidden(req, m[1]!)) return reply.code(404).send({ error: "no such replay" });
     const text = await readFile(join(opts.dataDir ?? "data", "replays", `${m[1]}.json`), "utf8").catch(() => null);
     if (text === null) return reply.code(404).send({ error: "no such replay" });
     return reply.type("application/json").send(text);
@@ -281,6 +288,7 @@ export function createStudio(opts: StudioOptions): Studio {
   // Static screenshots of a Replay_File (R26), next to it; no session needed, like the Replay_File itself.
   app.get<{ Params: { id: string; file: string } }>("/replays/:id/shots/:file", async (req, reply) => {
     if (!/^[a-z0-9._-]{1,80}$/i.test(req.params.id) || req.params.id.includes("..") || !/^[A-Za-z0-9_-]{1,80}\.jpg$/.test(req.params.file)) return reply.code(400).send({ error: "invalid name" });
+    if (await hidden(req, req.params.id)) return reply.code(404).send({ error: "no such screenshot" });
     const data = await readFile(join(opts.dataDir ?? "data", "replays", req.params.id, "shots", req.params.file)).catch(() => null);
     if (!data) return reply.code(404).send({ error: "no such screenshot" });
     return reply.type("image/jpeg").header("cache-control", "public, max-age=86400").send(data);
@@ -304,7 +312,7 @@ export function createStudio(opts: StudioOptions): Studio {
   app.get("/api/status", async (req) => {
     const live = (await opts.liveExecution?.()) ?? { available: false, reason: "not checked" };
     const accessView = { required: access.required, unlocked: access.unlocked(readSession(req)) };
-    return { liveExecution: live.available, ...(live.reason ? { reason: live.reason } : {}), creating: !!opts.tasks, access: accessView, ...(opts.llm ? { llm: opts.llm } : {}) };
+    return { publishReplays: !!opts.publishReplays, liveExecution: live.available, ...(live.reason ? { reason: live.reason } : {}), creating: !!opts.tasks, access: accessView, ...(opts.llm ? { llm: opts.llm } : {}) };
   });
 
   // Restore (R29.2): the operator (lease holder) or the admin only; same procedure as reset, Verifier equality.

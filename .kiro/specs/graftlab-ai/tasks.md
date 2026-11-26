@@ -766,6 +766,9 @@ Conventions:
   - [x] 17.6 Write the static Replay_File publishing script
     - Done 2026-11-26: `scripts/replay-publish.ts` (checks in `scripts/replayPublish.ts`): a chosen set of labeled Replays is written with screenshots and `index.json` for the front end; refused on a secret pattern or a private fact (local paths, private VPN addresses, e-mail addresses, values of an optional private-values file), named by rule only; published a successful and a failed linkding run
     - _Requirements: 26.8, 27.13_
+  - [x] 17.10 Automatic Replay publishing (R27.15)
+    - Done 2026-11-26: `publishReplay` after the export, `GET /api/replays`, only published Replays for the public front end, the front end asks the backend for Replays not in its static folder, a home page note before Start
+    - _Requirements: 27.15_
   - [x] 17.8 Access codes for operating
     - Done 2026-11-25: `apps/server/src/queue/access.ts`, `POST /api/access`, home page code field; codes only in the backend's environment (`GL_ACCESS_CODES`); verified on the public site (join without code 403, wrong code 401, right code unlocks)
     - Watch without a code; join the queue as an operator only with a valid code (constant-time compare, back-off after wrong codes, a daily Task cap per code); admin token unchanged; kept simple, no accounts

@@ -87,6 +87,7 @@ const tasks = new TaskService({
     buildArgs: { PYPI_INDEX: process.env.GL_PYPI_INDEX ?? "https://pypi.org/simple", NPM_REGISTRY: process.env.GL_NPM_REGISTRY ?? "https://registry.npmjs.org" },
   },
   replayPublicDir: join(root, "apps/web/public/replays"),
+  publishReplays: process.env.GL_PUBLISH_REPLAYS === "1",
   runtimeRulesVersion,
   llm: { profile: llm.profile, model: llm.model, ...(llmPrice ? { price: llmPrice } : {}) },
   lease,
@@ -135,6 +136,7 @@ const studio = createStudio({
   logger: true,
   allowedOrigins: (process.env.GL_ALLOWED_ORIGINS ?? "").split(",").filter(Boolean),
   secureCookie: process.env.GL_SECURE_COOKIE === "1",
+  publishReplays: process.env.GL_PUBLISH_REPLAYS === "1",
   access: new AccessCodes({ codes: accessCodes, ...(process.env.GL_ACCESS_CODE_DAILY_TASKS ? { dailyTasks: Number(process.env.GL_ACCESS_CODE_DAILY_TASKS) } : {}) }),
   ...(process.env.GL_ADMIN_TOKEN ? { adminToken: process.env.GL_ADMIN_TOKEN } : {}),
 });

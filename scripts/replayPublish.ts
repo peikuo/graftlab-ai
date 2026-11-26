@@ -1,7 +1,8 @@
 // Checks for publishing Replay_Files on the public front end (task 17.6; R27.13, R26.8). Pure functions, used by
 // scripts/replay-publish.ts and tested next to it. A Replay is published only when it is a labeled Replay of the
 // named Task and contains no secret pattern and no private fact (local paths, private addresses, given values).
-import { findSecretPatterns } from "@graftlab/shared";
+import { privacyProblems } from "@graftlab/shared";
+export { privacyProblems };
 
 export interface PublishEntry {
   taskId: string;
@@ -10,15 +11,6 @@ export interface PublishEntry {
   createdAt: string;
 }
 export type ReplayCheck = { ok: true; entry: PublishEntry; shots: string[] } | { ok: false; problems: string[] };
-
-// Private facts that must never be on the public site. Only the rule names are reported, never the matched text.
-const PRIVATE_PATTERNS: { name: string; re: RegExp }[] = [
-  { name: "Windows drive path", re: /\b[A-Za-z]:\\\\/ },
-  { name: "macOS home path", re: /\/Users\/[A-Za-z0-9._-]+/ },
-  { name: "Linux home path", re: /\/home\/[A-Za-z0-9._-]+\// },
-  { name: "private VPN address (100.64.0.0/10)", re: /\b100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b/ },
-  { name: "e-mail address", re: /\b[A-Za-z0-9._%+-]+@(outlook|gmail|qq|163|hotmail|icloud)\.com\b/i },
-];
 
 /** Values of `KEY=VALUE` lines of a private-values file; comments and short values are ignored. */
 export function siteValues(text: string): string[] {
@@ -30,14 +22,6 @@ export function siteValues(text: string): string[] {
     .filter((v) => v.length >= 6);
 }
 
-/** Problem names in a Replay text: secret patterns, private patterns and site values (named by position only). */
-export function privacyProblems(text: string, site: readonly string[]): string[] {
-  return [
-    ...findSecretPatterns(text).map((n) => `secret pattern: ${n}`),
-    ...PRIVATE_PATTERNS.filter((p) => p.re.test(text)).map((p) => `private: ${p.name}`),
-    ...site.flatMap((v, i) => (text.includes(v) ? [`private: site value ${i + 1}`] : [])),
-  ];
-}
 
 /** Checks one Replay_File's text for publishing and lists the screenshots its events name. */
 export function checkReplay(taskId: string, text: string, site: readonly string[]): ReplayCheck {

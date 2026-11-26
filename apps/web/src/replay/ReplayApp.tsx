@@ -158,14 +158,20 @@ export function ReplayApp({ taskId }: { taskId: string }) {
   );
 }
 
-/** The Replays the static host can play (index.json written by the exporter), for the home page. */
+type ReplayEntry = { taskId: string; repo: string; terminal: string; createdAt: string };
+const listOf = (url: string): Promise<ReplayEntry[]> =>
+  fetch(url)
+    .then((r) => (r.ok ? r.json() : []))
+    .then((x: unknown) => (Array.isArray(x) ? (x as ReplayEntry[]) : []))
+    .catch(() => []);
+/** The Replays for the home page: the static ones (index.json) and the automatically published ones (R27.15). */
 export function ReplayList() {
-  const [list, setList] = useState<{ taskId: string; repo: string; terminal: string; createdAt: string }[] | null>(null);
+  const [list, setList] = useState<ReplayEntry[] | null>(null);
   useEffect(() => {
-    fetch("/replays/index.json")
-      .then((r) => (r.ok ? r.json() : []))
-      .then(setList)
-      .catch(() => setList([]));
+    void Promise.all([listOf("/replays/index.json"), listOf("/api/replays")]).then(([a, b]) => {
+      const seen = new Set<string>();
+      setList([...b, ...a].filter((r) => (seen.has(r.taskId) ? false : (seen.add(r.taskId), true))).sort((x, y) => y.createdAt.localeCompare(x.createdAt)));
+    });
   }, []);
   if (!list || list.length === 0) return null;
   return (

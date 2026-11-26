@@ -16,7 +16,7 @@ import type { Emit, TurnOptions, TurnResult } from "../runtime/pi.ts";
 import { roleText, sharedSystemPrompt, type RuntimeRules } from "../roles/rules.ts";
 import { filesFrom, type EvidenceFiles } from "../evidence/check.ts";
 import { runMeeting } from "../meeting/meeting.ts";
-import { exportReplay } from "../replay/export.ts";
+import { exportReplay, publishReplay } from "../replay/export.ts";
 import { runDecisionDraft } from "../decision/draft.ts";
 import { DecisionDesk, type Verdict } from "../decision/desk.ts";
 import { splitItems } from "../decision/items.ts";
@@ -66,6 +66,8 @@ export interface TaskServiceOptions {
   taskTimeoutMs?: number;
   /** Static folder of the web app where Replay copies and their index go (R27.13); optional. */
   replayPublicDir?: string;
+  /** R27.15: every exported Replay that passes the privacy check is listed publicly (GL_PUBLISH_REPLAYS). */
+  publishReplays?: boolean;
   /** Where the Adapters live (adapters/<id>/adapter.json). */
   adaptersDir?: string;
   /** The Reader's LLM side (R10.7); without it the reading step stops honestly after the download. */
@@ -340,10 +342,18 @@ export class TaskService {
   /** Replay_File at the terminal (R27.11-R27.13); a secret hit refuses the export and is recorded as a failure. */
   async #exportReplay(store: EventStore, repo: string): Promise<void> {
     const r = await exportReplay({ events: store.events(), repo, runtimeRulesVersion: this.#o.runtimeRulesVersion, registry: this.#o.secrets, dataDir: this.#o.dataDir, ...(this.#o.replayPublicDir ? { publicDir: this.#o.replayPublicDir } : {}) }).catch((e: unknown) => ({ ok: false as const, found: [`export error: ${(e as Error).message}`] }));
-    if (!r.ok)
+    if (!r.ok) {
       await store
         .append({ type: "failure", node: store.events().at(-1)?.node ?? "failed", actor: { kind: "system" }, payload: { failureClass: "rejected_by_safety_rule", source: "persistence", detail: `the Replay was not exported: ${r.found.join(", ")}` } })
         .catch(() => undefined);
+      return;
+    }
+    if (!this.#o.publishReplays) return;
+    const p = await publishReplay(this.#o.dataDir, r.file).catch((e: unknown) => ({ ok: false as const, problems: [`publish error: ${(e as Error).message}`] }));
+    const node = store.events().at(-1)?.node ?? "failed";
+    await store
+      .append({ type: "finding_recorded", node, actor: { kind: "system" }, payload: { kind: "note", text: p.ok ? "This Task's Replay is published on the home page (R27.15)." : `This Task's Replay is not published: ${p.problems.join(", ")}.`, evidence: [], evidenceStatus: "none" } })
+      .catch(() => undefined);
   }
 
   /** Drafting (R15.1, R15.2, R37): Facilitator draft, Feasibility and Risk assessments, merged by code. */

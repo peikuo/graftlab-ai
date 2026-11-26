@@ -105,6 +105,7 @@ How to run the Studio as a public site. The files are in `deploy/` (see `deploy/
 
 - Access codes (R28.7): `GL_ACCESS_CODES` on the backend; watching needs no code; each code may start `GL_ACCESS_CODE_DAILY_TASKS` Tasks per day. The codes for the Judges go into the submission's testing instructions.
 - `GL_ADMIN_TOKEN` enables closing and opening the queue and an admin Sandbox restore.
+- Automatic publishing (R27.15, `GL_PUBLISH_REPLAYS=1`): each exported Replay that passes the privacy check is added to `data/replays/published.json` on the backend and listed by `GET /api/replays`; the front end serves a Replay from its static folder when it is there and otherwise asks the backend, which answers requests marked `X-GL-Public` only for published Replays. Such a Replay plays only while the backend is up; copy it into the static folder with `scripts/replay-publish.ts` to keep it.
 - Published Replays (17.6): `scripts/replay-publish.ts` checks each chosen Replay_File (the "Replay" label, secret patterns, local paths, private addresses and the values of an optional private-values file) and writes the set with its screenshots and `index.json` to a folder the front end serves at `/replays/`.
 - Privacy rule (user, 2026-11-25): facts about a team's own hosting (host names and addresses, network setup, other services on the same machines) are not committed. The team's own instance is described only in its local, gitignored notes.
 

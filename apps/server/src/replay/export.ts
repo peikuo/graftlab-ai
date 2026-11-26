@@ -4,7 +4,7 @@
 // a Replay plays while the backend is stopped.
 import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { findSecretPatterns, type SecretRegistry, type StudioEvent } from "@graftlab/shared";
+import { findSecretPatterns, privacyProblems, type SecretRegistry, type StudioEvent } from "@graftlab/shared";
 
 export interface ReplayHeader {
   schemaVersion: 1;
@@ -76,4 +76,24 @@ export async function exportReplay(o: { events: readonly StudioEvent[]; repo: st
     await writeAtomic(indexFile, JSON.stringify([entry, ...index.filter((x) => x.taskId !== entry.taskId)].slice(0, 50)));
   }
   return { ok: true, file, shots };
+}
+
+/** The public list of automatically published Replays (R27.15): data/replays/published.json. */
+export async function publishedReplays(dataDir: string): Promise<IndexEntry[]> {
+  return JSON.parse(await readFile(join(dataDir, "replays", "published.json"), "utf8").catch(() => "[]")) as IndexEntry[];
+}
+/**
+ * R27.15: adds an exported Replay_File to the public list after the privacy check (local paths, private addresses,
+ * e-mail addresses, secret patterns). Returns the problem names when it is not published.
+ */
+export async function publishReplay(dataDir: string, file: string): Promise<{ ok: true } | { ok: false; problems: string[] }> {
+  const text = await readFile(file, "utf8");
+  const problems = privacyProblems(text, []);
+  if (problems.length) return { ok: false, problems };
+  const r = JSON.parse(text) as ReplayFile;
+  const terminal = r.events.findLast((e) => e.type === "terminal_reached");
+  const entry: IndexEntry = { taskId: r.header.taskId, repo: r.header.repo, terminal: terminal?.type === "terminal_reached" ? terminal.payload.terminal : "unknown", createdAt: r.header.createdAt };
+  const list = await publishedReplays(dataDir);
+  await writeAtomic(join(dataDir, "replays", "published.json"), JSON.stringify([entry, ...list.filter((x) => x.taskId !== entry.taskId)].slice(0, 100)));
+  return { ok: true };
 }

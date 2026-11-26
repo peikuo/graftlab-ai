@@ -11,6 +11,7 @@ export * from "./flow/transition.ts";
 export * from "./text.ts";
 export * from "./decision.ts";
 export * from "./secretPatterns.ts";
+export * from "./privacy.ts";
 export * from "./adapter.ts";
 export * from "./runner.ts";
 export * from "./planning.ts";

@@ -50,7 +50,7 @@ export const api = {
   decision: (taskId: string, action: "review" | "select" | "send-back" | "freeze" | "end", body: Record<string, string>) =>
     post<{ accepted: boolean }>(`/api/tasks/${encodeURIComponent(taskId)}/decision/${action}`, body),
   endGathering: (taskId: string) => post<{ accepted: boolean }>(`/api/tasks/${encodeURIComponent(taskId)}/gathering/end`),
-  async status(): Promise<{ liveExecution: boolean; reason?: string; creating: boolean; access?: { required: boolean; unlocked: boolean } } | null> {
+  async status(): Promise<{ publishReplays?: boolean; liveExecution: boolean; reason?: string; creating: boolean; access?: { required: boolean; unlocked: boolean } } | null> {
     try {
       const r = await fetch("/api/status", { credentials: "same-origin" });
       return r.ok ? await r.json() : null;

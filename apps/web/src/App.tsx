@@ -80,6 +80,7 @@ function Home({ onCreated, status, down }: { onCreated: () => void; status: Awai
       <p className={`home-check ${error ? "home-error" : parsed?.ok ? "ok" : "bad"}`} aria-live="polite">
         {error ?? (parsed ? (parsed.ok ? `✓ ${parsed.owner}/${parsed.repo}` : parsed.error) : `Any public repository, for example https://github.com/sissbruecker/linkding`)}
       </p>
+      {status?.publishReplays && <p className="home-note">Every Task that runs here is published as a public Replay when it ends, so others can watch it later. Do not type anything private into the Studio.</p>}
       {needsCode && <p className="home-note">Starting a Task needs an access code (the Judges' codes are in the submission's testing instructions). Watching the current Task and the Replays below needs none.</p>}
       {status && !status.liveExecution && (
         <p className="home-note">Live execution is not available on this server ({status.reason}). Reading and the meeting still work; building and checking need it.</p>
