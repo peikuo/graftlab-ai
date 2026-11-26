@@ -639,6 +639,11 @@ Conventions:
   - [x] 14.34 Local prompt trace
     - Trace sink for every model turn (full prompts, tools, messages, tool calls and results, redacted) into `data/tasks/<id>/traces/`; per-attempt copies of the in-container agents' inputs; `scripts/trace.ts` to read them; not in events, Replay or git
     - _Requirements: 35_
+  - [x] 14.35 Demonstration at the confirmation point (R21.11)
+    - Done 2026-11-26: `runBrowserCheck` with `stepShot`, `DevStage.checkpoint` runs the story's browser checks first and `verify` reuses their results, `components/DemoSteps.tsx` in the card (Live and Replay); tests on a local page and for the event selection; checked visually on a Replay preview. Not yet seen in a live run (next real run)
+    - The Verifier's browser checks run at `story_checkpoint` with a screenshot per step; the card shows steps, results and screenshots (Live and Replay); not repeated at `verifying`; checkpoint node timeout 240 s
+    - Design: "Demonstration at the confirmation point"
+    - _Requirements: 21.2, 21.11, 22.2_
   - [x] 14.1 Implement the context builder and the development rules
     - Done 2026-11-23: `apps/server/src/dev/context.ts` (one Feature, its story and contract, the architecture, summaries of the Features it builds on); `runtime-rules/roles/code_agent.md` updated
     - `apps/server/src/dev/context.ts` writes only the story, its Feature_Contract and the referenced documents; Runtime_Rules rules "small scope per Agent" and "no decision power, stop and ask, reviewed by the Reviewer"

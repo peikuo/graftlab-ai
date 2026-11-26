@@ -16,6 +16,7 @@ import { parsePlan, PlanStories } from "./components/Plan.tsx";
 import { FinalView } from "./components/FinalView.tsx";
 import { ReplayList } from "./replay/ReplayApp.tsx";
 import { BackendBanner, useBackendDown } from "./backend.tsx";
+import { DemoSteps } from "./components/DemoSteps.tsx";
 
 function Home({ onCreated, status, down }: { onCreated: () => void; status: Awaited<ReturnType<typeof api.status>>; down: number | null }) {
   const [url, setUrl] = useState("");
@@ -230,7 +231,9 @@ export function App() {
               // The plan review card (R19.11) shows the stories in feature words.
               const opened = events.find((e) => e.type === "card_opened" && e.payload.cardId === cardId);
               const plan = opened?.node === "plan_review" ? parsePlan(state.plan?.content) : null;
-              return plan ? <PlanStories plan={plan} /> : null;
+              if (plan) return <PlanStories plan={plan} />;
+              // R21.11: the confirmation point shows the Verifier's browser-check steps with their screenshots.
+              return opened?.node === "story_checkpoint" && taskId ? <DemoSteps events={events} cardId={cardId} taskId={taskId} /> : null;
             }}
             inline={
               state.terminal ? (

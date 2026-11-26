@@ -364,7 +364,7 @@ Node table:
 | story_review | agent_loop | Reviewer: `read_changed_file`, `read_diff`, `submit_review_verdict` | 5 min | R40.6-R40.10 |
 | story_ask | wait_user | Reviewer `answer_question` for technical questions; Judge question card for feature questions | 300 s for the Judge | R40.11-R40.14 |
 | story_run | auto | none (Studio starts the Run_Environment) | 240 s | R39.9-R39.11 |
-| story_checkpoint | wait_user | none | 120 s (demo 30 s) | R21 |
+| story_checkpoint | wait_user | none | 240 s (the demonstration run, then the confirmation wait of 120 s, demo 30 s) | R21 |
 | verifying | auto | none (Verifier) | 10 min | R22 |
 | regression_check | auto | none (Verifier: the Adapter's full test suite on `main` and, cached, on the pinned commit) | 40 min | R22.10 |
 | api_read | agent_loop | Reviewer designs the Demo_Case: `target_api_read` (read-only calls within the Adapter allow-list), `read_file`, `search_repo` (read-only), `submit_demo_case` | 8 min | R18.2, R18.7, R40.18 |
@@ -1512,12 +1512,20 @@ Would build: a small case library of team-written Markdown cards with source lin
 
 Would build: the `prototype` node, enabled by a flag, running the Code_Agent in a separate clone `data/tasks/<id>/prototype/` inside the Development_Sandbox (started early, Open item 34), labeled "Prototype" everywhere, stored per Task, never counted as success, and never bypassing the freeze.
 
+## Demonstration at the confirmation point (R21.11)
+
+- At `story_checkpoint` the Verifier first runs the story's `browser_check` Acceptance_Checks against the running changed app (`runBrowserCheck`, scripted Playwright steps after the Studio's own login). After the login and after every step it saves a screenshot (`artifacts/shots/<F>-<check>-s<n>.jpg`) and emits it as an `artifact_updated` screenshot titled with the step. The `verifier_result` of each check is emitted at that moment, as at verification.
+- The confirm card then opens; its body names the result ("the Verifier ran N steps in the changed app: M passed") and the Workspace shows the steps with their screenshots inside the card (Live and Replay). A failed step is shown as failed; the card still opens, and the failed check still fails the story at verification.
+- At `verifying` the browser checks are not run again for the same Feature attempt; their recorded results count. Test suites and API read-backs run there as before, in this order after the browser checks, so a read-back sees the changes the browser steps made once.
+- Feedback from the Judge sends the Feature back to development; the next attempt runs its demonstration again.
+
 ## Deferred for later
 
 Decisions the user made for the first version that are to be revisited. Each item names what to collect before deciding.
 
 | Item | First version | To do later | Requirements and open items |
 |---|---|---|---|
+| Black-box closing demonstration (user, 2026-11-26) | The confirmation point shows the Verifier's scripted browser checks with a screenshot per step (white box: we know the controls and the expected texts, R21.11) | After the last story, the Explorer uses the finished software like a new user toward the goals of the Decision_Doc, with live screenshots and its own words, labeled "LLM assessment, not a guarantee"; it can find what the scripted checks do not cover (hard-to-find controls, confusing flows) | R21.11; collect: which findings the scripted checks missed in real runs |
 | Sidecar delivery (user, 2026-11-25) | Every story is a change of the target's code | A separate AI service built next to the software, started with it, offering features or acting on the person's instructions through the software's API, without changing the software's code; needs its own build, run, credentials and Verifier checks | R18.14 |
 | Disagreement about a test (user, 2026-11-24) | The flow follows the Code_Agent when it changes a Test_Agent test; the change is recorded and the Reviewer must justify it | A small meeting of Test_Agent, Code_Agent and Reviewer (the Facilitator leading, the Judge able to join) that settles whether the test or the code is wrong, with the outcome recorded as a decision | R40.21 |
 | Failure review choices | Retry the failed step, skip the story, end the Task | Collect failure cases from test and demo runs: failed step, Failure_Class, the Judge's choice, whether it helped. The Retrospective of each Task records them. Add or change choices when new cases show a need | R36.6, Open item 52 |

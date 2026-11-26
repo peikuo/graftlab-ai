@@ -471,3 +471,10 @@ pre.diff .hunk { color: var(--thinking); display: block; }
 .trial-live { margin: 0 0 10px; }
 .trial-live img { width: 100%; border: 1px solid var(--border); border-radius: 10px; display: block; }
 .trial-thumb img { width: 72px; height: 48px; object-fit: cover; object-position: top; border: 1px solid var(--border); border-radius: 4px; margin-left: 6px; vertical-align: middle; }
+/* Demonstration at the confirmation point (R21.11) */
+.demo-steps { margin-top: 10px; }
+.demo-grid { list-style: none; padding: 0; margin: 6px 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.demo-grid li { display: flex; flex-direction: column; gap: 4px; }
+.demo-grid img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; object-position: top; border: 1px solid var(--border); border-radius: 6px; }
+.demo-grid li.bad img { border-color: var(--failure); }
+.demo-grid li.bad span { color: var(--failure); }

@@ -753,6 +753,7 @@ Queue and watching rules: only one Judge operates at a time; others queue and ma
 8. WHEN the Judge next gives any input while results marked Unconfirmed are pending, THE Studio SHALL remind the Judge of the pending Unconfirmed items, listed in feature terms (feature name and plain-language status), without file names, paths or diffs.
 9. THE Studio SHALL record each reminder of criterion 8 in the Event_Stream.
 10. A demo is optional (decided by the user 2026-11-24): WHERE a story has nothing to show in the running app (for example a change to log output), so that all its Acceptance_Checks are test runs, THE Studio SHALL skip the Run_Environment and the confirmation point for that story, SHALL show the story as "no demo, the tests prove it", and SHALL still decide its success by the Verifier's checks.
+11. WHERE a story with a demo has browser checks against the running changed app, THE Studio SHALL show them at the confirmation point as the demonstration (decided by the user 2026-11-26): before the confirm card opens, the Verifier (code, no LLM) runs the story's browser checks in the running app with a screenshot after every step, and the card shows each step, its result and its screenshot. These browser checks are then not run again at verification, so the app's test data is changed once; success is still decided only by the Verifier. A black-box closing demonstration by the Explorer, using the finished software like a new user, is recorded for later (design.md, "Deferred for later").
 
 ### Requirement 22: Execution and independent verification
 

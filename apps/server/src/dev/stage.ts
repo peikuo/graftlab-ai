@@ -6,7 +6,7 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { arr, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
-import { currentStory, describeCheck, isTestPath, nextPendingStory, PATCH_MAX, unplannedChanges, type FeaturePhase, type Adapter, type AiRuntime, type BaselineHandle, type Feature, type TargetItem, type Plan, type RequirementsDoc, type SecretRegistry, type StoryProgress, type TechDesign } from "@graftlab/shared";
+import { currentStory, describeCheck, type AcceptanceCheckSpec, isTestPath, nextPendingStory, PATCH_MAX, unplannedChanges, type FeaturePhase, type Adapter, type AiRuntime, type BaselineHandle, type Feature, type TargetItem, type Plan, type RequirementsDoc, type SecretRegistry, type StoryProgress, type TechDesign } from "@graftlab/shared";
 import { z } from "zod";
 import type { ContainerManager } from "../containers/manager.ts";
 import { issueProxyCredential, PROXY_APP_SECRET_NAME } from "../proxy/credential.ts";
@@ -94,6 +94,8 @@ export class DevStage {
   /** The whole suite at the pinned commit, started at target_check (R22.10). */
   #baseline: Promise<{ run: SuiteRun; cached: boolean } | null> | null = null;
   #relayPort: number | null = null;
+  /** R21.11: the browser checks already run as the demonstration of this Feature attempt (not repeated at verifying). */
+  #demo: { featureId: string; attempt: number; results: Map<string, boolean> } | null = null;
   #branch: FeatureBranch | null = null;
   #lastDiff: { files: string[]; patch: string; testFiles: string[]; testsPatch: string } | null = null;
   #feedback = new Map<string, string[]>();
@@ -558,13 +560,45 @@ export class DevStage {
     }
   }
 
+  /** One browser_check against the running changed app (R22.2); with `demo`, a screenshot after every step (R21.11). */
+  async #browserCheck(ctx: Ctx, f: Feature, c: Extract<AcceptanceCheckSpec, { kind: "browser_check" }>, demo: boolean): Promise<boolean> {
+    const app = this.#app!;
+    const baseUrl = `http://127.0.0.1:${this.#relayPort}`;
+    const l = this.o.adapter.browserLogin;
+    const shot = join(this.o.dataDir, "tasks", ctx.task.taskId, "artifacts", "shots", `${f.id}-${c.id}.jpg`);
+    const counting = this.o.aiRuntime()?.source === "studio_service";
+    const before = counting ? lastCallNumber(parseProxyLog(await this.o.manager.proxyLog(ctx.task.taskId).catch(() => ""))) : 0;
+    const r = await runBrowserCheck({ baseUrl, check: c, screenshot: shot, ...(demo ? { stepShot: (n: number) => join(this.o.dataDir, "tasks", ctx.task.taskId, "artifacts", "shots", `${f.id}-${c.id}-s${n}.jpg`) } : {}), ...(l ? { login: { path: l.path, usernameLabel: l.usernameLabel, passwordLabel: l.passwordLabel, submitLabel: l.submitLabel, username: app.secretEnv[l.usernameEnv] ?? "", password: app.secretEnv[l.passwordEnv] ?? "" } } : {}) }).catch((e: unknown) => ({ items: [{ item: "start the browser", pass: false, expected: "browser runs", actual: (e as Error).message.split("\n")[0]!.slice(0, 200) }], screenshot: null, steps: [] }));
+    if (counting) {
+      // R22.11: the app's own model calls during the steps, counted by the LLM_Proxy (code, not the page text).
+      await new Promise((res) => setTimeout(res, 500));
+      const u = appCallsSince(parseProxyLog(await this.o.manager.proxyLog(ctx.task.taskId).catch(() => "")), before);
+      await ctx.emit({ type: "ai_usage", actor: { kind: "verifier" }, payload: { caller: "app", checkId: c.id, calls: u.calls, statuses: u.statuses, inputTokens: u.inputTokens, cachedTokens: u.cachedTokens, outputTokens: u.outputTokens } });
+      const need = c.needsAi === true;
+      r.items.push({ item: "the app called the AI service (counted by the LLM_Proxy)", pass: !need || u.ok > 0, expected: need ? "at least one successful call" : "counted", actual: `${u.calls} ${u.calls === 1 ? "call" : "calls"}${u.calls ? ` (status ${u.statuses.join(", ")})` : ""}, ${u.inputTokens} input and ${u.outputTokens} output tokens` });
+    }
+    const ok = r.items.every((i) => i.pass);
+    for (const [i, st] of r.steps.entries())
+      await ctx.emit({ type: "artifact_updated", actor: { kind: "verifier" }, payload: { artifactKind: "screenshot", ref: `artifacts/shots/${f.id}-${c.id}-s${i + 1}.jpg`, title: `Step ${i + 1} of check ${c.id}: ${st.item} (${st.pass ? "passed" : "failed"})` } });
+    if (r.screenshot && r.steps.length === 0) await ctx.emit({ type: "artifact_updated", actor: { kind: "verifier" }, payload: { artifactKind: "screenshot", ref: `artifacts/shots/${f.id}-${c.id}.jpg`, title: `Browser check ${c.id}` } });
+    await ctx.emit({ type: "verifier_result", actor: { kind: "verifier" }, payload: { storyId: f.id, checkId: c.id, pass: ok, items: r.items } });
+    return ok;
+  }
   /** story_checkpoint (R21): the Judge looks at the story's demo point; no answer marks it Unconfirmed. */
   async checkpoint(ctx: Ctx): Promise<"confirmed" | "unconfirmed" | "feedback"> {
     const f = this.#feature(ctx);
     const story = this.o.plan().backlog.stories.find((s) => s.id === f.storyId)!;
     const built = this.o.design().breakdown.features.filter((x) => x.storyId === story.id).map((x) => `- ${x.title}`).join("\n");
     await this.#status(ctx, f, "demo");
-    const a = await ctx.askJudgeFor({ kind: "checkpoint", title: `"${story.title}" is running`, body: `What you should see: ${story.demoPoint.description}\n\nBuilt in this story:\n${built}\n\nThe changed app runs in its own container; the Verifier checks it next.`, options: [{ id: "confirm", label: "Looks right" }, { id: "feedback", label: "Something is off" }], allowFreeText: false, textRequiredFor: ["feedback"] }, 110_000);
+    // R21.11: the demonstration is the Verifier's own browser checks in the running app, a screenshot per step.
+    const attempt = currentStory(ctx.task)!.attempts;
+    const results = new Map<string, boolean>();
+    const browserChecks = story.featureContract.acceptanceChecks.filter((c): c is Extract<AcceptanceCheckSpec, { kind: "browser_check" }> => c.kind === "browser_check" && c.target === "run_environment");
+    if (this.#app && this.#relayPort) for (const c of browserChecks) results.set(c.id, await this.#browserCheck(ctx, f, c, true));
+    this.#demo = { featureId: f.id, attempt, results };
+    const passed = [...results.values()].filter(Boolean).length;
+    const shown = results.size === 0 ? "" : `The Verifier just ran ${results.size === 1 ? "its browser check" : `its ${results.size} browser checks`} in the changed app (${passed} of ${results.size} passed); every step and its screenshot is below.\n\n`;
+    const a = await ctx.askJudgeFor({ kind: "checkpoint", title: `"${story.title}" is running`, body: `${shown}What you should see: ${story.demoPoint.description}\n\nBuilt in this story:\n${built}\n\nThe changed app runs in its own container; the Verifier finishes its checks next.`, options: [{ id: "confirm", label: "Looks right" }, { id: "feedback", label: "Something is off" }], allowFreeText: false, textRequiredFor: ["feedback"] }, 110_000);
     if (!a) {
       ctx.patch({ pendingUnconfirmed: [...ctx.task.pendingUnconfirmed, story.title] });
       this.#setStory(ctx, f.id, { unconfirmed: true });
@@ -612,25 +646,10 @@ export class DevStage {
         notRun.push(`${c.id} (${c.kind} against ${c.target}${app ? "" : ", the app is not running"})`);
         continue;
       }
-      const baseUrl = `http://127.0.0.1:${this.#relayPort}`;
       if (c.kind === "browser_check") {
-        const l = this.o.adapter.browserLogin;
-        const shot = join(this.o.dataDir, "tasks", ctx.task.taskId, "artifacts", "shots", `${f.id}-${c.id}.jpg`);
-        const counting = this.o.aiRuntime()?.source === "studio_service";
-        const before = counting ? lastCallNumber(parseProxyLog(await this.o.manager.proxyLog(ctx.task.taskId).catch(() => ""))) : 0;
-        const r = await runBrowserCheck({ baseUrl, check: c, screenshot: shot, ...(l ? { login: { path: l.path, usernameLabel: l.usernameLabel, passwordLabel: l.passwordLabel, submitLabel: l.submitLabel, username: app.secretEnv[l.usernameEnv] ?? "", password: app.secretEnv[l.passwordEnv] ?? "" } } : {}) }).catch((e: unknown) => ({ items: [{ item: "start the browser", pass: false, expected: "browser runs", actual: (e as Error).message.split("\n")[0]!.slice(0, 200) }], screenshot: null }));
-        if (counting) {
-          // R22.11: the app's own model calls during the steps, counted by the LLM_Proxy (code, not the page text).
-          await new Promise((res) => setTimeout(res, 500));
-          const u = appCallsSince(parseProxyLog(await this.o.manager.proxyLog(ctx.task.taskId).catch(() => "")), before);
-          await ctx.emit({ type: "ai_usage", actor: { kind: "verifier" }, payload: { caller: "app", checkId: c.id, calls: u.calls, statuses: u.statuses, inputTokens: u.inputTokens, cachedTokens: u.cachedTokens, outputTokens: u.outputTokens } });
-          const need = c.needsAi === true;
-          r.items.push({ item: "the app called the AI service (counted by the LLM_Proxy)", pass: !need || u.ok > 0, expected: need ? "at least one successful call" : "counted", actual: `${u.calls} ${u.calls === 1 ? "call" : "calls"}${u.calls ? ` (status ${u.statuses.join(", ")})` : ""}, ${u.inputTokens} input and ${u.outputTokens} output tokens` });
-        }
-        const ok = r.items.every((i) => i.pass);
-        pass &&= ok;
-        if (r.screenshot) await ctx.emit({ type: "artifact_updated", actor: { kind: "verifier" }, payload: { artifactKind: "screenshot", ref: `artifacts/shots/${f.id}-${c.id}.jpg`, title: `Browser check ${c.id}` } });
-        await ctx.emit({ type: "verifier_result", actor: { kind: "verifier" }, payload: { storyId: f.id, checkId: c.id, pass: ok, items: r.items } });
+        // R21.11: shown at the confirmation point already; its recorded result counts, it is not run again.
+        const done = this.#demo && this.#demo.featureId === f.id && this.#demo.attempt === attempt ? this.#demo.results.get(c.id) : undefined;
+        pass &&= done ?? (await this.#browserCheck(ctx, f, c, false));
       } else {
         const r = await runReadback(this.o.adapter, targetClient(this.o.adapter, this.#relayPort, app.credentials), c.expect, app.preState).catch((e: unknown) => ({ pass: false, items: [{ item: "read back", pass: false, expected: "read", actual: (e as Error).message.slice(0, 200) }] }));
         pass &&= r.pass;

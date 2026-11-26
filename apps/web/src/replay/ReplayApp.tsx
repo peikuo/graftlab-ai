@@ -10,6 +10,8 @@ import { FinalView } from "../components/FinalView.tsx";
 import { NowBar, Stepper } from "../components/Guide.tsx";
 import { PresenceColumn } from "../components/Presence.tsx";
 import { deriveDecision } from "../liveDecision.ts";
+import { DemoSteps } from "../components/DemoSteps.tsx";
+import { parsePlan, PlanStories } from "../components/Plan.tsx";
 
 interface ReplayFile {
   header: { schemaVersion: number; taskId: string; repo: string; createdAt: string; label: string };
@@ -134,6 +136,12 @@ export function ReplayApp({ taskId }: { taskId: string }) {
             buffers={{}}
             onAnswer={none}
             clock={clock}
+            cardExtra={(cardId) => {
+              const opened = events.find((e) => e.type === "card_opened" && e.payload.cardId === cardId);
+              const plan = opened?.node === "plan_review" ? parsePlan(state.plan?.content) : null;
+              if (plan) return <PlanStories plan={plan} />;
+              return opened?.node === "story_checkpoint" ? <DemoSteps events={events} cardId={cardId} taskId={file.header.taskId} replay /> : null;
+            }}
             inline={
               <>
                 {decision.draft && (state.node === "awaiting_confirmation" || state.node === "deciding") ? (

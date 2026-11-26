@@ -1,6 +1,7 @@
 // Verifier `browser_check` (design.md, "Verifier"; R22.2, R14.11): scripted Playwright steps, no LLM. Studio code
 // logs in with the generated credentials first (the Adapter's `browserLogin`), then every step is one per-item
-// result. Requests to other origins are aborted. A screenshot of the final page is saved for the Judge.
+// result. Requests to other origins are aborted. A screenshot of the final page is saved for the Judge; with
+// `stepShot`, one after the login and after every step as well (the demonstration at the confirmation point, R21.11).
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AcceptanceCheckSpec, ItemResult } from "@graftlab/shared";
@@ -18,17 +19,32 @@ export interface BrowserLogin {
 const describe = (s: BrowserCheck["steps"][number]) =>
   s.op === "goto" ? `open ${s.path}` : s.op === "expectText" ? `see "${s.text}"` : s.op === "expectRole" ? `see the ${s.role} "${s.name}"` : s.op === "click" ? `click the ${s.role} "${s.name}"` : `type into "${s.name}"`;
 
-export async function runBrowserCheck(o: { baseUrl: string; check: BrowserCheck; login?: BrowserLogin; screenshot: string; timeoutMs?: number }): Promise<{ items: ItemResult[]; screenshot: string | null }> {
+export interface StepShot {
+  item: string;
+  pass: boolean;
+  file: string;
+}
+export async function runBrowserCheck(o: { baseUrl: string; check: BrowserCheck; login?: BrowserLogin; screenshot: string; timeoutMs?: number; stepShot?: (n: number) => string }): Promise<{ items: ItemResult[]; screenshot: string | null; steps: StepShot[] }> {
   const { chromium } = await import("playwright");
   const timeout = o.timeoutMs ?? 15_000;
   const origin = new URL(o.baseUrl).origin;
   const browser = await chromium.launch();
   const items: ItemResult[] = [];
+  const steps: StepShot[] = [];
   try {
     const page = await (await browser.newContext({ viewport: { width: 1280, height: 860 } })).newPage();
     page.setDefaultTimeout(timeout);
     await page.route("**/*", (r) => (new URL(r.request().url()).origin === origin ? r.continue() : r.abort()));
     const url = (p: string) => new URL(p, o.baseUrl).toString();
+    // After a step: a screenshot of the page as the step left it (only steps that ran; a skipped step has none).
+    const shoot = async () => {
+      const last = items.at(-1);
+      if (!o.stepShot || !last || last.actual === "not run: an earlier step failed") return;
+      const file = o.stepShot(steps.length + 1);
+      await mkdir(dirname(file), { recursive: true });
+      const ok = await page.screenshot({ path: file, type: "jpeg", quality: 70 }).then(() => true, () => false);
+      if (ok) steps.push({ item: last.item, pass: last.pass, file });
+    };
     if (o.login) {
       try {
         await page.goto(url(o.login.path));
@@ -41,6 +57,7 @@ export async function runBrowserCheck(o: { baseUrl: string; check: BrowserCheck;
       } catch (e) {
         items.push({ item: "log in (Studio code)", pass: false, expected: "logged in", actual: (e as Error).message.split("\n")[0]!.slice(0, 200) });
       }
+      await shoot();
     }
     for (const s of o.check.steps) {
       if (items.some((i) => !i.pass)) {
@@ -69,10 +86,11 @@ export async function runBrowserCheck(o: { baseUrl: string; check: BrowserCheck;
       } catch (e) {
         items.push({ item: describe(s), pass: false, expected: "done", actual: (e as Error).message.split("\n")[0]!.slice(0, 200) });
       }
+      await shoot();
     }
     await mkdir(dirname(o.screenshot), { recursive: true });
     await page.screenshot({ path: o.screenshot, type: "jpeg", quality: 70 });
-    return { items, screenshot: o.screenshot };
+    return { items, screenshot: o.screenshot, steps };
   } finally {
     await browser.close();
   }

@@ -88,7 +88,7 @@ export const NODES: Record<NodeId, FlowNode> = {
   story_review: { id: "story_review", kind: "agent_loop", tools: ["read_changed_file", "read_diff", "submit_review_verdict"], timeoutS: min(5), requirements: "R40.6-R40.10" },
   story_ask: { id: "story_ask", kind: "wait_user", tools: ["answer_question"], timeoutS: 300, requirements: "R40.11-R40.14" },
   story_run: { id: "story_run", kind: "auto", tools: [], timeoutS: 240, requirements: "R39.9-R39.11" },
-  story_checkpoint: { id: "story_checkpoint", kind: "wait_user", tools: [], timeoutS: 120, requirements: "R21" },
+  story_checkpoint: { id: "story_checkpoint", kind: "wait_user", tools: [], timeoutS: 240, requirements: "R21, R21.11" },
   verifying: { id: "verifying", kind: "auto", tools: [], timeoutS: min(10), requirements: "R22" },
   regression_check: { id: "regression_check", kind: "auto", tools: [], timeoutS: min(40), requirements: "R22.10" },
   failure_review: { id: "failure_review", kind: "wait_user", tools: [], timeoutS: null, requirements: "R36.6" },
