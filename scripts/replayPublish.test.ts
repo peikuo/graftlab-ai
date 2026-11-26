@@ -25,7 +25,7 @@ describe("Replay publishing checks (17.6)", () => {
     expect(checkReplay("t1", "{", [])).toEqual({ ok: false, problems: ["not JSON"] });
   });
   it("names private facts and secrets without quoting them", () => {
-    const text = replay({}, [{ type: "x", payload: { a: "D:\\\\graftlab\\\\data", b: "/Users/someone/x", c: "100.101.2.3", d: "sk-" + "a".repeat(30), e: "reg.internal:5000" } }]);
+    const text = replay({}, [{ type: "x", payload: { a: "E:\\\\work\\\\data", b: "/Users/someone/x", c: "100.101.2.3", d: "sk-" + "a".repeat(30), e: "reg.internal:5000" } }]);
     const r = checkReplay("t1", text, siteValues("# note\nREGISTRY=reg.internal:5000\nX=ab\n"));
     expect(r.ok).toBe(false);
     const problems = (r as { problems: string[] }).problems;

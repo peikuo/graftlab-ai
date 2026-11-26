@@ -13,7 +13,7 @@ describe("automatic Replay publishing (R27.15)", () => {
     const dir = await mkdtemp(join(tmpdir(), "gl-pub-"));
     await mkdir(join(dir, "replays"), { recursive: true });
     await writeFile(join(dir, "replays", "a.json"), replay("a"));
-    await writeFile(join(dir, "replays", "b.json"), replay("b", "D:\\\\graftlab\\\\data"));
+    await writeFile(join(dir, "replays", "b.json"), replay("b", "E:\\\\work\\\\data"));
     expect(await publishReplay(dir, join(dir, "replays", "a.json"))).toEqual({ ok: true });
     const bad = await publishReplay(dir, join(dir, "replays", "b.json"));
     expect(bad).toEqual({ ok: false, problems: ["private: Windows drive path"] });
