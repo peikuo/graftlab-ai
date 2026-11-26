@@ -1,0 +1,73 @@
+# Front end for the Studio (reference-deployment.md, "Public deployment"): serves the web build and the public
+# Replays, and proxies /api to the backend on the same origin. ${BACKEND_UPSTREAM} (host:port) is filled in from the
+# environment when the nginx image starts. TLS is terminated in front of this (a CDN or a TLS reverse proxy).
+server {
+  listen 8080;
+  root /usr/share/nginx/html;
+  server_tokens off;
+  include /etc/nginx/snippets/security-headers.conf;
+
+  # Compress at the origin; the SSE stream (text/event-stream) is not listed, so events are never held back.
+  gzip on;
+  gzip_comp_level 6;
+  gzip_min_length 1024;
+  gzip_proxied any;
+  gzip_types application/json application/javascript text/css image/svg+xml;
+
+  # Development-only routes are never reachable from the public side.
+  location /api/dev/ { return 403; }
+
+  location /api/ {
+    proxy_pass http://${BACKEND_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header Connection "";
+    # The backend's access-code back-off counts per client address (first entry). Behind a CDN, configure
+    # nginx's real_ip module so $remote_addr is the visitor, not the CDN.
+    proxy_set_header X-Forwarded-For $remote_addr;
+    # This site is served over https only, so the backend sets Secure on the session cookie.
+    proxy_set_header X-GL-Public https;
+    # SSE: no buffering, long timeouts.
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_connect_timeout 10s;
+    client_max_body_size 1m;
+    # A down backend becomes a JSON error the web app shows (banner and next to the input). It is sent as 503
+    # because some CDNs replace an origin's 502 and 504 bodies with their own page.
+    error_page 502 504 = @backend_down;
+  }
+  location @backend_down {
+    default_type application/json;
+    add_header Cache-Control "no-store" always;
+    include /etc/nginx/snippets/security-headers.conf;
+    return 503 '{"error":"the Studio backend is not reachable right now"}';
+  }
+
+  # Hashed build assets never change.
+  location /assets/ {
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    include /etc/nginx/snippets/security-headers.conf;
+    try_files $uri =404;
+  }
+
+  # Published Replays (scripts/replay-publish.ts): a Replay_File and its screenshots never change; the list can.
+  location = /replays/index.json {
+    add_header Cache-Control "no-cache";
+    include /etc/nginx/snippets/security-headers.conf;
+    try_files $uri =404;
+  }
+  location /replays/ {
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    include /etc/nginx/snippets/security-headers.conf;
+    try_files $uri =404;
+  }
+
+  # The single-page app: every other path loads index.html, which is never cached.
+  location / {
+    add_header Cache-Control "no-cache";
+    include /etc/nginx/snippets/security-headers.conf;
+    try_files $uri /index.html;
+  }
+}
